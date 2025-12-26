@@ -1,15 +1,16 @@
 # Netlify Configuration for IRIS Platform
-# Next.js Monorepo Deployment
+# Next.js Monorepo Deployment with npm workspaces
 
 [build]
-  # Base directory (where package.json and node_modules live for the web app)
-  base = "apps/web"
+  # NO usar base directory para monorepos con workspaces
+  # Netlify debe instalar desde la raíz
+  base = ""
   
-  # Build command
-  command = "npm run build"
+  # Instalar dependencias en raíz y luego build del workspace específico
+  command = "npm install && npm run build:web"
   
-  # Publish directory (Next.js output)
-  publish = ".next"
+  # Publish directory (relativo a la raíz ahora)
+  publish = "apps/web/.next"
 
 # Use the official Next.js plugin for SSR/ISR support
 [[plugins]]
@@ -19,13 +20,6 @@
 [build.environment]
   NODE_VERSION = "20"
   NPM_FLAGS = "--legacy-peer-deps"
-
-# Redirect rules (optional, for SPA fallback)
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-  conditions = {Role = ["admin"]}
 
 # Headers for security
 [[headers]]
