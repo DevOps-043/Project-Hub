@@ -533,6 +533,31 @@ CREATE TABLE public.user_permissions (
   CONSTRAINT user_permissions_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.account_users(user_id)
 );
 
+-- Cycles (Sprints) - Like Linear cycles
+CREATE TABLE public.task_cycles (
+  cycle_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  team_id uuid NOT NULL,
+  cycle_number integer NOT NULL,
+  name character varying NOT NULL,
+  description text,
+  status character varying NOT NULL DEFAULT 'upcoming'::character varying CHECK (status::text = ANY (ARRAY['upcoming'::character varying, 'active'::character varying, 'completed'::character varying, 'cancelled'::character varying]::text[])),
+  start_date date NOT NULL,
+  end_date date NOT NULL,
+  cooldown_days integer DEFAULT 7,
+  scope_count integer DEFAULT 0,
+  completed_count integer DEFAULT 0,
+  progress_percent numeric(5,2) DEFAULT 0,
+  created_by uuid,
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  completed_at timestamp with time zone,
+  CONSTRAINT task_cycles_pkey PRIMARY KEY (cycle_id),
+  CONSTRAINT task_cycles_team_id_fkey FOREIGN KEY (team_id) REFERENCES public.teams(team_id),
+  CONSTRAINT task_cycles_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.account_users(user_id),
+  CONSTRAINT task_cycles_team_number_unique UNIQUE (team_id, cycle_number),
+  CONSTRAINT task_cycles_dates_check CHECK (end_date >= start_date)
+);
+
 -- ==========================================
 -- PERFORMANCE OPTIMIZATION INDEXES
 -- ==========================================
@@ -563,3 +588,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_recipient_unread ON public.notifica
 
 -- 6. Optimizations for Project Updates
 CREATE INDEX IF NOT EXISTS idx_project_updates_project_date ON public.pm_project_updates(project_id, created_at DESC);
+
+-- 7. Optimizations for Cycles
+CREATE INDEX IF NOT EXISTS idx_cycles_team_status ON public.task_cycles(team_id, status);
+CREATE INDEX IF NOT EXISTS idx_cycles_dates ON public.task_cycles(start_date, end_date);
