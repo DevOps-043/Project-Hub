@@ -574,39 +574,167 @@ export default function ProjectIssueDetailPage() {
               </div>
 
               {/* Labels */}
-              <div>
+              <div className="relative">
                 <label className="block text-xs mb-1" style={{ color: colors.textMuted }}>Etiquetas</label>
-                {issue.labels.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {issue.labels.map(label => (
-                      <span
-                        key={label.label_id}
-                        className="px-2 py-0.5 rounded-full text-xs font-medium"
-                        style={{ backgroundColor: `${label.color}20`, color: label.color }}
+                <button
+                  onClick={() => setActiveDropdown(activeDropdown === 'labels' ? null : 'labels')}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors hover:bg-white/5"
+                  style={{ color: colors.textPrimary }}
+                >
+                  {issue.labels && issue.labels.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {issue.labels.map(label => (
+                        <span
+                          key={label.label_id}
+                          className="px-2 py-0.5 rounded-full text-xs font-medium"
+                          style={{ backgroundColor: `${label.color}20`, color: label.color }}
+                        >
+                          {label.name}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ color: colors.textMuted }}>+ Añadir etiqueta</span>
+                  )}
+                </button>
+                
+                <AnimatePresence>
+                  {activeDropdown === 'labels' && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute top-full left-0 right-0 mt-1 py-1 rounded-xl border shadow-xl z-50 max-h-48 overflow-y-auto"
+                        style={{ backgroundColor: isDark ? '#1E2329' : '#fff', borderColor: colors.border }}
                       >
-                        {label.name}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-sm" style={{ color: colors.textMuted }}>Sin etiquetas</span>
-                )}
+                        {labelOptions.length > 0 ? labelOptions.map(label => {
+                          const isSelected = issue.labels?.some(l => l.label_id === label.label_id);
+                          return (
+                            <button
+                              key={label.label_id}
+                              onClick={() => {
+                                // Toggle label - for now just show it's available
+                                // Full implementation would need a separate API endpoint
+                                setActiveDropdown(null);
+                              }}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 text-left ${isSelected ? 'bg-white/5' : ''}`}
+                              style={{ color: colors.textPrimary }}
+                            >
+                              <span
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: label.color }}
+                              />
+                              <span>{label.name}</span>
+                              {isSelected && <span className="ml-auto text-xs" style={{ color: accentColor }}>✓</span>}
+                            </button>
+                          );
+                        }) : (
+                          <div className="px-3 py-2 text-sm" style={{ color: colors.textMuted }}>
+                            No hay etiquetas disponibles
+                          </div>
+                        )}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Due Date */}
-              <div>
+              <div className="relative">
                 <label className="block text-xs mb-1" style={{ color: colors.textMuted }}>Fecha límite</label>
-                <span className="text-sm" style={{ color: issue.due_date ? colors.textPrimary : colors.textMuted }}>
-                  {issue.due_date ? format(new Date(issue.due_date), 'dd MMM yyyy', { locale: es }) : 'Sin fecha'}
-                </span>
+                <button
+                  onClick={() => setActiveDropdown(activeDropdown === 'dueDate' ? null : 'dueDate')}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors hover:bg-white/5"
+                  style={{ color: issue.due_date ? colors.textPrimary : colors.textMuted }}
+                >
+                  <Calendar size={14} />
+                  <span>{issue.due_date ? format(new Date(issue.due_date), 'dd MMM yyyy', { locale: es }) : 'Sin fecha'}</span>
+                </button>
+                
+                <AnimatePresence>
+                  {activeDropdown === 'dueDate' && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute top-full left-0 right-0 mt-1 p-3 rounded-xl border shadow-xl z-50"
+                        style={{ backgroundColor: isDark ? '#1E2329' : '#fff', borderColor: colors.border }}
+                      >
+                        <input
+                          type="date"
+                          defaultValue={issue.due_date ? issue.due_date.split('T')[0] : ''}
+                          onChange={(e) => {
+                            updateField('due_date', e.target.value || null);
+                          }}
+                          className="w-full px-3 py-2 rounded-lg border text-sm"
+                          style={{
+                            backgroundColor: isDark ? '#0F1419' : '#F9FAFB',
+                            borderColor: colors.border,
+                            color: colors.textPrimary
+                          }}
+                        />
+                        <button
+                          onClick={() => updateField('due_date', null)}
+                          className="w-full mt-2 px-3 py-1.5 text-xs rounded-lg"
+                          style={{ color: colors.textMuted }}
+                        >
+                          Quitar fecha
+                        </button>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Estimate */}
-              <div>
+              <div className="relative">
                 <label className="block text-xs mb-1" style={{ color: colors.textMuted }}>Estimación</label>
-                <span className="text-sm" style={{ color: issue.estimate_points ? colors.textPrimary : colors.textMuted }}>
-                  {issue.estimate_points !== null ? `${issue.estimate_points} puntos` : 'Sin estimación'}
-                </span>
+                <button
+                  onClick={() => setActiveDropdown(activeDropdown === 'estimate' ? null : 'estimate')}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors hover:bg-white/5"
+                  style={{ color: issue.estimate_points ? colors.textPrimary : colors.textMuted }}
+                >
+                  <Hash size={14} />
+                  <span>{issue.estimate_points !== null ? `${issue.estimate_points} puntos` : 'Sin estimación'}</span>
+                </button>
+                
+                <AnimatePresence>
+                  {activeDropdown === 'estimate' && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute top-full left-0 right-0 mt-1 p-3 rounded-xl border shadow-xl z-50"
+                        style={{ backgroundColor: isDark ? '#1E2329' : '#fff', borderColor: colors.border }}
+                      >
+                        <div className="grid grid-cols-4 gap-2 mb-2">
+                          {[1, 2, 3, 5, 8, 13, 21, null].map((points, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => updateField('estimate_points', points)}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                issue.estimate_points === points ? 'ring-2' : ''
+                              }`}
+                              style={{
+                                backgroundColor: issue.estimate_points === points ? `${accentColor}20` : isDark ? '#0F1419' : '#F9FAFB',
+                                color: issue.estimate_points === points ? accentColor : colors.textPrimary,
+                                ringColor: accentColor
+                              }}
+                            >
+                              {points !== null ? points : '—'}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Metadata */}
