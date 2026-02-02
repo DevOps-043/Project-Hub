@@ -64,6 +64,49 @@ export const ARIA_TOOLS_DEFINITIONS = [
         },
       },
 
+      // --- MILESTONES & CYCLES ---
+      {
+        name: 'create_milestone',
+        description: 'Creates a new milestone for a project.',
+        parameters: {
+            type: 'OBJECT',
+            properties: {
+                project_name: { type: 'STRING', description: 'Name of the project this milestone belongs to.' },
+                title: { type: 'STRING', description: 'Title of the milestone.' },
+                target_date: { type: 'STRING', description: 'Target completion date (YYYY-MM-DD).' },
+                description: { type: 'STRING', description: 'Optional description of the milestone.' }
+            },
+            required: ['project_name', 'title', 'target_date']
+        }
+      },
+      {
+        name: 'create_cycle',
+        description: 'Creates a new development cycle (Sprint) for the team.',
+        parameters: {
+            type: 'OBJECT',
+            properties: {
+                name: { type: 'STRING', description: 'Name of the cycle (e.g., Sprint 1, Q1 Push).' },
+                start_date: { type: 'STRING', description: 'Start date (YYYY-MM-DD).' },
+                end_date: { type: 'STRING', description: 'End date (YYYY-MM-DD).' },
+                description: { type: 'STRING', description: 'Goal or description of the cycle.' }
+            },
+            required: ['name', 'start_date', 'end_date']
+        }
+      },
+      {
+          name: 'update_cycle_status',
+          description: 'Updates the status of a cycle (e.g., start or complete a sprint).',
+          parameters: {
+              type: 'OBJECT',
+              properties: {
+                  name: { type: 'STRING', description: 'Name of the cycle to update.' },
+                  cycle_number: { type: 'INTEGER', description: 'Or search by cycle number if known.' },
+                  status: { type: 'STRING', description: 'New status: "active", "completed", "cancelled".' }
+              },
+              required: ['status']
+          }
+      },
+
       // --- USER & MEMBER MANAGEMENT ---
       {
         name: 'manage_team_member',

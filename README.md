@@ -1,155 +1,223 @@
-# 🌟 IRIS - Plataforma Educativa con IA
+# 🌟 IRIS - Plataforma de Gestión de Proyectos con IA
 
-> Plataforma educativa moderna con inteligencia artificial integrada para una experiencia de aprendizaje personalizada.
+> Plataforma educativa y de gestión moderna con **Inteligencia Artificial integrada** para una experiencia de aprendizaje y colaboración sin precedentes.
 
 ## 📋 Tabla de Contenidos
 
+- [Características Principales](#-características-principales)
+- [Lia: Tu Agente de IA](#-lia-tu-agente-de-ia)
 - [Stack Tecnológico](#-stack-tecnológico)
 - [Arquitectura](#-arquitectura)
 - [Instalación](#-instalación)
-- [Desarrollo](#-desarrollo)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
 - [Variables de Entorno](#-variables-de-entorno)
+- [Estructura del Proyecto](#-estructura-del-proyecto)
+
+---
+
+## ✨ Características Principales
+
+### 🧠 Inteligencia Artificial Avanzada
+
+- **Asistente Virtual (Lia)**: Un agente contextual que vive en tu plataforma.
+- **Multimodalidad**: Capacidad para entender texto e imágenes (adjuntos).
+- **Razonamiento Profundo**: Configuración de `thinkingLevel` para respuestas complejas y analíticas.
+- **Streaming en Tiempo Real**: Respuestas fluidas y naturales sin esperas.
+
+### 📊 Gestión de Proyectos (Project Hub)
+
+- **Creación de Proyectos**: Organiza el trabajo en proyectos específicos con claves únicas.
+- **Tablero de Tareas**: Gestión completa de tickets con estados, prioridades y asignaciones.
+- **Estimaciones**: Sistema de puntos de historia para metodologías ágiles.
+
+### 👥 Gestión de Equipos
+
+- **Roles y Permisos**: Control de acceso granular (Admin, Miembro, etc.).
+- **Perfiles de Usuario**: Gestión de avatares y datos personales.
+- **Administración de Miembros**: Invitar, suspender o cambiar roles de usuarios fácilmente.
+
+### 🎨 Experiencia de Usuario (UX) Premium
+
+- **Diseño Responsivo**: Funciona en todos los dispositivos.
+- **Tema Oscuro/Claro**: Alternancia nativa con persistencia.
+- **Micro-interacciones**: Animaciones fluidas con **Framer Motion**.
+- **Interfaz Moderna**: Estética limpia utilizando **TailwindCSS**.
+
+### 🛠 Dashboard Administrativo
+
+Panel centralizado para la gestión total de la plataforma:
+
+- **Analytics**: Visualización de datos clave.
+- **Usuarios y Equipos**: ABM completo.
+- **Herramientas y Reportes**: Zona dedicada para utilidades del sistema.
+
+---
+
+## 🤖 Lia: Tu Agente de IA
+
+Lia no es solo un chatbot; es un agente con **capacidad de ejecución (Function Calling)**. Puede interactuar directamente con la base de datos y la lógica de negocio para realizar tareas por ti.
+
+### Habilidades Actuales (Tools)
+
+| Categoría     | Acción                 | Descripción                                                         |
+| ------------- | ---------------------- | ------------------------------------------------------------------- |
+| **Tareas**    | `create_task`          | Crea nuevas tareas con título, prioridad, puntos y fecha límite.    |
+|               | `update_task_status`   | Mueve tareas entre estados (ej. de "In Progress" a "Done").         |
+|               | `update_task_priority` | Ajusta la prioridad de los tickets urgentes.                        |
+| **Proyectos** | `create_project`       | Inicializa nuevos espacios de trabajo para equipos.                 |
+| **Equipo**    | `manage_team_member`   | Añade, remueve o actualiza roles de miembros del equipo.            |
+| **Perfil**    | `update_user_avatar`   | Actualiza la foto de perfil del usuario basado en imágenes subidas. |
+
+---
 
 ## 🛠 Stack Tecnológico
 
-### Frontend (apps/web)
-- **Next.js 16** - Framework React
-- **React 18** - Biblioteca UI
-- **TypeScript 5** - Tipado estático
-- **TailwindCSS 3** - Estilos utilitarios
-- **Zustand** - Gestión de estado
-- **Framer Motion** - Animaciones
-- **Axios** - Cliente HTTP
+### Frontend (`apps/web`)
 
-### Backend (apps/api)
-- **Express 4** - Framework HTTP
-- **TypeScript 5** - Tipado estático
-- **Zod** - Validación de esquemas
-- **Supabase** - Base de datos y Auth
-- **Helmet** - Seguridad HTTP
+- **Framework**: Next.js 16 (App Router)
+- **Lenguaje**: TypeScript 5
+- **Estilos**: TailwindCSS 3
+- **Estado**: Zustand
+- **Animaciones**: Framer Motion
+- **IA Integration**: Google Generative AI SDK (Gemini 2.0 Flash)
 
-### Packages Compartidos
-- **@iris/shared** - Tipos, constantes y utilidades
+### Backend (`apps/api`)
+
+- **Server**: Express 4
+- **Lenguaje**: TypeScript 5
+- **Seguridad**: Helmet, Zod (Validación)
+- **Base de Datos**: Supabase (PostgreSQL)
+
+### Infraestructura
+
+- **Repo**: Monorepo (Workspaces)
+- **Deploy**: Vercel / Netlify compatible
+
+---
 
 ## 📐 Arquitectura
 
-Este proyecto sigue la **Screaming Architecture**:
+Este proyecto sigue estrictamente la **Screaming Architecture**, donde la estructura de carpetas grita la intención del negocio.
 
 ```
 IRIS/
 ├── apps/
 │   ├── web/                 # Frontend Next.js
 │   │   └── src/
-│   │       ├── app/         # App Router
-│   │       ├── features/    # Features del negocio
-│   │       ├── shared/      # Componentes UI
-│   │       └── core/        # Services y Stores
+│   │       ├── app/         # Router y Vistas
+│   │       ├── features/    # Módulos de Negocio (Auth, Lia, Dashboard)
+│   │       ├── shared/      # UI Kit reutilizable (Botones, Inputs)
+│   │       ├── core/        # Lógica central (Stores, Services)
+│   │       └── lib/         # Integraciones (AI, Supabase)
 │   │
 │   └── api/                 # Backend Express
 │       └── src/
-│           ├── features/    # Features del negocio
-│           ├── core/        # Middleware y Config
-│           └── shared/      # Tipos compartidos
+│           ├── features/    # Endpoints por módulo
+│           └── core/        # Middlewares y Configuración
 │
-└── packages/
-    └── shared/              # Código compartido
+└── packages/                # Librerías compartidas
+    └── shared/              # Tipos e interfaces comunes
 ```
+
+---
 
 ## 🚀 Instalación
 
-### Requisitos
+### Prerrequisitos
+
 - Node.js >= 22.0.0
-- npm >= 10.5.1
+- Acceso a una instancia de Supabase
+- API Key de Google Gemini
 
 ### Pasos
 
-1. **Instalar dependencias del monorepo:**
+1. **Clonar y preparar:**
+
 ```bash
+git clone <repo-url>
+cd IRIS
 npm install
 ```
 
-2. **Configurar variables de entorno:**
-```bash
-# Frontend
-cp apps/web/.env.example apps/web/.env.local
+2. **Backend Setup:**
 
-# Backend
-cp apps/api/.env.example apps/api/.env
+```bash
+cd apps/api
+cp .env.example .env
+# Configurar credenciales de Supabase y Puerto
 ```
 
-3. **Editar los archivos .env con tus valores**
+3. **Frontend Setup:**
 
-## 💻 Desarrollo
+```bash
+cd apps/web
+cp .env.example .env.local
+# Configurar credenciales de Supabase y Gemini AI
+```
 
-### Iniciar todo (Frontend + Backend):
+4. **Ejecutar en Desarrollo:**
+   Desde la raíz del proyecto:
+
 ```bash
 npm run dev
 ```
 
-### Iniciar por separado:
-```bash
-# Frontend (http://localhost:3000)
-npm run dev:web
+Esto iniciará tanto el frontend (localhost:3000) como el backend (localhost:4000).
 
-# Backend (http://localhost:4000)
-npm run dev:api
-```
-
-### Verificar que funciona:
-```bash
-# Frontend
-curl http://localhost:3000
-
-# Backend
-curl http://localhost:4000/health
-```
-
-## 📁 Estructura del Proyecto
-
-### Frontend (apps/web/src)
-
-| Carpeta | Descripción |
-|---------|-------------|
-| `app/` | Next.js App Router (páginas y layouts) |
-| `features/` | Features de negocio (auth, users, etc.) |
-| `shared/` | Componentes UI reutilizables |
-| `core/` | Services y Stores globales |
-
-### Backend (apps/api/src)
-
-| Carpeta | Descripción |
-|---------|-------------|
-| `features/` | Features de negocio (auth, users, etc.) |
-| `core/` | Middleware, config y utils |
-| `shared/` | Tipos y constantes |
+---
 
 ## 🔐 Variables de Entorno
 
 ### Frontend (.env.local)
+
+**Conexión y API:**
+
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
-NEXT_PUBLIC_SUPABASE_URL=tu-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-key
+NEXT_PUBLIC_SUPABASE_URL=<TU_SUPABASE_URL>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<TU_SUPABASE_ANON_KEY>
+```
+
+**Inteligencia Artificial (Gemini):**
+
+```env
+GOOGLE_API_KEY=<TU_GEMINI_API_KEY>
+GEMINI_MODEL=gemini-2.0-flash
+GEMINI_MAX_TOKENS=8192
+GEMINI_TEMPERATURE=0.7
+GEMINI_THINKING_LEVEL=medium
 ```
 
 ### Backend (.env)
+
 ```env
 PORT=4000
-JWT_SECRET=tu-secret
-SUPABASE_URL=tu-url
-SUPABASE_SERVICE_ROLE_KEY=tu-key
+JWT_SECRET=<TU_SECRETO_JWT>
+SUPABASE_URL=<TU_SUPABASE_URL>
+SUPABASE_SERVICE_ROLE_KEY=<TU_SERVICE_ROLE_KEY>
 ```
-
-## 📜 Scripts Disponibles
-
-| Script | Descripción |
-|--------|-------------|
-| `npm run dev` | Inicia frontend y backend |
-| `npm run dev:web` | Solo frontend |
-| `npm run dev:api` | Solo backend |
-| `npm run build` | Build de producción |
 
 ---
 
-Creado con ❤️ usando la arquitectura de **Aprende y Aplica**
+## 📜 Scripts Disponibles
+
+| Script            | Descripción                                   |
+| ----------------- | --------------------------------------------- |
+| `npm run dev`     | Inicia todo el ecosistema en modo desarrollo. |
+| `npm run dev:web` | Inicia solo el frontend.                      |
+| `npm run dev:api` | Inicia solo el backend.                       |
+| `npm run build`   | Construye la aplicación para producción.      |
+| `npm run start`   | Inicia la versión de producción construida.   |
+
+---
+
+## 📁 Estructura Principal
+
+- **`apps/web/src/features/lia`**: Lógica del agente de IA, hooks y componentes de chat.
+- **`apps/web/src/lib/ai`**: Configuración del cliente Gemini y definiciones de herramientas (`tools`).
+- **`apps/web/src/app/admin`**: Páginas del dashboard administrativo.
+- **`database/migrations`**: Archivos SQL para la estructura de la base de datos.
+- **`packages/shared`**: Tipos compartidos entre Front y Back para Type Safety total.
+
+---
+
+Creado con ❤️ por el equipo de **IRIS**.

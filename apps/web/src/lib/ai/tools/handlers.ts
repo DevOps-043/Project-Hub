@@ -34,16 +34,24 @@ export class AriaToolHandlers {
     // Try by Issue Number (e.g., T-123)
     if (identifier.match(/^[A-Z]+-\d+$/)) {
       const { data } = await this.supabase.from('task_issues')
-        .select('issue_id, title')
-        .eq('issue_number', identifier)
+        .select('issue_id, title, issue_number')
+        .eq('issue_number', identifier.split('-')[1]) // Assuming format KEY-123
         .eq('team_id', this.ctx.teamId)
-        .single();
+        .maybeSingle();
       if (data) return data;
+      
+      // Try exact match on issue_number column just in case passed as int
+      const { data: numData } = await this.supabase.from('task_issues')
+        .select('issue_id, title, issue_number')
+        .eq('issue_number', parseInt(identifier.replace(/\D/g,'')))
+        .eq('team_id', this.ctx.teamId)
+        .maybeSingle();
+      if (numData) return numData;
     }
 
     // Try by Title (ILike)
     const { data } = await this.supabase.from('task_issues')
-      .select('issue_id, title')
+      .select('issue_id, title, issue_number')
       .eq('team_id', this.ctx.teamId)
       .ilike('title', `%${identifier}%`)
       .limit(1)
@@ -99,8 +107,14 @@ export class AriaToolHandlers {
 
     if (!statusData) throw new Error("No se pudo determinar el estado inicial 'Todo'.");
     
+    // Get next issue number
+    // Simplification: We trust the DB sequence or trigger, but if manual:
+    const { count } = await this.supabase.from('task_issues').select('*', { count: 'exact', head: true }).eq('team_id', this.ctx.teamId);
+    const issueNum = (count || 0) + 1;
+
     const { data, error } = await this.supabase.from('task_issues').insert({
       team_id: this.ctx.teamId,
+      issue_number: issueNum,
       title: args.title,
       description: args.description,
       assignee_id: assigneeId,
@@ -112,11 +126,10 @@ export class AriaToolHandlers {
     }).select().single();
 
     if (error) throw new Error(`Error creando tarea: ${error.message}`);
-    return JSON.stringify({ success: true, message: `Task '${data.title}' created successfully with ID ${data.issue_id}.`, task: data });
+    return JSON.stringify({ success: true, message: `Task '${data.title}' (Issue #${data.issue_number}) created successfully with ID ${data.issue_id}.`, task: data });
   }
 
   async update_task_status(args: { task_identifier: string, new_status: string }) {
-    // Restriction: Viewers cannot update tasks
     this.checkAccess(['manager', 'user'], 'actualizar estado de tareas');
 
     const task = await this.findTask(args.task_identifier);
@@ -137,8 +150,28 @@ export class AriaToolHandlers {
     return JSON.stringify({ success: true, message: `Task '${task.title}' moved to ${statusData.name}.` });
   }
 
+  async update_task_priority(args: { task_identifier: string, new_priority: string }) {
+      this.checkAccess(['manager', 'user'], 'actualizar prioridad de tareas');
+
+      const task = await this.findTask(args.task_identifier);
+      if (!task) return JSON.stringify({ error: `Task '${args.task_identifier}' not found.` });
+
+      const { data: priorityData } = await this.supabase.from('task_priorities')
+          .select('priority_id, name')
+          .ilike('name', args.new_priority)
+          .maybeSingle();
+      
+      if (!priorityData) return JSON.stringify({ error: `Priority '${args.new_priority}' not valid.` });
+
+      const { error } = await this.supabase.from('task_issues')
+          .update({ priority_id: priorityData.priority_id })
+          .eq('issue_id', task.issue_id);
+
+      if (error) throw new Error(error.message);
+      return JSON.stringify({ success: true, message: `Task '${task.title}' priority updated to ${priorityData.name}.` });
+  }
+
   async create_project(args: { name: string, key?: string, description?: string }) {
-    // Restriction: Only Admins/Managers can create projects
     this.checkAccess(['manager'], 'crear proyectos');
 
     const projectKey = args.key || args.name.substring(0, 3).toUpperCase();
@@ -149,12 +182,87 @@ export class AriaToolHandlers {
       project_key: projectKey,
       project_description: args.description,
       created_by_user_id: this.ctx.userId,
-      project_status: 'active'
+      project_status: 'planning', // Default per DB constraint
+      priority_level: 'medium',   // Default
+      health_status: 'none'       // Default
     }).select().single();
 
     if (error) throw new Error(`Error creating project: ${error.message}`);
     return JSON.stringify({ success: true, message: `Project '${data.project_name}' created.` });
   }
+
+  // --- MILESTONES & CYCLES ---
+
+  async create_milestone(args: { project_name: string, title: string, target_date: string, description?: string }) {
+      this.checkAccess(['manager', 'user'], 'crear milestones');
+
+      // Find project
+      const { data: project } = await this.supabase.from('pm_projects')
+          .select('project_id')
+          .eq('team_id', this.ctx.teamId)
+          .ilike('project_name', `%${args.project_name}%`)
+          .limit(1)
+          .maybeSingle();
+
+      if (!project) return JSON.stringify({ error: `Project '${args.project_name}' not found.` });
+
+      const { data, error } = await this.supabase.from('pm_milestones').insert({
+          project_id: project.project_id,
+          milestone_name: args.title,
+          target_date: args.target_date,
+          milestone_description: args.description,
+          milestone_status: 'pending'
+      }).select().single();
+
+      if (error) throw new Error(error.message);
+      return JSON.stringify({ success: true, message: `Milestone '${data.milestone_name}' created for ${args.project_name}.` });
+  }
+
+  async create_cycle(args: { name: string, start_date: string, end_date: string, description?: string }) {
+      this.checkAccess(['manager'], 'crear ciclos');
+
+      // Calculate cycle number
+      const { count } = await this.supabase.from('task_cycles')
+          .select('*', { count: 'exact', head: true })
+          .eq('team_id', this.ctx.teamId);
+      
+      const nextNum = (count || 0) + 1;
+
+      const { data, error } = await this.supabase.from('task_cycles').insert({
+          team_id: this.ctx.teamId,
+          cycle_number: nextNum,
+          name: args.name,
+          description: args.description,
+          start_date: args.start_date,
+          end_date: args.end_date,
+          status: 'upcoming',
+          created_by: this.ctx.userId
+      }).select().single();
+
+      if (error) throw new Error(error.message);
+      return JSON.stringify({ success: true, message: `Cycle '${data.name}' (Sprint #${data.cycle_number}) created.` });
+  }
+
+  async update_cycle_status(args: { name?: string, cycle_number?: number, status: string }) {
+      this.checkAccess(['manager'], 'actualizar ciclos');
+
+      let query = this.supabase.from('task_cycles').update({ status: args.status }).eq('team_id', this.ctx.teamId);
+
+      if (args.cycle_number) {
+          query = query.eq('cycle_number', args.cycle_number);
+      } else if (args.name) {
+          query = query.ilike('name', `%${args.name}%`);
+      } else {
+          return JSON.stringify({ error: "Provide either name or cycle_number." });
+      }
+
+      const { error } = await query;
+      if (error) throw new Error(error.message);
+      return JSON.stringify({ success: true, message: "Cycle status updated." });
+  }
+
+
+  // --- USER MANAGEMENT ---
 
   async update_user_avatar(args: { target_user_email?: string }) {
     const attachments = this.ctx.lastMessageAttachments;
@@ -178,12 +286,10 @@ export class AriaToolHandlers {
        if (user) targetId = user.user_id;
     }
 
-    // Permission Check: 
-    // If target is DIFFERENT from self, ONLY ADMIN can do it.
+    // Permission Check
     if (targetId !== this.ctx.userId) {
-        this.checkAccess([], 'cambiar la foto de otros usuarios'); // Empty array = Only Admin implied by checkAccess logic
+        this.checkAccess([], 'cambiar la foto de otros usuarios'); 
     } else {
-        // Changing own photo: Viewers cannot do it? Lets allow users/managers.
         this.checkAccess(['manager', 'user'], 'cambiar tu foto de perfil'); 
     }
 
@@ -196,7 +302,6 @@ export class AriaToolHandlers {
   }
 
   async manage_team_member(args: any) {
-    // Restriction: Only Admins can manage members
     this.checkAccess([], 'gestionar miembros del equipo'); // Only admins
 
     if (args.action === 'add' || args.action === 'create') {
@@ -208,13 +313,22 @@ export class AriaToolHandlers {
                 last_name_paternal: args.last_name || 'Member',
                 username: args.email.split('@')[0] + Math.floor(Math.random()*1000),
                 password_hash: 'temp-hash-placeholder', 
+                account_status: 'active'
             }).select().single();
             if (error) return JSON.stringify({ error: error.message });
-            return JSON.stringify({ success: true, message: `User ${args.email} created.` });
+            
+            // Also add to team!
+            await this.supabase.from('team_members').insert({
+                team_id: this.ctx.teamId,
+                user_id: newUser.user_id,
+                role: args.role || 'member'
+            });
+
+            return JSON.stringify({ success: true, message: `User ${args.email} created and added to team.` });
         }
         return JSON.stringify({ success: true, message: `User ${args.email} already exists.` });
     }
     
-    return JSON.stringify({ error: "Action not fully implemented yet." });
+    return JSON.stringify({ error: "Action not implemented for non-create operations yet." });
   }
 }

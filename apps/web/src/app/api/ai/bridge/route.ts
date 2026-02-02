@@ -22,9 +22,9 @@ export async function GET(request: NextRequest) {
     // 2. Consultas (projects, tasks, issues)
     const projectsResponse = await supabaseAdmin.from('pm_projects').select('project_id, project_name, project_status, priority_level, target_date');
     const tasksResponse = await supabaseAdmin.from('task_issues').select('issue_id, title, status_id, priority_id, assignee_id').limit(50);
-    const usersResponse = await supabaseAdmin.from('users').select('id, full_name, email, role');
+    const usersResponse = await supabaseAdmin.from('account_users').select('user_id, display_name, email, permission_level'); // Corrected table name
     
-    const schema = { tables: ['pm_projects', 'task_issues', 'users', 'focus_sessions', 'aria_usage_logs'] };
+    const schema = { tables: ['pm_projects', 'task_issues', 'account_users', 'pm_milestones', 'task_cycles'] };
 
     // 3. Respuesta JSON Contextual
     const systemContext = {
@@ -51,9 +51,11 @@ export async function GET(request: NextRequest) {
         },
         capabilities: [
             "create_task",
+            "update_task",
+            "delete_task",
             "update_project",
-            "read_logs",
-            "delete_task"
+            "create_milestone",
+            "create_cycle"
         ]
     };
 
@@ -120,6 +122,24 @@ export async function POST(request: NextRequest) {
                     .eq('issue_id', params.id);
                 if (dError) throw dError;
                 result = { success: true };
+                break;
+
+            case 'create_milestone':
+                 const { data: mData, error: mError } = await supabaseAdmin
+                    .from('pm_milestones')
+                    .insert([params])
+                    .select();
+                if (mError) throw mError;
+                result = mData;
+                break;
+
+            case 'create_cycle':
+                const { data: cyData, error: cyError } = await supabaseAdmin
+                    .from('task_cycles')
+                    .insert([params])
+                    .select();
+                if (cyError) throw cyError;
+                result = cyData;
                 break;
 
             default:
