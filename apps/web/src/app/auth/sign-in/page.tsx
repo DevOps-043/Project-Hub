@@ -61,7 +61,7 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="w-full min-h-screen flex items-center justify-center p-6 lg:p-12 relative z-10">
+    <div className="w-full min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-12 relative z-10">
       {/* Patrón de fondo sutil */}
       {/* Patrón de fondo sutil */}
       <div 
@@ -73,10 +73,10 @@ export default function SignInPage() {
       />
 
       {/* Contenedor principal - dos columnas */}
-      <div className="relative w-full max-w-6xl flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-20">
+      <div className="relative w-full max-w-6xl flex flex-col lg:flex-row items-center justify-between gap-6 sm:gap-10 lg:gap-20">
         
         {/* Lado Izquierdo - Logo Flotante */}
-        <div className="flex-1 flex items-center justify-center">
+        <div className="hidden md:flex flex-1 items-center justify-center">
           <motion.div
             className="relative cursor-pointer"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -113,7 +113,7 @@ export default function SignInPage() {
           initial={{ opacity: 0, x: 30 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-          className="w-full max-w-[520px] bg-white dark:bg-[#1E2329] rounded-2xl shadow-xl p-12 lg:p-14 border border-transparent dark:border-white/10"
+          className="w-full max-w-[520px] bg-white dark:bg-[#1E2329] rounded-2xl shadow-xl p-6 sm:p-10 lg:p-14 border border-transparent dark:border-white/10"
           style={{ 
             boxShadow: '0 10px 40px -10px rgba(0,0,0,0.1), 0 0 1px rgba(0,0,0,0.1)' 
           }}

@@ -45,14 +45,14 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] p-6 lg:p-12">
-      <div className="fixed inset-0 opacity-[0.02] pointer-events-none"
-        style={{ backgroundImage: `linear-gradient(#0A2540 1px, transparent 1px), linear-gradient(90deg, #0A2540 1px, transparent 1px)`, backgroundSize: '40px 40px' }}
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-12 relative z-10">
+      <div className="fixed inset-0 opacity-[0.02] dark:opacity-[0.05] pointer-events-none text-[#0A2540] dark:text-gray-600"
+        style={{ backgroundImage: `linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)`, backgroundSize: '40px 40px' }}
       />
 
-      <div className="relative w-full max-w-6xl flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-20">
+      <div className="relative w-full max-w-6xl flex flex-col lg:flex-row items-center justify-between gap-6 sm:gap-10 lg:gap-20">
         {/* Logo */}
-        <div className="flex-1 flex items-center justify-center">
+        <div className="hidden md:flex flex-1 items-center justify-center">
           <motion.div className="relative cursor-pointer"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1, y: [0, -15, 0] }}
@@ -69,40 +69,40 @@ export default function SignUpPage() {
         {/* Card */}
         <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-          className="w-full max-w-[480px] bg-white rounded-2xl shadow-xl p-10 lg:p-12"
-          style={{ boxShadow: '0 10px 40px -10px rgba(10, 37, 64, 0.12), 0 0 1px rgba(10, 37, 64, 0.1)' }}
+          className="w-full max-w-[480px] bg-white dark:bg-[#1E2329] rounded-2xl shadow-xl p-6 sm:p-8 lg:p-12 border border-transparent dark:border-white/10"
+          style={{ boxShadow: '0 10px 40px -10px rgba(0,0,0,0.1), 0 0 1px rgba(0,0,0,0.1)' }}
         >
           <div className="text-center mb-6">
-            <h1 className="text-2xl lg:text-3xl font-bold text-[#0A2540] mb-2">Crea tu cuenta</h1>
-            <p className="text-[#6B7280] text-sm">Comienza tu viaje de aprendizaje hoy</p>
+            <h1 className="text-2xl lg:text-3xl font-bold text-[#0A2540] dark:text-white mb-2">Crea tu cuenta</h1>
+            <p className="text-[#6B7280] dark:text-gray-400 text-sm">Comienza tu viaje de aprendizaje hoy</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-[#0A2540] mb-1.5">Nombre completo</label>
+              <label htmlFor="name" className="block text-sm font-medium text-[#0A2540] dark:text-gray-200 mb-1.5">Nombre completo</label>
               <div className="relative">
                 <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-[#9CA3AF]" />
                 <input id="name" name="name" type="text" value={formData.name} onChange={handleChange} placeholder="Juan Pérez"
-                  className="w-full pl-11 pr-4 py-3 rounded-lg border border-[#E5E7EB] bg-white text-[#0A2540] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/10 focus:border-[#0A2540] transition-all text-sm" required />
+                  className="w-full pl-11 pr-4 py-3 rounded-lg border border-[#E5E7EB] dark:border-gray-700 bg-white dark:bg-[#0F1419] text-[#0A2540] dark:text-white placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/10 dark:focus:ring-[#00D4B3]/20 focus:border-[#0A2540] dark:focus:border-[#00D4B3] transition-all text-sm" required />
               </div>
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-[#0A2540] mb-1.5">Correo electrónico</label>
+              <label htmlFor="email" className="block text-sm font-medium text-[#0A2540] dark:text-gray-200 mb-1.5">Correo electrónico</label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-[#9CA3AF]" />
                 <input id="email" name="email" type="email" value={formData.email} onChange={handleChange} placeholder="tu@correo.com"
-                  className="w-full pl-11 pr-4 py-3 rounded-lg border border-[#E5E7EB] bg-white text-[#0A2540] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/10 focus:border-[#0A2540] transition-all text-sm" required />
+                  className="w-full pl-11 pr-4 py-3 rounded-lg border border-[#E5E7EB] dark:border-gray-700 bg-white dark:bg-[#0F1419] text-[#0A2540] dark:text-white placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/10 dark:focus:ring-[#00D4B3]/20 focus:border-[#0A2540] dark:focus:border-[#00D4B3] transition-all text-sm" required />
               </div>
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-[#0A2540] mb-1.5">Contraseña</label>
+              <label htmlFor="password" className="block text-sm font-medium text-[#0A2540] dark:text-gray-200 mb-1.5">Contraseña</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-[#9CA3AF]" />
                 <input id="password" name="password" type={showPassword ? 'text' : 'password'} value={formData.password} onChange={handleChange} placeholder="••••••••"
-                  className="w-full pl-11 pr-11 py-3 rounded-lg border border-[#E5E7EB] bg-white text-[#0A2540] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/10 focus:border-[#0A2540] transition-all text-sm" required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#6B7280] transition-colors">
+                  className="w-full pl-11 pr-11 py-3 rounded-lg border border-[#E5E7EB] dark:border-gray-700 bg-white dark:bg-[#0F1419] text-[#0A2540] dark:text-white placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/10 dark:focus:ring-[#00D4B3]/20 focus:border-[#0A2540] dark:focus:border-[#00D4B3] transition-all text-sm" required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#6B7280] dark:hover:text-gray-300 transition-colors">
                   {showPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
                 </button>
               </div>
@@ -116,12 +116,12 @@ export default function SignUpPage() {
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#0A2540] mb-1.5">Confirmar contraseña</label>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#0A2540] dark:text-gray-200 mb-1.5">Confirmar contraseña</label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-[#9CA3AF]" />
                 <input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} value={formData.confirmPassword} onChange={handleChange} placeholder="••••••••"
-                  className={`w-full pl-11 pr-11 py-3 rounded-lg border bg-white text-[#0A2540] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/10 transition-all text-sm ${formData.confirmPassword && !passwordChecks.match ? 'border-[#EF4444]' : 'border-[#E5E7EB] focus:border-[#0A2540]'}`} required />
-                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#6B7280] transition-colors">
+                  className={`w-full pl-11 pr-11 py-3 rounded-lg border bg-white dark:bg-[#0F1419] text-[#0A2540] dark:text-white placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#0A2540]/10 dark:focus:ring-[#00D4B3]/20 transition-all text-sm ${formData.confirmPassword && !passwordChecks.match ? 'border-[#EF4444]' : 'border-[#E5E7EB] dark:border-gray-700 focus:border-[#0A2540] dark:focus:border-[#00D4B3]'}`} required />
+                <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#6B7280] dark:hover:text-gray-300 transition-colors">
                   {showConfirmPassword ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
                 </button>
               </div>
@@ -129,11 +129,11 @@ export default function SignUpPage() {
             </div>
 
             <div className="flex items-start gap-2.5">
-              <div className={`w-[18px] h-[18px] mt-0.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${acceptTerms ? 'border-[#0A2540] bg-[#0A2540]' : 'border-[#D1D5DB] hover:border-[#9CA3AF]'}`}
+              <div className={`w-[18px] h-[18px] mt-0.5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${acceptTerms ? 'border-[#0A2540] bg-[#0A2540] dark:border-[#00D4B3] dark:bg-[#00D4B3]' : 'border-[#D1D5DB] dark:border-gray-600 hover:border-[#9CA3AF] dark:hover:border-gray-400'}`}
                 onClick={() => setAcceptTerms(!acceptTerms)}>
-                {acceptTerms && <Check className="w-3 h-3 text-white" />}
+                {acceptTerms && <Check className="w-3 h-3 text-white dark:text-[#0A0D12]" />}
               </div>
-              <span className="text-xs text-[#6B7280]">
+              <span className="text-xs text-[#6B7280] dark:text-gray-400">
                 Acepto los <Link href="/terms" className="text-[#00D4B3] hover:underline">términos de servicio</Link> y la <Link href="/privacy" className="text-[#00D4B3] hover:underline">política de privacidad</Link>
               </span>
             </div>
@@ -144,7 +144,7 @@ export default function SignUpPage() {
               {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><ArrowRight className="w-[18px] h-[18px]" /><span>Crear cuenta</span></>}
             </motion.button>
 
-            <p className="text-center text-sm text-[#6B7280] pt-1">
+            <p className="text-center text-sm text-[#6B7280] dark:text-gray-400 pt-1">
               ¿Ya tienes una cuenta? <Link href="/auth/sign-in" className="text-[#00D4B3] hover:text-[#00b89c] font-semibold transition-colors">Inicia sesión</Link>
             </p>
           </form>
