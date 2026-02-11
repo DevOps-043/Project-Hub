@@ -354,127 +354,157 @@ function TeamsDropdown() {
 interface AdminSidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
+  isMobile?: boolean;
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggle }) => {
+export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggle, isMobile, isMobileOpen, onMobileClose }) => {
   const pathname = usePathname();
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
 
+  // On mobile: sidebar is visible only when isMobileOpen is true
+  // On desktop: sidebar is always visible, toggling between collapsed/expanded
+  const sidebarVisible = isMobile ? isMobileOpen : true;
+  const sidebarWidth = isMobile ? 'w-[260px]' : (isCollapsed ? 'w-[72px]' : 'w-[260px]');
+
+  // Auto-close sidebar on navigation in mobile
+  const handleNavClick = () => {
+    if (isMobile && onMobileClose) {
+      onMobileClose();
+    }
+  };
+
   return (
-    <aside
-      className={`
-        fixed left-0 top-0 h-screen z-40
-        transition-all duration-300 ease-in-out
-        ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}
-      `}
-      style={{
-        background: isDark 
-          ? 'linear-gradient(180deg, #0A0D12 0%, #0F1419 100%)'
-          : `linear-gradient(180deg, ${colors.bgPrimary} 0%, ${colors.bgSecondary} 100%)`,
-        borderRight: `1px solid ${colors.border}`,
-      }}
-    >
-      {/* Logo Section */}
-      <div className="h-16 flex items-center px-4" style={{ borderBottom: `1px solid ${colors.border}` }}>
-        <Link href="/admin" className="flex items-center gap-3">
-          {/* Logo Image */}
-          <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center">
-            <img 
-              src="/Logo.png" 
-              alt="IRIS Logo" 
-              className="w-full h-full object-contain"
-            />
-          </div>
-          {!isCollapsed && (
-            <span style={{ color: colors.textPrimary }} className="font-semibold text-xl tracking-tight">IRIS</span>
-          )}
-        </Link>
-        
-        {/* Collapse Button */}
-        <button
-          onClick={onToggle}
-          className={`
-            ml-auto p-1.5 rounded-lg transition-all duration-200
-            ${isCollapsed ? 'absolute right-2' : ''}
-          `}
-          style={{ color: colors.textSecondary }}
-        >
-          {isCollapsed ? icons.chevronRight : icons.chevronLeft}
-        </button>
-      </div>
+    <>
+      {/* Mobile Backdrop */}
+      {isMobile && isMobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 transition-opacity duration-300"
+          onClick={onMobileClose}
+          aria-hidden="true"
+        />
+      )}
 
-      {/* Navigation */}
-      <nav className="p-3 space-y-1 mt-2">
-        {menuItems.map((item) => {
-          // Dashboard (/admin) solo activo si la ruta es exactamente /admin
-          const isActive = item.href === '/admin' 
-            ? pathname === '/admin'
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
+      <aside
+        className={`
+          fixed left-0 top-0 h-screen z-50
+          transition-all duration-300 ease-in-out
+          ${sidebarWidth}
+        `}
+        style={{
+          background: isDark 
+            ? 'linear-gradient(180deg, #0A0D12 0%, #0F1419 100%)'
+            : `linear-gradient(180deg, ${colors.bgPrimary} 0%, ${colors.bgSecondary} 100%)`,
+          borderRight: `1px solid ${colors.border}`,
+          transform: isMobile 
+            ? (isMobileOpen ? 'translateX(0)' : 'translateX(-100%)')
+            : 'translateX(0)',
+        }}
+      >
+        {/* Logo Section */}
+        <div className="h-16 flex items-center px-4" style={{ borderBottom: `1px solid ${colors.border}` }}>
+          <Link href="/admin" className="flex items-center gap-3" onClick={handleNavClick}>
+            {/* Logo Image */}
+            <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center">
+              <img 
+                src="/Logo.png" 
+                alt="IRIS Logo" 
+                className="w-full h-full object-contain"
+              />
+            </div>
+            {(!isCollapsed || isMobile) && (
+              <span style={{ color: colors.textPrimary }} className="font-semibold text-xl tracking-tight">IRIS</span>
+            )}
+          </Link>
           
-          return (
-            <Link
-              key={item.id}
-              href={item.href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative"
-              style={{
-                background: isActive 
-                  ? (isDark ? 'linear-gradient(to right, rgba(0,212,179,0.2), transparent)' : 'linear-gradient(to right, rgba(0,212,179,0.15), transparent)')
-                  : 'transparent',
-                color: isActive ? colors.textPrimary : colors.textSecondary,
-              }}
-            >
-              {/* Active indicator */}
-              {isActive && (
-                <div 
-                  className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
-                  style={{ background: '#00D4B3' }}
-                />
-              )}
-              
-              {/* Icon */}
-              <span className={`${isActive ? 'text-[#00D4B3]' : 'group-hover:text-[#00D4B3]'} transition-colors`}>
-                {icons[item.icon]}
-              </span>
-              
-              {/* Label */}
-              {!isCollapsed && (
-                <span className="font-medium text-sm" style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}>
-                  {item.label}
-                </span>
-              )}
-              
-              {/* Badge */}
-              {!isCollapsed && item.badge && (
-                <span className="ml-auto bg-[#00D4B3] text-[#0A0D12] text-xs font-semibold px-2 py-0.5 rounded-full">
-                  {item.badge}
-                </span>
-              )}
-              
-              {/* Tooltip for collapsed state */}
-              {isCollapsed && (
-                <div className="
-                  absolute left-full ml-3 px-3 py-2 rounded-lg
-                  bg-[#1E2329] text-white text-sm font-medium
-                  opacity-0 invisible group-hover:opacity-100 group-hover:visible
-                  transition-all duration-200 whitespace-nowrap z-50
-                  shadow-lg
-                ">
-                  {item.label}
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-[#1E2329] rotate-45" />
-                </div>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
+          {/* Collapse/Close Button */}
+          <button
+            onClick={isMobile ? onMobileClose : onToggle}
+            className={`
+              ml-auto p-1.5 rounded-lg transition-all duration-200
+              ${(!isMobile && isCollapsed) ? 'absolute right-2' : ''}
+            `}
+            style={{ color: colors.textSecondary }}
+          >
+            {isMobile ? icons.chevronLeft : (isCollapsed ? icons.chevronRight : icons.chevronLeft)}
+          </button>
+        </div>
 
-      {/* Teams Section - Similar to Linear */}
-      {!isCollapsed && <TeamsDropdown />}
+        {/* Navigation */}
+        <nav className="p-3 space-y-1 mt-2">
+          {menuItems.map((item) => {
+            // Dashboard (/admin) solo activo si la ruta es exactamente /admin
+            const isActive = item.href === '/admin' 
+              ? pathname === '/admin'
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+            
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                onClick={handleNavClick}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative"
+                style={{
+                  background: isActive 
+                    ? (isDark ? 'linear-gradient(to right, rgba(0,212,179,0.2), transparent)' : 'linear-gradient(to right, rgba(0,212,179,0.15), transparent)')
+                    : 'transparent',
+                  color: isActive ? colors.textPrimary : colors.textSecondary,
+                }}
+              >
+                {/* Active indicator */}
+                {isActive && (
+                  <div 
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
+                    style={{ background: '#00D4B3' }}
+                  />
+                )}
+                
+                {/* Icon */}
+                <span className={`${isActive ? 'text-[#00D4B3]' : 'group-hover:text-[#00D4B3]'} transition-colors`}>
+                  {icons[item.icon]}
+                </span>
+                
+                {/* Label */}
+                {(!isCollapsed || isMobile) && (
+                  <span className="font-medium text-sm" style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}>
+                    {item.label}
+                  </span>
+                )}
+                
+                {/* Badge */}
+                {(!isCollapsed || isMobile) && item.badge && (
+                  <span className="ml-auto bg-[#00D4B3] text-[#0A0D12] text-xs font-semibold px-2 py-0.5 rounded-full">
+                    {item.badge}
+                  </span>
+                )}
+                
+                {/* Tooltip for collapsed state - only on desktop */}
+                {!isMobile && isCollapsed && (
+                  <div className="
+                    absolute left-full ml-3 px-3 py-2 rounded-lg
+                    bg-[#1E2329] text-white text-sm font-medium
+                    opacity-0 invisible group-hover:opacity-100 group-hover:visible
+                    transition-all duration-200 whitespace-nowrap z-50
+                    shadow-lg
+                  ">
+                    {item.label}
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-[#1E2329] rotate-45" />
+                  </div>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
 
-      {/* Bottom Section - User Profile with Menu */}
-      <UserProfileMenu isCollapsed={isCollapsed} />
-    </aside>
+        {/* Teams Section - Similar to Linear */}
+        {(!isCollapsed || isMobile) && <TeamsDropdown />}
+
+        {/* Bottom Section - User Profile with Menu */}
+        <UserProfileMenu isCollapsed={isMobile ? false : isCollapsed} />
+      </aside>
+    </>
   );
 };
 

@@ -50,11 +50,13 @@ interface AdminNavbarProps {
   onMenuClick: () => void;
   ariaOpen?: boolean;
   ariaPanelWidth?: number;
+  isMobile?: boolean;
 }
 
 export const AdminNavbar: React.FC<AdminNavbarProps> = ({ 
   sidebarCollapsed,
   onMenuClick,
+  isMobile,
 }) => {
   const router = useRouter();
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -139,7 +141,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
     <header
       className="fixed top-0 h-16 z-30 flex items-center justify-between px-6 transition-all duration-300 ease-in-out"
       style={{
-        left: sidebarCollapsed ? '72px' : '260px',
+        left: isMobile ? '0px' : (sidebarCollapsed ? '72px' : '260px'),
         right: '0px',
         background: isDark ? 'rgba(15, 20, 25, 0.8)' : 'rgba(255, 255, 255, 0.9)',
         backdropFilter: 'blur(12px)',
@@ -150,7 +152,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
       <div className="flex items-center">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+          className={`p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors ${isMobile ? '' : 'hidden'}`}
         >
           {icons.menu}
         </button>
