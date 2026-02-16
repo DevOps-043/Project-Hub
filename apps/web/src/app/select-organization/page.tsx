@@ -116,7 +116,7 @@ export default function SelectOrganizationPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <Image src="/Logo.png" alt="IRIS" width={64} height={64} className="w-16 h-16" />
+            <Image src="/Logo.png" alt="Project Hub" width={64} height={64} className="w-16 h-16" />
           </div>
           <h1 className="text-2xl font-bold text-[#0A2540] dark:text-white mb-2">
             Selecciona tu organización

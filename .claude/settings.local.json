@@ -7,7 +7,10 @@
       "Bash(npx tsc:*)",
       "Bash(timeout:*)",
       "Bash(ping:*)",
-      "Bash(npx next dev:*)"
+      "Bash(npx next dev:*)",
+      "Bash(for dir in analytics dashboard members profile projects reports settings teams tools)",
+      "Bash(done)",
+      "Bash(ls -la \"c:\\\\Users\\\\fysg5\\\\OneDrive\\\\Escritorio\\\\Pulse Hub\\\\Project Hub\\\\Project-Hub\\\\database\\\\migrations\"\" 2>/dev/null || ls -la \"c:Usersfysg5OneDriveEscritorioPulse HubProject HubProject-Hubdatabase\"\")"
     ]
   }
 }

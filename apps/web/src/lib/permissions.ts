@@ -1,11 +1,11 @@
 /**
- * Sistema de permisos por rol para workspaces de IRIS
+ * Sistema de permisos por rol para workspaces de Project Hub
  *
- * Roles de IRIS (de mayor a menor privilegio):
+ * Roles de Project Hub (de mayor a menor privilegio):
  * - owner:   Propietario del workspace (mapeado desde SOFIA owner)
  * - admin:   Administrador (mapeado desde SOFIA admin)
- * - manager: Gerente (rol extendido de IRIS, se asigna manualmente)
- * - leader:  Líder de equipo (rol extendido de IRIS)
+ * - manager: Gerente (rol extendido de Project Hub, se asigna manualmente)
+ * - leader:  Líder de equipo (rol extendido de Project Hub)
  * - member:  Miembro regular (mapeado desde SOFIA member)
  */
 

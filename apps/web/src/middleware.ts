@@ -20,14 +20,12 @@ const PUBLIC_PATHS = [
   '/api/auth/register',
   '/api/auth/refresh',
   '/api/auth/reset-test-user', // Solo desarrollo
-  '/api/lia',             // LIA AI Chat API
   '/api/ai',              // AI Services (Agile Advisor, etc)
   '/api/focus',           // Focus Mode
   '/api/search',          // Global Search
   '/api/notifications',   // Notifications
   '/api/ext',             // Extension API (SOFLIA - auth propia en cada route)
   '/api/workspaces',      // Workspaces API (auth propia en cada route)
-  '/lia-test',            // Página de prueba de LIA
   '/_next',
   '/favicon.ico',
   '/public',

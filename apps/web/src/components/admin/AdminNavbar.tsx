@@ -48,15 +48,17 @@ const quickActions = [
 interface AdminNavbarProps {
   sidebarCollapsed: boolean;
   onMenuClick: () => void;
-  ariaOpen?: boolean;
-  ariaPanelWidth?: number;
   isMobile?: boolean;
+  workspaceLogo?: string | null;
+  workspaceName?: string;
 }
 
-export const AdminNavbar: React.FC<AdminNavbarProps> = ({ 
+export const AdminNavbar: React.FC<AdminNavbarProps> = ({
   sidebarCollapsed,
   onMenuClick,
   isMobile,
+  workspaceLogo,
+  workspaceName,
 }) => {
   const router = useRouter();
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -149,13 +151,31 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
       }}
     >
       {/* Left Section */}
-      <div className="flex items-center">
+      <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
           className={`p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors ${isMobile ? '' : 'hidden'}`}
         >
           {icons.menu}
         </button>
+
+        {/* Workspace Logo & Name */}
+        {workspaceLogo && (
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 border" style={{ borderColor: colors.border }}>
+              <img
+                src={workspaceLogo}
+                alt={workspaceName || 'Workspace'}
+                className="w-full h-full object-contain"
+              />
+            </div>
+            {workspaceName && (
+              <span className="text-sm font-semibold hidden sm:block truncate max-w-[200px]" style={{ color: colors.textPrimary }}>
+                {workspaceName}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Right Section */}

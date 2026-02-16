@@ -95,7 +95,7 @@ const FocusTimer = () => {
             playBeep();
             if (mode === 'focus') setCompletedSessions(s => s + 1);
         }
-        return () => { clearInterval(interval); document.title = "IRIS"; };
+        return () => { clearInterval(interval); document.title = "Project Hub"; };
     }, [isActive, timeLeft, mode]);
 
     const formatTime = (seconds: number) => {
@@ -203,7 +203,7 @@ const AgileAdvisor = () => {
         <div className="h-full flex flex-col items-center justify-center p-4">
             {!analyzing ? (
                 <div className="w-full max-w-lg space-y-6">
-                    <h3 className="text-xl font-bold text-center">Cuéntale a ARIA sobre tu proyecto</h3>
+                    <h3 className="text-xl font-bold text-center">Cuéntale a la IA sobre tu proyecto</h3>
                     <div className="relative group">
                         <textarea value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ej: Somos un equipo de 5 personas..." className="w-full h-40 p-4 rounded-xl bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-white/10 focus:border-[#00D4B3] outline-none resize-none text-sm pb-12" />
                         <div className="absolute left-3 bottom-3 flex items-center gap-2">
@@ -215,7 +215,7 @@ const AgileAdvisor = () => {
                     <button onClick={analyzeProject} disabled={!input.trim() && !selectedFile} className="w-full py-4 rounded-xl bg-[#00D4B3] text-black font-bold shadow-lg hover:shadow-[#00D4B3]/40 transition-all disabled:opacity-50">Analizar</button>
                 </div>
             ) : (
-                <div className="text-center font-bold animate-pulse">🤖 ARIA analizando...</div>
+                <div className="text-center font-bold animate-pulse">🤖 IA analizando...</div>
             )}
         </div>
     );
@@ -376,7 +376,7 @@ export default function ToolsPage() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setActiveTool(null)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
             <motion.div layoutId={`card-${activeTool}`} className="relative w-full max-w-4xl max-h-[90vh] rounded-3xl border shadow-2xl overflow-hidden flex flex-col" style={{ background: isDark ? '#161b22' : '#fff', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
                 <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02]">
-                    <div className="flex items-center gap-3"><div className="text-[#00D4B3] p-2 bg-[#00D4B3]/10 rounded-lg">{toolsReal.find(t => t.id === activeTool)?.icon}</div><div><h3 className="font-bold text-lg leading-tight">{toolsReal.find(t => t.id === activeTool)?.name}</h3><p className="text-xs opacity-50">IRIS Utilities</p></div></div>
+                    <div className="flex items-center gap-3"><div className="text-[#00D4B3] p-2 bg-[#00D4B3]/10 rounded-lg">{toolsReal.find(t => t.id === activeTool)?.icon}</div><div><h3 className="font-bold text-lg leading-tight">{toolsReal.find(t => t.id === activeTool)?.name}</h3><p className="text-xs opacity-50">Project Hub Utilities</p></div></div>
                     <button onClick={() => setActiveTool(null)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors opacity-70 hover:opacity-100"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">{ActiveComponent && <ActiveComponent />}</div>

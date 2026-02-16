@@ -5,7 +5,7 @@
  * Convención: NEXT_PUBLIC_{SERVICIO}_SUPABASE_{URL|ANON_KEY}
  */
 
-// ── IRIS (Project Management - BD principal del Project Hub) ──
+// ── Project Hub (Project Management - BD principal del Project Hub) ──
 export const IRIS_SUPABASE = {
   URL: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
@@ -15,12 +15,6 @@ export const IRIS_SUPABASE = {
 export const SOFIA_SUPABASE = {
   URL: process.env.NEXT_PUBLIC_SOFIA_SUPABASE_URL || '',
   ANON_KEY: process.env.NEXT_PUBLIC_SOFIA_SUPABASE_ANON_KEY || '',
-};
-
-// ── LIA Extension (Datos locales: conversaciones, meetings) ──
-export const LIA_SUPABASE = {
-  URL: process.env.NEXT_PUBLIC_LIA_SUPABASE_URL || '',
-  ANON_KEY: process.env.NEXT_PUBLIC_LIA_SUPABASE_ANON_KEY || '',
 };
 
 // ── Content Generator / CourseGen (Contenido generado) ──

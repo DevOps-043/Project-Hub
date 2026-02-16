@@ -59,7 +59,7 @@ export default function SignUpPage() {
             transition={{ opacity: { duration: 0.5 }, scale: { duration: 0.5 }, y: { duration: 5, repeat: Infinity, ease: "easeInOut" } }}
           >
             <motion.div animate={logoControls} onMouseEnter={handleLogoHover}>
-              <Image src="/Logo.png" alt="IRIS Logo" width={320} height={320}
+              <Image src="/Logo.png" alt="Project Hub Logo" width={320} height={320}
                 className="w-48 h-48 md:w-64 md:h-64 lg:w-80 lg:h-80 object-contain"
                 style={{ filter: 'drop-shadow(0 25px 50px rgba(10, 37, 64, 0.15))' }} priority />
             </motion.div>

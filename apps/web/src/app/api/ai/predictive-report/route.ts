@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
         const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-1.5-flash' });
         
         const prompt = `
-            Actúa como un Consultor Senior de Eficiencia y Gestión de Proyectos (ARIA).
+            Actúa como un Consultor Senior de Eficiencia y Gestión de Proyectos.
             Analiza los siguientes datos operativos de una empresa de desarrollo de software:
             
             DATOS CRUDOS:

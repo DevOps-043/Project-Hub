@@ -4,7 +4,7 @@
  * Este servicio implementa el flujo de login descrito en MULTI_SUPABASE_ARCHITECTURE.md:
  * 
  * ┌─────────────┐      ┌───────────────┐      ┌───────────────┐
- * │  Usuario     │      │  SOFIA Supa   │      │  IRIS Supa    │
+ * │  Usuario     │      │  SOFIA Supa   │      │  PHub Supa    │
  * │  (Login UI)  │      │  (Auth DB)    │      │  (Data DB)    │
  * └──────┬───────┘      └───────┬───────┘      └───────┬───────┘
  *        │  1. email + password │                      │
@@ -12,7 +12,7 @@
  *        │  2. Verificar hash   │                      │
  *        │◄─────────────────────┤                      │
  *        │  3. Sincronizar ─────────────────────────►│
- *        │     crear/actualizar usuario en IRIS       │
+ *        │     crear/actualizar usuario en PHub       │
  *        │◄───────────────────────────────────────────┤
  *        │  4. Generar JWT + crear sesión             │
  *        └──────────────────────┴──────────────────────┘

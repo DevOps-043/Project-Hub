@@ -5,7 +5,6 @@ import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminNavbar } from "@/components/admin/AdminNavbar";
 import { useTheme, themeColors } from "@/contexts/ThemeContext";
 import { AuthGuard } from "@/components/auth/AuthGuard";
-import { useARIA, ARIA_PANEL_WIDTH } from "@/contexts/ARIAContext";
 
 const MOBILE_BREAKPOINT = 1024;
 
@@ -19,7 +18,6 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
-  const { isOpen: isARIAOpen } = useARIA();
 
   // Detect mobile breakpoint
   useEffect(() => {
@@ -76,17 +74,14 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
       <AdminNavbar
         sidebarCollapsed={sidebarCollapsed}
         onMenuClick={toggleSidebar}
-        ariaOpen={isARIAOpen}
-        ariaPanelWidth={ARIA_PANEL_WIDTH}
         isMobile={isMobile}
       />
 
-      {/* Main Content - Se recorre cuando ARIA está abierta */}
+      {/* Main Content */}
       <main
         className="pt-16 min-h-screen transition-all duration-300 ease-in-out"
         style={{
           paddingLeft: isMobile ? "0px" : sidebarCollapsed ? "72px" : "260px",
-          paddingRight: isARIAOpen ? `${ARIA_PANEL_WIDTH}px` : "0px",
         }}
       >
         <div className="p-6">{children}</div>

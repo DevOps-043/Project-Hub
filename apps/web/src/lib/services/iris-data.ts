@@ -1,7 +1,7 @@
 /**
- * Servicio de datos IRIS para gestión de proyectos
+ * Servicio de datos Project Hub para gestión de proyectos
  * 
- * Este servicio encapsula las operaciones CRUD contra la Supabase de IRIS
+ * Este servicio encapsula las operaciones CRUD contra la Supabase de Project Hub
  * y puede ser utilizado tanto por el Project Hub (web) como por la
  * extensión SOFLIA para leer/escribir proyectos.
  * 
@@ -12,7 +12,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { IRIS_SUPABASE, isValidUrl } from '@/lib/supabase/config';
 
-// ── Tipos para tablas de IRIS ──
+// ── Tipos para tablas de Project Hub ──
 
 export interface IrisProject {
   project_id: string;
@@ -90,7 +90,7 @@ export interface IrisLabel {
   created_at: string;
 }
 
-// ── Cliente IRIS (Client-side) ──
+// ── Cliente Project Hub (Client-side) ──
 
 let _irisClient: SupabaseClient | null = null;
 
@@ -140,7 +140,7 @@ export async function getProjects(teamId?: string): Promise<IrisProject[]> {
 
   const { data, error } = await query;
   if (error) {
-    console.error('[IRIS] Error obteniendo proyectos:', error);
+    console.error('[Project Hub] Error obteniendo proyectos:', error);
     return [];
   }
   return data || [];
@@ -171,7 +171,7 @@ export async function createProject(project: Partial<IrisProject>): Promise<Iris
     .single();
 
   if (error) {
-    console.error('[IRIS] Error creando proyecto:', error);
+    console.error('[Project Hub] Error creando proyecto:', error);
     return null;
   }
   return data;
@@ -192,7 +192,7 @@ export async function updateProject(
     .single();
 
   if (error) {
-    console.error('[IRIS] Error actualizando proyecto:', error);
+    console.error('[Project Hub] Error actualizando proyecto:', error);
     return null;
   }
   return data;
@@ -235,7 +235,7 @@ export async function getIssues(
 
   const { data, error } = await query;
   if (error) {
-    console.error('[IRIS] Error obteniendo issues:', error);
+    console.error('[Project Hub] Error obteniendo issues:', error);
     return [];
   }
   return data || [];
@@ -266,7 +266,7 @@ export async function createIssue(issue: Partial<IrisIssue>): Promise<IrisIssue 
     .single();
 
   if (error) {
-    console.error('[IRIS] Error creando issue:', error);
+    console.error('[Project Hub] Error creando issue:', error);
     return null;
   }
   return data;
@@ -287,7 +287,7 @@ export async function updateIssue(
     .single();
 
   if (error) {
-    console.error('[IRIS] Error actualizando issue:', error);
+    console.error('[Project Hub] Error actualizando issue:', error);
     return null;
   }
   return data;

@@ -6,16 +6,16 @@
  * 1. Si SOFIA está configurado (isSofiaAuthEnabled):
  *    a) Busca el usuario en SOFIA (account_users)
  *    b) Verifica password contra el hash de SOFIA
- *    c) Sincroniza el usuario con IRIS (crea o actualiza en la BD local)
- *    d) Genera JWT local y crea sesión en IRIS
+ *    c) Sincroniza el usuario con Project Hub (crea o actualiza en la BD local)
+ *    d) Genera JWT local y crea sesión en Project Hub
  * 
  * 2. Si SOFIA NO está configurado (fallback):
- *    a) Busca el usuario en IRIS local (account_users)
+ *    a) Busca el usuario en Project Hub local (account_users)
  *    b) Verifica password contra el hash local
  *    c) Genera JWT y crea sesión
  * 
  * Esto permite que los usuarios con cuenta SOFIA puedan iniciar sesión
- * en Project Hub e IRIS sin necesidad de crear una cuenta separada.
+ * en Project Hub sin necesidad de crear una cuenta separada.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
         // Generar tokens JWT locales
         const tokens = await generateTokenPair(irisUser);
 
-        // Crear sesión en IRIS
+        // Crear sesión en Project Hub
         await createSession(irisUser.user_id, tokens, request);
 
         // Registrar login exitoso en ambos sistemas
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
     // ═══════════════════════════════════════════════════════════
     // FLUJO 2: Fallback a autenticación local (IRIS)
     // ═══════════════════════════════════════════════════════════
-    console.log('🔐 [LOGIN] Usando autenticación local (IRIS)...');
+    console.log('🔐 [LOGIN] Usando autenticación local (Project Hub)...');
 
     // Buscar usuario por email o username en la BD local (case-insensitive)
     const { data: user, error: userError } = await supabaseAdmin
@@ -383,11 +383,11 @@ async function syncSofiaUserToIris(sofiaUser: any): Promise<AccountUser> {
     .single();
 
   if (error || !newUser) {
-    console.error('❌ [SYNC] Error creando usuario en IRIS:', error);
-    throw new Error('Error al sincronizar usuario con IRIS');
+    console.error('❌ [SYNC] Error creando usuario en Project Hub:', error);
+    throw new Error('Error al sincronizar usuario con Project Hub');
   }
 
-  console.log('✅ [SYNC] Usuario sincronizado de SOFIA a IRIS:', newUser.email);
+  console.log('✅ [SYNC] Usuario sincronizado de SOFIA a Project Hub:', newUser.email);
   return newUser as AccountUser;
 }
 

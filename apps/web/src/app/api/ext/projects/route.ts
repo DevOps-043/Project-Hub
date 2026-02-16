@@ -7,7 +7,7 @@
  * 
  * Autenticación: 
  * - Acepta JWT del Project Hub (Bearer token)
- * - Verifica que el usuario exista en IRIS
+ * - Verifica que el usuario exista en Project Hub
  */
 
 import { NextRequest, NextResponse } from 'next/server';

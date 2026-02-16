@@ -1,6 +1,6 @@
 /**
  * Configuración del cliente Google Gemini AI
- * Para usar como agente de IA en IRIS
+ * Para usar como agente de IA en Project Hub
  */
 
 import { GoogleGenerativeAI, GenerativeModel, GenerationConfig } from '@google/generative-ai';

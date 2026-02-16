@@ -6,7 +6,6 @@ import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { AdminNavbar } from '@/components/admin/AdminNavbar';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import { useARIA, ARIA_PANEL_WIDTH } from '@/contexts/ARIAContext';
 import { WorkspaceProvider, WorkspaceData, IrisRole } from '@/contexts/WorkspaceContext';
 import { Loader2 } from 'lucide-react';
 
@@ -26,7 +25,6 @@ function WorkspaceLayoutContent({ children }: WorkspaceLayoutProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
-  const { isOpen: isARIAOpen } = useARIA();
 
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [userRole, setUserRole] = useState<IrisRole>('member');
@@ -165,21 +163,22 @@ function WorkspaceLayoutContent({ children }: WorkspaceLayoutProps) {
           isMobile={isMobile}
           isMobileOpen={isMobileOpen}
           onMobileClose={closeMobileSidebar}
+          orgSlug={orgSlug}
+          userRole={userRole}
         />
 
         <AdminNavbar
           sidebarCollapsed={sidebarCollapsed}
           onMenuClick={toggleSidebar}
-          ariaOpen={isARIAOpen}
-          ariaPanelWidth={ARIA_PANEL_WIDTH}
           isMobile={isMobile}
+          workspaceLogo={workspace.logoUrl || null}
+          workspaceName={workspace.name}
         />
 
         <main
           className="pt-16 min-h-screen transition-all duration-300 ease-in-out"
           style={{
             paddingLeft: isMobile ? '0px' : sidebarCollapsed ? '72px' : '260px',
-            paddingRight: isARIAOpen ? `${ARIA_PANEL_WIDTH}px` : '0px',
           }}
         >
           <div className="p-6">{children}</div>

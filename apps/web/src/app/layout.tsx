@@ -6,7 +6,7 @@ import ClientLayout from './ClientLayout';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-    title: 'IRIS',
+    title: 'Project Hub',
     description: 'Plataforma educativa moderna con inteligencia artificial integrada',
     icons: {
         icon: '/ico.ico',

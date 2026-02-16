@@ -102,7 +102,7 @@ export default function SignInPage() {
             >
               <Image
                 src="/Logo.png"
-                alt="IRIS Logo"
+                alt="Project Hub Logo"
                 width={320}
                 height={320}
                 className="w-48 h-48 md:w-64 md:h-64 lg:w-80 lg:h-80 object-contain"

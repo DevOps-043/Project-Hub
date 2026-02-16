@@ -30,6 +30,7 @@ interface CreateProjectModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   initialTeamId?: string;
+  workspaceSlug?: string;
 }
 
 // ============================================
@@ -254,7 +255,7 @@ function CustomDatePicker({ label, value, onChange, icon, isDark, colors }: Cust
   );
 }
 
-export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId }: CreateProjectModalProps) {
+export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, workspaceSlug }: CreateProjectModalProps) {
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
   
@@ -309,7 +310,11 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId }
 
   const fetchTeams = async () => {
     try {
-      const res = await fetch('/api/admin/teams');
+      const url = workspaceSlug ? `/api/workspaces/${workspaceSlug}/teams?limit=50` : '/api/admin/teams';
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (res.ok) {
         const data = await res.json();
         setTeams(data.teams || []);
@@ -321,7 +326,11 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId }
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/admin/users');
+      const url = workspaceSlug ? `/api/workspaces/${workspaceSlug}/members` : '/api/admin/users';
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users || []);
@@ -344,9 +353,11 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId }
       // Get current user ID (you may need to get this from auth context)
       const currentUserId = users[0]?.id; // Fallback for demo
 
-      const res = await fetch('/api/admin/projects', {
+      const projectUrl = workspaceSlug ? `/api/workspaces/${workspaceSlug}/projects` : '/api/admin/projects';
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(projectUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           project_name: projectName,
           project_description: description || summary,

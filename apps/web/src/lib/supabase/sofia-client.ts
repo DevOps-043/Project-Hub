@@ -7,7 +7,7 @@
  * Flujo:
  * 1. Usuario ingresa email + password
  * 2. Se verifica contra SOFIA (account_users)
- * 3. Si éxito, se sincroniza sesión con IRIS (Project Hub)
+ * 3. Si éxito, se sincroniza sesión con Project Hub
  * 4. El usuario queda autenticado en ambos sistemas
  */
 

@@ -3,7 +3,6 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
-import { ARIAUsageWidget } from '@/features/dashboard/components/ARIAUsageWidget';
 
 export default function AdminDashboardPage() {
   const { isDark } = useTheme();
@@ -111,13 +110,7 @@ export default function AdminDashboardPage() {
           {/* Stats Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             
-            {/* Widget 1: ARIA Usage */}
-            <div className="h-full min-h-[160px]">
-                <ARIAUsageWidget />
-            </div>
-
-            {/* Other Placeholders */}
-            {[2, 3].map((i) => (
+            {[1, 2, 3].map((i) => (
               <div 
                 key={i}
                 className="p-5 rounded-xl transition-all hover:border-[#00D4B3]/30"

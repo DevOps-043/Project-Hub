@@ -1,11 +1,11 @@
-# 🌟 IRIS - Plataforma de Gestión de Proyectos con IA
+# 🌟 Project Hub - Plataforma de Gestión de Proyectos con IA
 
 > Plataforma educativa y de gestión moderna con **Inteligencia Artificial integrada** para una experiencia de aprendizaje y colaboración sin precedentes.
 
 ## 📋 Tabla de Contenidos
 
 - [Características Principales](#-características-principales)
-- [Lia: Tu Agente de IA](#-lia-tu-agente-de-ia)
+- [ARIA: Tu Agente de IA](#-aria-tu-agente-de-ia)
 - [Stack Tecnológico](#-stack-tecnológico)
 - [Arquitectura](#-arquitectura)
 - [Instalación](#-instalación)
@@ -18,7 +18,7 @@
 
 ### 🧠 Inteligencia Artificial Avanzada
 
-- **Asistente Virtual (Lia)**: Un agente contextual que vive en tu plataforma.
+- **Asistente Virtual (ARIA)**: Un agente contextual que vive en tu plataforma.
 - **Multimodalidad**: Capacidad para entender texto e imágenes (adjuntos).
 - **Razonamiento Profundo**: Configuración de `thinkingLevel` para respuestas complejas y analíticas.
 - **Streaming en Tiempo Real**: Respuestas fluidas y naturales sin esperas.
@@ -52,9 +52,9 @@ Panel centralizado para la gestión total de la plataforma:
 
 ---
 
-## 🤖 Lia: Tu Agente de IA
+## 🤖 ARIA: Tu Agente de IA
 
-Lia no es solo un chatbot; es un agente con **capacidad de ejecución (Function Calling)**. Puede interactuar directamente con la base de datos y la lógica de negocio para realizar tareas por ti.
+ARIA no es solo un chatbot; es un agente con **capacidad de ejecución (Function Calling)**. Puede interactuar directamente con la base de datos y la lógica de negocio para realizar tareas por ti.
 
 ### Habilidades Actuales (Tools)
 
@@ -99,7 +99,7 @@ Lia no es solo un chatbot; es un agente con **capacidad de ejecución (Function 
 Este proyecto sigue estrictamente la **Screaming Architecture**, donde la estructura de carpetas grita la intención del negocio.
 
 ```
-IRIS/
+Project-Hub/
 ├── apps/
 │   ├── web/                 # Frontend Next.js
 │   │   └── src/
@@ -134,7 +134,7 @@ IRIS/
 
 ```bash
 git clone <repo-url>
-cd IRIS
+cd Project-Hub
 npm install
 ```
 
@@ -212,7 +212,7 @@ SUPABASE_SERVICE_ROLE_KEY=<TU_SERVICE_ROLE_KEY>
 
 ## 📁 Estructura Principal
 
-- **`apps/web/src/features/lia`**: Lógica del agente de IA, hooks y componentes de chat.
+- **`apps/web/src/features/lia`**: Lógica del agente ARIA, hooks y componentes de chat.
 - **`apps/web/src/lib/ai`**: Configuración del cliente Gemini y definiciones de herramientas (`tools`).
 - **`apps/web/src/app/admin`**: Páginas del dashboard administrativo.
 - **`database/migrations`**: Archivos SQL para la estructura de la base de datos.
@@ -220,4 +220,4 @@ SUPABASE_SERVICE_ROLE_KEY=<TU_SERVICE_ROLE_KEY>
 
 ---
 
-Creado con ❤️ por el equipo de **IRIS**.
+Creado con ❤️ por el equipo de **Project Hub**.

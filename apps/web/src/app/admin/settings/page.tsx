@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -42,31 +42,103 @@ const SectionTitle = ({ title, sub }: { title: string, sub: string }) => (
 // --- PANELS ---
 
 const NotificationsPanel = () => {
-    const [settings, setSettings] = useState({ email: true, push: false });
-    const toggle = (k: keyof typeof settings) => setSettings(p => ({ ...p, [k]: !p[k] }));
+    const [settings, setSettings] = useState({
+        email_daily_summary: true,
+        soflia_enabled: false,
+        soflia_issues: true,
+        soflia_projects: true,
+        soflia_team_updates: true,
+        soflia_mentions: true,
+        soflia_reminders: true,
+    });
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        fetch('/api/notifications/preferences')
+            .then(r => r.json())
+            .then(data => {
+                if (data.preferences) {
+                    setSettings(prev => ({ ...prev, ...data.preferences }));
+                }
+            })
+            .catch(() => {})
+            .finally(() => setLoading(false));
+    }, []);
+
+    const updateField = async (field: keyof typeof settings) => {
+        const newValue = !settings[field];
+        setSettings(prev => ({ ...prev, [field]: newValue }));
+        setSaving(true);
+        try {
+            await fetch('/api/notifications/preferences', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [field]: newValue }),
+            });
+        } catch {
+            setSettings(prev => ({ ...prev, [field]: !newValue }));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="space-y-8 animate-fadeIn">
+                <SectionTitle title="Notificaciones" sub="Elige que alertas quieres recibir." />
+                <div className="flex items-center justify-center py-12 opacity-50">Cargando preferencias...</div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8 animate-fadeIn">
-            <SectionTitle title="Notificaciones" sub="Elige qué alertas quieres recibir." />
-            
+            <SectionTitle title="Notificaciones" sub="Elige que alertas quieres recibir." />
+
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div>
                         <h3 className="font-medium">Resumen Diario Email</h3>
                         <p className="text-sm opacity-60">Recibe un resumen de tus tareas pendientes a las 9:00 AM.</p>
                     </div>
-                    <Toggle checked={settings.email} onChange={() => toggle('email')} />
+                    <Toggle checked={settings.email_daily_summary} onChange={() => updateField('email_daily_summary')} />
                 </div>
                 <div className="w-full h-px bg-gray-100 dark:bg-white/5" />
-                
+
                 <div className="flex items-center justify-between">
                     <div>
-                        <h3 className="font-medium">Notificaciones Push</h3>
-                        <p className="text-sm opacity-60">Alertas en tiempo real cuando te mencionan o asignan tareas.</p>
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-medium">Notificaciones con SOFLIA</h3>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">SOFLIA</span>
+                        </div>
+                        <p className="text-sm opacity-60">Permite que SOFLIA te notifique sobre cambios en issues, proyectos, actualizaciones del equipo y mas.</p>
                     </div>
-                    <Toggle checked={settings.push} onChange={() => toggle('push')} />
+                    <Toggle checked={settings.soflia_enabled} onChange={() => updateField('soflia_enabled')} />
                 </div>
+
+                {settings.soflia_enabled && (
+                    <div className="ml-6 pl-4 border-l-2 border-purple-200 dark:border-purple-500/30 space-y-4">
+                        <p className="text-xs font-semibold uppercase tracking-wider opacity-50">Tipos de notificacion</p>
+                        {([
+                            { key: 'soflia_issues' as const, label: 'Issues y Tareas', desc: 'Cambios de estado, asignaciones, comentarios en tus tareas.' },
+                            { key: 'soflia_projects' as const, label: 'Proyectos', desc: 'Actualizaciones de progreso, hitos y cambios en proyectos.' },
+                            { key: 'soflia_team_updates' as const, label: 'Equipo', desc: 'Nuevos miembros, cambios de rol y actividad del equipo.' },
+                            { key: 'soflia_mentions' as const, label: 'Menciones', desc: 'Cuando alguien te menciona en un comentario o tarea.' },
+                            { key: 'soflia_reminders' as const, label: 'Recordatorios', desc: 'Fechas limite proximas y tareas pendientes.' },
+                        ]).map(item => (
+                            <div key={item.key} className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-sm font-medium">{item.label}</h4>
+                                    <p className="text-xs opacity-50">{item.desc}</p>
+                                </div>
+                                <Toggle checked={settings[item.key]} onChange={() => updateField(item.key)} />
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
+            {saving && <p className="text-xs text-blue-500 animate-pulse">Guardando...</p>}
         </div>
     );
 };
@@ -74,29 +146,7 @@ const NotificationsPanel = () => {
 
 
 const MCPServersPanel = () => {
-    const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
-    const [payload, setPayload] = useState<any>(null);
-
     const BRIDGE_URL = typeof window !== 'undefined' ? `${window.location.origin}/api/ai/bridge` : 'http://localhost:3000/api/ai/bridge';
-    const AGENT_KEY = 'iris-default-secret-key'; // Match the one in route.ts
-
-    const testConnection = async () => {
-        setConnectionStatus('testing');
-        try {
-            const res = await fetch('/api/ai/bridge', {
-                headers: { 'Authorization': `Bearer ${AGENT_KEY}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setPayload(data);
-                setConnectionStatus('success');
-            } else {
-                setConnectionStatus('error');
-            }
-        } catch (e) {
-            setConnectionStatus('error');
-        }
-    };
 
     const copyToClipboard = (text: string) => {
         navigator.clipboard.writeText(text);
@@ -105,87 +155,48 @@ const MCPServersPanel = () => {
 
     return (
         <div className="space-y-8 animate-fadeIn">
-            <div className="flex justify-between items-start">
-                <SectionTitle title="IRIS Core Link" sub="Bridge API: Conexión directa y segura para Agentes (Antigravity/ARIA)." />
-                <div className="flex gap-2">
-                     <button 
-                        onClick={testConnection}
-                        disabled={connectionStatus === 'testing'}
-                        className="px-4 py-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 font-bold rounded-lg text-sm transition-colors"
-                    >
-                        {connectionStatus === 'testing' ? 'Verificando...' : 'Test Conexión'}
-                    </button>
-                    <button className="px-4 py-2 bg-[#00D4B3] text-black font-bold rounded-lg hover:opacity-90 transition-opacity text-sm flex items-center gap-2">
-                        <Icons.Zap />
-                        Conectar IDE
-                    </button>
-                </div>
-            </div>
+            <SectionTitle title="Project Hub Core Link" sub="Bridge API: Conexion directa y segura para Agentes IA externos." />
 
-            <div className="p-6 rounded-2xl bg-gradient-to-br from-gray-900 to-black text-white border border-gray-800 shadow-xl relative overflow-hidden group">
-                <div className={`absolute top-0 right-0 p-32 blur-[150px] opacity-20 transition-colors duration-500 ${connectionStatus === 'success' ? 'bg-green-500' : connectionStatus === 'error' ? 'bg-red-500' : 'bg-[#00D4B3]'}`}></div>
-                
+            <div className="p-6 rounded-2xl bg-gradient-to-br from-gray-900 to-black text-white border border-gray-800 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-32 blur-[150px] opacity-20 bg-[#00D4B3]" />
                 <div className="relative z-10">
                     <div className="flex items-center gap-4 mb-6">
-                        <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
-                            <span className="text-3xl">🌌</span>
-                        </div>
+                        <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10"><span className="text-3xl">&#127756;</span></div>
                         <div>
-                            <h3 className="text-2xl font-bold">IRIS Bridge Endpoint</h3>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className={`w-2 h-2 rounded-full shadow-[0_0_10px] ${connectionStatus === 'success' ? 'bg-green-500 shadow-green-500' : connectionStatus === 'error' ? 'bg-red-500 shadow-red-500' : 'bg-gray-500'}`}></span>
-                                <span className="text-sm font-mono text-gray-300">
-                                    {connectionStatus === 'success' ? 'LINK ESTABLISHED' : connectionStatus === 'error' ? 'CONNECTION FAILED' : 'STANDBY'}
-                                </span>
-                            </div>
+                            <h3 className="text-xl font-bold">Project Hub Bridge Endpoint</h3>
+                            <p className="text-sm text-gray-400 mt-1">API para conectar herramientas IA externas</p>
                         </div>
                     </div>
-
-                    <div className="space-y-4">
-                        <div className="bg-black/40 rounded-lg p-3 border border-white/10 flex items-center justify-between">
-                            <div>
-                                <label className="text-xs uppercase text-gray-500 font-bold tracking-wider">Endpoint URL</label>
-                                <p className="font-mono text-sm text-[#00D4B3]">{BRIDGE_URL}</p>
-                            </div>
-                            <button onClick={() => copyToClipboard(BRIDGE_URL)} className="p-2 hover:bg-white/10 rounded">
-                                <Icons.Server />
-                            </button>
+                    <div className="bg-black/40 rounded-lg p-3 border border-white/10 flex items-center justify-between">
+                        <div>
+                            <label className="text-xs uppercase text-gray-500 font-bold tracking-wider">Endpoint URL</label>
+                            <p className="font-mono text-sm text-[#00D4B3]">{BRIDGE_URL}</p>
                         </div>
-
-                        <div className="bg-black/40 rounded-lg p-3 border border-white/10 flex items-center justify-between">
-                            <div>
-                                <label className="text-xs uppercase text-gray-500 font-bold tracking-wider">Agent Key (Bearer Token)</label>
-                                <p className="font-mono text-sm text-yellow-400">•••••••••••••••••••••</p>
-                            </div>
-                            <button onClick={() => copyToClipboard(AGENT_KEY)} className="p-2 hover:bg-white/10 rounded">
-                                <Icons.Key />
-                            </button>
-                        </div>
+                        <button onClick={() => copyToClipboard(BRIDGE_URL)} className="p-2 hover:bg-white/10 rounded transition-colors">
+                            <Icons.Server />
+                        </button>
                     </div>
-
-                    {connectionStatus === 'success' && payload && (
-                        <div className="mt-6 p-4 bg-black/50 rounded-lg border border-green-500/30 animate-fadeIn">
-                            <p className="text-xs text-green-400 font-bold mb-2">✓ CONEXIÓN VERIFICADA - CONTEXTO RECIBIDO:</p>
-                            <pre className="text-[10px] font-mono text-gray-400 overflow-hidden">
-                                {JSON.stringify({
-                                    status: payload.system_status,
-                                    projects: payload.database.stats.projects_count,
-                                    tasks: payload.database.stats.tasks_count,
-                                    environment: payload.environment
-                                }, null, 2)}
-                            </pre>
-                        </div>
-                    )}
+                    <div className="mt-4 p-3 rounded-lg border border-white/5 bg-white/5">
+                        <p className="text-xs text-gray-400">
+                            <span className="text-[#00D4B3] font-bold">GET</span> → Lee contexto (proyectos, tareas, miembros) &nbsp;&nbsp;
+                            <span className="text-yellow-400 font-bold">POST</span> → Ejecuta acciones (crear tareas, actualizar proyectos)
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">Header: <code className="text-gray-300">Authorization: Bearer phub_tu_api_key</code></p>
+                    </div>
                 </div>
             </div>
-            
-            <div className="mt-8 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-500/20 text-sm">
-                <p className="font-bold text-blue-800 dark:text-blue-200 mb-2">Instrucciones para Antigravity / Cursor:</p>
+
+            <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-500/20 text-sm">
+                <p className="font-bold text-blue-800 dark:text-blue-200 mb-2">Gestion de API Keys</p>
+                <p className="text-blue-700 dark:text-blue-300 mb-3">
+                    Las API keys se generan y administran desde la configuracion de cada workspace.
+                    Cada key esta asociada a un workspace especifico para aislar el acceso a datos.
+                </p>
                 <ol className="list-decimal list-inside space-y-1 text-blue-700 dark:text-blue-300">
-                    <li>Copia la <b>Endpoint URL</b> y la <b>Agent Key</b>.</li>
-                    <li>Configura tu agente para usar un header <code>Authorization: Bearer [KEY]</code>.</li>
-                    <li>Realiza un <code>GET</code> para leer el contexto actual del sistema.</li>
-                    <li>Utiliza el contexto devuelto para tomar decisiones informadas sobre el código.</li>
+                    <li>Ve a tu <b>Workspace &rarr; Configuracion &rarr; Project Hub Core Link</b></li>
+                    <li>Genera una nueva API Key con un nombre descriptivo</li>
+                    <li>Copia la key (solo se muestra una vez)</li>
+                    <li>Configura tu agente con <code>Authorization: Bearer phub_...</code></li>
                 </ol>
             </div>
         </div>
@@ -231,7 +242,7 @@ export default function SettingsPage() {
     const tabs = [
         { id: 'notifications', label: 'Notificaciones', icon: <Icons.Bell /> },
 
-        { id: 'mcp', label: 'IRIS Core Link (MCP)', icon: <Icons.Server /> },
+        { id: 'mcp', label: 'Project Hub Core Link (MCP)', icon: <Icons.Server /> },
         { id: 'security', label: 'Seguridad', icon: <Icons.Shield /> },
     ];
 

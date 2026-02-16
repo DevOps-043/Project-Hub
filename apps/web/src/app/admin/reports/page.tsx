@@ -43,7 +43,7 @@ const ExecutiveReport = ({ data }: { data: any }) => {
       <Page size="A4" style={styles.page}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>IRIS Executive Summary</Text>
+          <Text style={styles.title}>Project Hub Executive Summary</Text>
           <Text style={styles.subtitle}>Reporte generado el {new Date().toLocaleDateString('es-MX', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</Text>
         </View>
 
@@ -147,7 +147,7 @@ const ExecutiveReport = ({ data }: { data: any }) => {
           </View>
         </View>
 
-        <Text style={styles.footer}>Documento confidencial · IRIS Project Management System · v2.0</Text>
+        <Text style={styles.footer}>Documento confidencial · Project Hub Project Management System · v2.0</Text>
       </Page>
 
       {/* Page 2: Analysis & Contributors */}
@@ -232,7 +232,7 @@ const ExecutiveReport = ({ data }: { data: any }) => {
           </View>
         )}
 
-        <Text style={styles.footer}>Documento confidencial · IRIS Project Management System · v2.0</Text>
+        <Text style={styles.footer}>Documento confidencial · Project Hub Project Management System · v2.0</Text>
       </Page>
     </Document>
   );
@@ -243,8 +243,8 @@ const PredictiveReport = ({ data, analysis }: { data: any, analysis: any }) => (
   <Document>
     <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-            <Text style={styles.title}>IRIS Predictive Intelligence</Text>
-            <Text style={{ fontSize: 10, color: '#00D4B3', fontWeight: 'bold' }}>POWERED BY ARIA AI</Text>
+            <Text style={styles.title}>Project Hub Predictive Intelligence</Text>
+            <Text style={{ fontSize: 10, color: '#00D4B3', fontWeight: 'bold' }}>POWERED BY AI</Text>
             <Text style={styles.subtitle}>Generado el {new Date().toLocaleDateString()}</Text>
         </View>
 
@@ -367,7 +367,7 @@ export default function ReportsPage() {
                 const json = await res.json();
                 setAiAnalysis(json);
             } else {
-                alert('No se pudo conectar con ARIA.');
+                alert('No se pudo conectar con el servicio de IA.');
             }
         } catch (e) { console.error(e); }
         finally { setAiLoading(false); }
@@ -421,7 +421,7 @@ export default function ReportsPage() {
                     ) : isMounted && reportData ? (
                         <PDFDownloadLink 
                             document={<ExecutiveReport data={reportData} />} 
-                            fileName={`IRIS_Executive_Summary_${new Date().toISOString().split('T')[0]}.pdf`}
+                            fileName={`Project_Hub_Executive_Summary_${new Date().toISOString().split('T')[0]}.pdf`}
                             className="flex items-center justify-center w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition-all"
                         >
                             {({ loading }) => (loading ? 'Generando PDF...' : 'Descargar PDF')}
@@ -442,7 +442,7 @@ export default function ReportsPage() {
                     </p>
                     
                     <button 
-                        onClick={() => downloadCSV(tasksData, `iris_tasks_export_${new Date().toISOString().split('T')[0]}.csv`)}
+                        onClick={() => downloadCSV(tasksData, `project_hub_tasks_export_${new Date().toISOString().split('T')[0]}.csv`)}
                         disabled={tasksData.length === 0}
                         className="flex items-center justify-center w-full py-3 rounded-xl font-medium transition-all disabled:opacity-50"
                         style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f3f4f6', color: colors.textPrimary }}
@@ -457,7 +457,7 @@ export default function ReportsPage() {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
                     </div>
                     <h3 className="font-bold text-lg mb-2" style={{ color: colors.textPrimary }}>Análisis Predictivo IA</h3>
-                    <p className="text-sm mb-6" style={{ color: colors.textMuted }}>ARIA analiza patrones, detecta bloqueos futuros y sugiere mejoras estratégicas.</p>
+                    <p className="text-sm mb-6" style={{ color: colors.textMuted }}>La IA analiza patrones, detecta bloqueos futuros y sugiere mejoras estratégicas.</p>
                     
                     {!aiAnalysis ? (
                         <button 
@@ -479,10 +479,10 @@ export default function ReportsPage() {
                         isMounted ? (
                         <PDFDownloadLink 
                             document={<PredictiveReport data={null} analysis={aiAnalysis} />} 
-                            fileName={`IRIS_AI_Analysis_${new Date().toISOString().split('T')[0]}.pdf`}
+                            fileName={`Project_Hub_AI_Analysis_${new Date().toISOString().split('T')[0]}.pdf`}
                             className="flex items-center justify-center w-full py-3 rounded-xl bg-[#00D4B3] hover:bg-[#00bda0] text-black font-bold transition-all"
                         >
-                            {({ loading }) => (loading ? 'Creando PDF...' : '⬇ Descargar Reporte ARIA')}
+                            {({ loading }) => (loading ? 'Creando PDF...' : '⬇ Descargar Reporte IA')}
                         </PDFDownloadLink>
                         ) : null
                     )}

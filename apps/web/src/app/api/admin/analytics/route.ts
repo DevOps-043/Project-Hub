@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     if (teamId) projectsQuery = projectsQuery.eq('team_id', teamId);
     const { data: projects } = await projectsQuery;
 
-    // 4. ARIA Usage (Recuperar o inicializar vacío)
+    // 4. AI Usage (Recuperar o inicializar vacío)
     let ariaData: any[] = [];
     try {
         const { data } = await supabaseAdmin.from('aria_usage_logs')
@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
         .slice(0, 5);
 
 
-    // D) ARIA Token Usage por día (últimos 30 días)
+    // D) AI Token Usage por día (últimos 30 días)
     const tokenUsageByDay: Record<string, number> = {};
     ariaData.forEach(log => {
         const date = new Date(log.created_at).toISOString().split('T')[0];

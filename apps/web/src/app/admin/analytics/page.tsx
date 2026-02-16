@@ -215,7 +215,7 @@ export default function AnalyticsPage() {
                 <ActivityHeatmap data={data.heatmap} />
             </div>
 
-            {/* ROW 4: ARIA USAGE */}
+            {/* ROW 4: AI USAGE */}
             <div className="bg-white dark:bg-[#161b22] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
                 <h3 className="font-bold mb-6">Consumo de IA (Tokens)</h3>
                 <div className="h-64">

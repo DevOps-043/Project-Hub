@@ -106,7 +106,7 @@ export default function HomePage() {
                     >
                         <Image 
                             src="/Logo.png" 
-                            alt="IRIS" 
+                            alt="Project Hub" 
                             width={180} 
                             height={180}
                             className="mx-auto w-36 h-36 sm:w-44 sm:h-44 object-contain drop-shadow-2xl"
@@ -125,7 +125,7 @@ export default function HomePage() {
                         Bienvenido a{' '}
                         <span className="relative inline-block">
                             <span className="bg-gradient-to-r from-[#00D4B3] via-[#0EA5E9] to-[#00D4B3] bg-clip-text text-transparent">
-                                IRIS
+                                Project Hub
                             </span>
                             <motion.span
                                 className="absolute -bottom-2 left-0 right-0 h-1 rounded-full bg-gradient-to-r from-[#00D4B3] to-[#0EA5E9]"
@@ -196,9 +196,9 @@ export default function HomePage() {
             <footer className="absolute bottom-0 left-0 right-0 z-10 py-6 px-6">
                 <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                        <Image src="/Logo.png" alt="IRIS" width={20} height={20} className="w-5 h-5 opacity-60" />
+                        <Image src="/Logo.png" alt="Project Hub" width={20} height={20} className="w-5 h-5 opacity-60" />
                         <span className={`text-sm ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                            © 2026 IRIS
+                            © 2026 Project Hub
                         </span>
                     </div>
                     <div className={`text-sm ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>

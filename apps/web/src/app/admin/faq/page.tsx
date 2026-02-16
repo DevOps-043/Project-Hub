@@ -57,7 +57,7 @@ export default function FAQPage() {
                     Preguntas Frecuentes
                 </h1>
                 <p className="max-w-xl mx-auto" style={{ color: colors.textSecondary }}>
-                    Encuentra respuestas rápidas a las dudas más comunes sobre el uso de la plataforma IRIS y ARIA.
+                    Encuentra respuestas rápidas a las dudas más comunes sobre el uso de la plataforma Project Hub.
                 </p>
             </div>
 

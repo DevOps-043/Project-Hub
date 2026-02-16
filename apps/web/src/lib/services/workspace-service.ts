@@ -1,11 +1,12 @@
 /**
  * Workspace Service
  *
- * Sincroniza organizaciones de SOFIA con workspaces de IRIS
+ * Sincroniza organizaciones de SOFIA con workspaces de Project Hub
  * y provee queries para gestión de workspaces.
  */
 
 import { getSupabaseAdmin } from '../supabase/server';
+import { getSofiaAdmin } from '../supabase/sofia-client';
 
 // ── Tipos ──
 
@@ -57,7 +58,7 @@ interface SofiaOrgData {
 // ── Funciones ──
 
 /**
- * Mapea un rol de SOFIA al rol equivalente en IRIS
+ * Mapea un rol de SOFIA al rol equivalente en Project Hub
  */
 function mapSofiaRoleToIris(sofiaRole: string): WorkspaceMember['iris_role'] {
   switch (sofiaRole) {
@@ -69,7 +70,7 @@ function mapSofiaRoleToIris(sofiaRole: string): WorkspaceMember['iris_role'] {
 }
 
 /**
- * Sincroniza las organizaciones de SOFIA con workspaces en IRIS.
+ * Sincroniza las organizaciones de SOFIA con workspaces en Project Hub.
  * Crea workspaces nuevos si no existen, actualiza info si cambió.
  * Crea/actualiza membresías del usuario.
  */
@@ -256,7 +257,7 @@ export async function getWorkspaceMembers(workspaceId: string) {
 }
 
 /**
- * Actualiza el rol IRIS de un miembro
+ * Actualiza el rol Project Hub de un miembro
  */
 export async function updateMemberRole(
   workspaceId: string,
@@ -277,4 +278,99 @@ export async function updateMemberRole(
   }
 
   return true;
+}
+
+/**
+ * Sincroniza TODOS los miembros de una organización SOFIA con el workspace.
+ * Solo INSERTA miembros nuevos — nunca sobreescribe iris_role de miembros existentes.
+ */
+export async function syncAllOrgMembers(
+  workspaceId: string,
+  sofiaOrgId: string
+): Promise<void> {
+  const sofia = getSofiaAdmin();
+  if (!sofia) return;
+
+  const supabase = getSupabaseAdmin();
+
+  try {
+    // 1. Obtener miembros ya existentes en workspace_members (para no sobreescribir iris_role)
+    const { data: existingMembers } = await supabase
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspaceId);
+
+    const existingIds = new Set((existingMembers || []).map((m: any) => m.user_id));
+
+    // 2. Obtener todos los miembros de la org en SOFIA
+    const { data: orgMembers, error: orgError } = await sofia
+      .from('organization_users')
+      .select('*')
+      .eq('organization_id', sofiaOrgId);
+
+    if (orgError || !orgMembers?.length) return;
+
+    // 3. Filtrar solo los que NO existen aún en workspace_members
+    const newOrgMembers = orgMembers.filter((m: any) => !existingIds.has(m.user_id));
+    if (newOrgMembers.length === 0) return; // Todos ya sincronizados
+
+    // 4. Obtener datos de SOFIA solo para los nuevos
+    const newUserIds = newOrgMembers.map((m: any) => m.user_id);
+    const { data: sofiaUsers, error: usersError } = await sofia
+      .from('users')
+      .select('*')
+      .in('id', newUserIds);
+
+    if (usersError || !sofiaUsers?.length) return;
+
+    // 5. Insertar solo los nuevos en account_users y workspace_members
+    for (const sofiaUser of sofiaUsers) {
+      const orgMember = newOrgMembers.find((m: any) => m.user_id === sofiaUser.id);
+      if (!orgMember) continue;
+
+      const sofiaUserId = sofiaUser.id || sofiaUser.user_id;
+
+      try {
+        await supabase
+          .from('account_users')
+          .upsert(
+            {
+              user_id: sofiaUserId,
+              first_name: sofiaUser.first_name || sofiaUser.username || '',
+              last_name_paternal: sofiaUser.last_name_paternal || sofiaUser.last_name || '',
+              last_name_maternal: sofiaUser.last_name_maternal || null,
+              display_name: sofiaUser.display_name || sofiaUser.username || '',
+              username: sofiaUser.username || sofiaUser.email,
+              email: sofiaUser.email,
+              password_hash: sofiaUser.password_hash || 'synced-from-sofia',
+              permission_level: sofiaUser.permission_level || sofiaUser.role || 'user',
+              account_status: sofiaUser.account_status || sofiaUser.status || 'active',
+              is_email_verified: sofiaUser.is_email_verified ?? true,
+              avatar_url: sofiaUser.avatar_url || sofiaUser.avatar || null,
+              timezone: sofiaUser.timezone || 'America/Mexico_City',
+              locale: sofiaUser.locale || 'es-MX',
+            },
+            { onConflict: 'user_id' }
+          );
+
+        const irisRole = mapSofiaRoleToIris(orgMember.role || 'member');
+
+        await supabase
+          .from('workspace_members')
+          .insert({
+            workspace_id: workspaceId,
+            user_id: sofiaUserId,
+            sofia_role: orgMember.role || 'member',
+            iris_role: irisRole,
+            is_active: true,
+          });
+      } catch (err) {
+        console.error(`[WORKSPACE SERVICE] Error syncing member ${sofiaUser.email}:`, err);
+      }
+    }
+
+    console.log(`[WORKSPACE SERVICE] Synced ${sofiaUsers.length} new members from SOFIA org`);
+  } catch (err) {
+    console.error('[WORKSPACE SERVICE] Error in syncAllOrgMembers:', err);
+  }
 }

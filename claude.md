@@ -1,29 +1,76 @@
-# IRIS - Documentacion Completa de Funciones
+# Project Hub - Documentacion Completa de Funciones
 
 ## Descripcion del Proyecto
 
-**IRIS** es una plataforma educativa y de gestion de proyectos con inteligencia artificial integrada (ARIA), construida como un monorepo con:
+**Project Hub** (anteriormente IRIS) es una plataforma educativa y de gestion de proyectos con inteligencia artificial integrada, construida como un monorepo con:
 - **Frontend**: Next.js 15/16 (App Router)
 - **Backend**: Express 4 con TypeScript
-- **Base de Datos**: PostgreSQL via Supabase
+- **Base de Datos**: PostgreSQL via Supabase (dual: SOFIA + Project Hub)
 - **IA**: Google Gemini 2.0 Flash
+- **Auth**: SOFIA como auth master + sincronizacion de workspaces
+
+---
+
+## Arquitectura Multi-Supabase
+
+```
+┌─────────────────┐      ┌───────────────────┐
+│  SOFIA Supabase  │      │  Project Hub Supa  │
+│  (Auth Master)   │      │  (Data DB)         │
+├─────────────────┤      ├───────────────────┤
+│ users            │─────>│ account_users      │
+│ organization_users│────>│ workspace_members  │
+│ organizations    │─────>│ workspaces         │
+└─────────────────┘      └───────────────────┘
+```
+
+- **SOFIA**: Autenticacion, usuarios, organizaciones (fuente de verdad)
+- **Project Hub**: Datos de negocio, proyectos, tareas, workspaces
+- Al hacer login, se sincronizan datos de SOFIA a Project Hub
+- Al cargar miembros de un workspace, se sincronizan todos los miembros de la org SOFIA
+
+---
+
+## Dos Sistemas de Layout
+
+| Sistema | Ruta | Acceso | Descripcion |
+|---------|------|--------|-------------|
+| **Admin** | `/admin/*` | super_admin, admin | Panel de administracion global |
+| **Workspace** | `/[orgSlug]/*` | Todos los roles | Espacio de trabajo por organizacion |
+
+- `AdminSidebar` acepta `orgSlug` prop para cambiar dinamicamente entre rutas admin y workspace
+- El middleware redirige usuarios sin permisos de admin a `/unauthorized`
+- Las paginas workspace usan `useWorkspace()` para obtener datos del workspace y permisos
 
 ---
 
 ## Estructura del Proyecto
 
 ```
-IRIS/
+Project-Hub/
 ├── apps/
 │   ├── web/                    # Frontend Next.js
 │   │   └── src/
-│   │       ├── app/            # Pages y API Routes
+│   │       ├── app/
+│   │       │   ├── [orgSlug]/  # Paginas workspace (dashboard, members, teams, etc.)
+│   │       │   ├── admin/      # Paginas admin (super_admin/admin only)
+│   │       │   ├── api/
+│   │       │   │   ├── auth/       # Auth routes
+│   │       │   │   ├── admin/      # Admin API routes
+│   │       │   │   ├── workspaces/ # Workspace API routes (scoped)
+│   │       │   │   └── ai/         # AI routes
+│   │       │   └── unauthorized/   # Error page acceso denegado
 │   │       ├── components/     # Componentes UI
 │   │       ├── features/       # Modulos de negocio
 │   │       ├── shared/         # Utilidades compartidas
 │   │       ├── core/           # Stores y servicios
-│   │       ├── lib/            # Integraciones externas
-│   │       └── contexts/       # React Context
+│   │       ├── lib/
+│   │       │   ├── auth/       # JWT, passwords, SOFIA auth
+│   │       │   ├── supabase/   # Clientes Supabase (server, sofia-client, config)
+│   │       │   ├── services/   # workspace-service.ts
+│   │       │   ├── ai/         # Gemini integration
+│   │       │   └── notifications/
+│   │       └── contexts/       # ThemeContext, WorkspaceContext
 │   └── api/                    # Backend Express
 │       └── src/
 │           ├── core/           # Middlewares y config
@@ -62,30 +109,6 @@ interface ChatMessage {
     mimeType: string;
     data: string; // Base64
   }[];
-}
-```
-
-**Archivo:** `lib/ai/lia-agent.ts`
-
-| Funcion/Constante | Descripcion | Parametros | Retorno |
-|-------------------|-------------|------------|---------|
-| `ARIA_SYSTEM_PROMPT` | Prompt del sistema para el agente ARIA | - | `string` |
-| `getARIASystemPrompt(context?)` | Genera prompt personalizado con contexto | `context?: ARIAContext` | `string` |
-| `ARIA_QUICK_RESPONSES` | Respuestas predefinidas (greeting, farewell, help) | - | `object` |
-
-**Interfaces:**
-```typescript
-interface ARIAContext {
-  userName?: string;
-  userId?: string;
-  userRole?: string;
-  teamName?: string;
-  teamId?: string;
-  currentPage?: string;
-  recentActions?: string[];
-  tasks?: any[];
-  projects?: any[];
-  teamMembers?: any[];
 }
 ```
 
@@ -227,6 +250,84 @@ interface NotificationPayload {
 
 ---
 
+### 1.6 Workspace Service
+
+**Archivo:** `lib/services/workspace-service.ts`
+
+| Funcion | Descripcion | Parametros | Retorno |
+|---------|-------------|------------|---------|
+| `syncWorkspacesFromSofia(irisUserId, sofiaOrgs)` | Sincroniza orgs SOFIA con workspaces (solo usuario actual, se ejecuta en login) | `irisUserId: string, sofiaOrgs: SofiaOrgData[]` | `Promise<WorkspaceWithRole[]>` |
+| `syncAllOrgMembers(workspaceId, sofiaOrgId)` | Sincroniza TODOS los miembros de una org SOFIA con el workspace. Solo inserta nuevos, nunca sobreescribe iris_role | `workspaceId: string, sofiaOrgId: string` | `Promise<void>` |
+| `getWorkspacesForUser(userId)` | Obtiene todos los workspaces de un usuario con roles | `userId: string` | `Promise<WorkspaceWithRole[]>` |
+| `getWorkspaceBySlug(slug)` | Obtiene workspace por slug | `slug: string` | `Promise<Workspace \| null>` |
+| `getUserWorkspaceRole(workspaceId, userId)` | Obtiene rol del usuario en un workspace | `workspaceId: string, userId: string` | `Promise<WorkspaceMember \| null>` |
+| `getWorkspaceMembers(workspaceId)` | Obtiene todos los miembros de un workspace (join con account_users) | `workspaceId: string` | `Promise<any[]>` |
+| `updateMemberRole(workspaceId, userId, newRole)` | Actualiza iris_role de un miembro | `workspaceId: string, userId: string, newRole: IrisRole` | `Promise<boolean>` |
+
+**Interfaces:**
+```typescript
+interface Workspace {
+  workspace_id: string;
+  sofia_org_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  logo_url: string | null;
+  brand_color: string;
+  is_active: boolean;
+  settings: Record<string, unknown>;
+}
+
+interface WorkspaceMember {
+  member_id: string;
+  workspace_id: string;
+  user_id: string;
+  sofia_role: string;
+  iris_role: 'owner' | 'admin' | 'manager' | 'leader' | 'member';
+  is_active: boolean;
+}
+```
+
+**Logica de sincronizacion:**
+- `syncWorkspacesFromSofia`: Se ejecuta en login, solo sincroniza el usuario actual
+- `syncAllOrgMembers`: Se ejecuta al cargar miembros. Consulta SOFIA `organization_users` + `users`, inserta solo miembros nuevos en `account_users` y `workspace_members`. Nunca sobreescribe `iris_role` de miembros existentes (permite edicion independiente)
+
+---
+
+### 1.7 SOFIA Auth Service
+
+**Archivo:** `lib/auth/sofia-auth.ts`
+
+| Funcion | Descripcion | Parametros | Retorno |
+|---------|-------------|------------|---------|
+| `isSofiaAuthEnabled()` | Verifica si SOFIA esta configurado | Ninguno | `boolean` |
+| `findSofiaUser(emailOrUsername)` | Busca usuario en SOFIA por email/username | `emailOrUsername: string` | `Promise<SofiaUser \| null>` |
+| `findSofiaUserById(userId)` | Busca usuario en SOFIA por ID | `userId: string` | `Promise<SofiaUser \| null>` |
+| `getSofiaUserOrgs(userId)` | Obtiene organizaciones del usuario en SOFIA | `userId: string` | `Promise<any[]>` |
+| `recordSofiaLogin(userId)` | Registra login exitoso en SOFIA | `userId: string` | `Promise<void>` |
+
+---
+
+### 1.8 Supabase Multi-Cliente
+
+**Archivo:** `lib/supabase/config.ts`
+
+| Constante | Descripcion |
+|-----------|-------------|
+| `IRIS_SUPABASE` | Config de Project Hub Supabase (BD principal) |
+| `SOFIA_SUPABASE` | Config de SOFIA Supabase (auth + orgs) |
+| `CONTENT_GEN_SUPABASE` | Config de Content Generator Supabase |
+
+**Archivo:** `lib/supabase/sofia-client.ts`
+
+| Funcion | Descripcion | Retorno |
+|---------|-------------|---------|
+| `getSofiaClient()` | Cliente SOFIA browser-side (con session) | `SupabaseClient \| null` |
+| `getSofiaAdmin()` | Cliente SOFIA server-side (sin session) | `SupabaseClient \| null` |
+| `isSofiaConfigured()` | Verifica si SOFIA esta configurado | `boolean` |
+
+---
+
 ## 2. CORE - Estado Global y Servicios
 
 ### 2.1 Auth Store (Zustand)
@@ -322,15 +423,37 @@ interface NotificationPayload {
 
 ---
 
-### 4.2 ARIA Context
+### 4.2 Workspace Context
 
-**Archivo:** `contexts/ARIAContext.tsx`
+**Archivo:** `contexts/WorkspaceContext.tsx`
 
 | Componente/Hook | Descripcion | Props/Retorno |
 |-----------------|-------------|---------------|
-| `ARIAProvider` | Proveedor del estado de ARIA | `children: ReactNode` |
-| `useARIA()` | Hook para controlar ARIA | `{ isOpen: boolean, openARIA: () => void, closeARIA: () => void, toggleARIA: () => void }` |
-| `ARIA_PANEL_WIDTH` | Ancho del panel ARIA | `420` |
+| `WorkspaceProvider` | Proveedor de workspace para paginas `[orgSlug]` | `children: ReactNode` |
+| `useWorkspace()` | Hook para acceder al workspace actual | Ver retorno abajo |
+
+**Retorno de `useWorkspace()`:**
+```typescript
+{
+  workspace: WorkspaceData;        // Datos del workspace actual
+  userRole: IrisRole;              // Rol del usuario: 'owner' | 'admin' | 'manager' | 'leader' | 'member'
+  permissions: WorkspacePermissions; // Flags booleanos de permisos
+  isOwner: boolean;
+  isAdmin: boolean;
+  canManageMembers: boolean;
+  canManageSettings: boolean;
+}
+```
+
+**Permisos por rol:**
+| Permiso | owner | admin | manager | leader | member |
+|---------|-------|-------|---------|--------|--------|
+| manageWorkspace | si | no | no | no | no |
+| manageMembers | si | si | no | no | no |
+| manageRoles | si | si | no | no | no |
+| manageProjects | si | si | si | si | no |
+| manageTeams | si | si | no | no | no |
+| viewAnalytics | si | si | si | no | no |
 
 ---
 
@@ -366,57 +489,7 @@ interface NotificationPayload {
 
 ---
 
-### 5.2 LIA/ARIA Feature - Asistente IA
-
-**Archivo:** `features/lia/components/LIAChatWidget.tsx`
-
-**Componente:** `LIAChatWidget` (alias: `ARIAChatWidget`)
-
-| Prop | Tipo | Descripcion |
-|------|------|-------------|
-| `isOpen` | `boolean` | Estado de visibilidad |
-| `onClose` | `() => void` | Callback al cerrar |
-| `userName` | `string?` | Nombre del usuario |
-| `userRole` | `string?` | Rol del usuario |
-| `userId` | `string?` | ID del usuario |
-| `teamId` | `string?` | ID del equipo |
-
-**Funciones internas:**
-| Funcion | Descripcion |
-|---------|-------------|
-| `toggleVoiceInput()` | Activa/desactiva dictado por voz |
-| `handleFileSelect(event)` | Procesa archivo seleccionado |
-| `removeAttachment(index)` | Elimina attachment por indice |
-| `sendMessage(messageText?)` | Envia mensaje al API |
-| `handleKeyPress(e)` | Maneja tecla Enter |
-| `handleQuickAction(message)` | Ejecuta accion rapida |
-| `clearConversation()` | Limpia conversacion |
-| `scrollToBottom()` | Scroll al final de mensajes |
-
----
-
-**Archivo:** `features/lia/components/LIAFloatingButton.tsx`
-
-**Componente:** `LIAFloatingButton`
-
-| Prop | Tipo | Descripcion |
-|------|------|-------------|
-| `userName` | `string?` | Nombre del usuario |
-| `userRole` | `string?` | Rol del usuario |
-| `userId` | `string?` | ID del usuario |
-| `teamId` | `string?` | ID del equipo |
-
-**Funciones internas:**
-| Funcion | Descripcion |
-|---------|-------------|
-| `animate(currentTime)` | Animacion de rotacion del logo |
-| `startAnimation()` | Inicia animacion |
-| `handleMouseEnter()` | Inicia rotacion en hover |
-| `handleMouseLeave()` | Detiene rotacion al salir |
-
----
-
-### 5.3 Notifications Feature
+### 5.2 Notifications Feature
 
 **Archivo:** `features/notifications/NotificationCenter.tsx`
 
@@ -431,26 +504,7 @@ interface NotificationPayload {
 
 ---
 
-### 5.4 Dashboard Feature
-
-**Archivo:** `features/dashboard/components/ARIAUsageWidget.tsx`
-
-**Componente:** `ARIAUsageWidget`
-
-| Prop | Tipo | Descripcion |
-|------|------|-------------|
-| `teamId` | `string?` | ID del equipo |
-| `userId` | `string?` | ID del usuario |
-
-**Funciones internas:**
-| Funcion | Descripcion |
-|---------|-------------|
-| `fetchStats()` | Obtiene estadisticas de uso de ARIA |
-| `formatNum(num)` | Formatea numeros grandes (k, M) |
-
----
-
-### 5.5 Tools Feature
+### 5.3 Tools Feature
 
 **Archivo:** `features/tools/FocusEnforcer.tsx`
 
@@ -524,24 +578,6 @@ interface NotificationPayload {
 ---
 
 ### 6.2 AI Routes
-
-**Archivo:** `app/api/lia/chat/route.ts`
-
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `POST` | `/api/lia/chat` | Chat con ARIA (streaming) |
-| `GET` | `/api/lia/chat` | Health check |
-
-**Request Body:**
-```typescript
-{
-  messages: ChatMessage[];
-  context?: ARIAContext;
-  stream?: boolean;
-}
-```
-
----
 
 **Archivo:** `app/api/ai/agile-advisor/route.ts`
 
@@ -689,7 +725,59 @@ interface NotificationPayload {
 
 ---
 
-### 6.4 Otras Routes
+### 6.4 Workspace Routes
+
+Rutas scoped por workspace. Auth se maneja internamente (JWT en header/cookie + verificacion de membresia).
+
+**Archivo:** `app/api/workspaces/[slug]/members/route.ts`
+
+| Metodo | Endpoint | Descripcion |
+|--------|----------|-------------|
+| `GET` | `/api/workspaces/:slug/members` | Lista miembros del workspace. Sync auto con SOFIA si hay <=1 miembro |
+| `GET` | `/api/workspaces/:slug/members?sync=true` | Fuerza re-sincronizacion de miembros desde SOFIA |
+| `PATCH` | `/api/workspaces/:slug/members` | Actualiza iris_role de un miembro (solo owner/admin) |
+
+**PATCH Body:**
+```typescript
+{ userId: string; irisRole: 'owner' | 'admin' | 'manager' | 'leader' | 'member' }
+```
+
+---
+
+**Archivo:** `app/api/workspaces/[slug]/teams/route.ts`
+
+| Metodo | Endpoint | Descripcion |
+|--------|----------|-------------|
+| `GET` | `/api/workspaces/:slug/teams` | Lista equipos del workspace (scoped por workspace_id) |
+
+---
+
+**Archivo:** `app/api/workspaces/[slug]/projects/route.ts`
+
+| Metodo | Endpoint | Descripcion |
+|--------|----------|-------------|
+| `GET` | `/api/workspaces/:slug/projects` | Lista proyectos del workspace |
+| `POST` | `/api/workspaces/:slug/projects` | Crea proyecto en el workspace |
+
+---
+
+**Archivo:** `app/api/workspaces/[slug]/analytics/route.ts`
+
+| Metodo | Endpoint | Descripcion |
+|--------|----------|-------------|
+| `GET` | `/api/workspaces/:slug/analytics` | Metricas del workspace (proyectos, tareas, miembros) |
+
+---
+
+**Archivo:** `app/api/workspaces/[slug]/reports/executive-summary/route.ts`
+
+| Metodo | Endpoint | Descripcion |
+|--------|----------|-------------|
+| `GET` | `/api/workspaces/:slug/reports/executive-summary` | Reporte ejecutivo scoped al workspace |
+
+---
+
+### 6.5 Otras Routes
 
 **Archivo:** `app/api/search/route.ts`
 
@@ -732,14 +820,6 @@ interface NotificationPayload {
 
 ---
 
-**Archivo:** `app/api/aria/usage/route.ts`
-
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/aria/usage` | Estadisticas de uso de ARIA |
-
----
-
 **Archivo:** `app/api/upload/avatar/route.ts`
 
 | Metodo | Endpoint | Descripcion |
@@ -748,7 +828,25 @@ interface NotificationPayload {
 
 ---
 
-## 7. MIDDLEWARE
+## 7. PAGINAS WORKSPACE (`app/[orgSlug]/*`)
+
+Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspace y permisos.
+
+| Pagina | Ruta | Descripcion |
+|--------|------|-------------|
+| Dashboard | `/[orgSlug]/dashboard` | Dashboard del workspace |
+| Members | `/[orgSlug]/members` | Miembros con edicion de roles (owner/admin). Sync con SOFIA |
+| Teams | `/[orgSlug]/teams` | Equipos del workspace |
+| Projects | `/[orgSlug]/projects` | Proyectos (list/board/timeline views). Usa `CreateProjectModal` con `workspaceSlug` |
+| Tools | `/[orgSlug]/tools` | FocusTimer, AgileAdvisor, DiagramArchitect |
+| Analytics | `/[orgSlug]/analytics` | Graficas con Recharts, ActivityHeatmap |
+| Reports | `/[orgSlug]/reports` | PDF generation (`@react-pdf/renderer`), CSV export |
+| Settings | `/[orgSlug]/settings` | Notificaciones, Project Hub Core Link (MCP), Seguridad |
+| Profile | `/[orgSlug]/profile` | Perfil del usuario, cambio de contrasena, avatar |
+
+---
+
+## 8. MIDDLEWARE
 
 **Archivo:** `middleware.ts`
 
@@ -1025,7 +1123,7 @@ const API_ENDPOINTS = {
 
 ```typescript
 const APP_CONFIG = {
-  NAME: 'IRIS',
+  NAME: 'Project Hub',
   VERSION: '1.0.0',
   DEFAULT_PAGE_SIZE: 10,
   MAX_PAGE_SIZE: 100,
@@ -1179,14 +1277,34 @@ const APP_CONFIG = {
 
 ---
 
-## 5. Otras Migraciones
+## 5. Workspaces y Membresias
+
+### Tablas
+
+| Tabla | Descripcion |
+|-------|-------------|
+| `workspaces` | Workspaces (vinculados a orgs SOFIA via `sofia_org_id`). Unique on `sofia_org_id` |
+| `workspace_members` | Membresias usuario-workspace con `sofia_role` e `iris_role`. Unique on `(workspace_id, user_id)` |
+
+### Columnas clave
+
+**workspaces:** `workspace_id`, `sofia_org_id`, `name`, `slug`, `description`, `logo_url`, `brand_color`, `is_active`, `settings`
+
+**workspace_members:** `member_id`, `workspace_id`, `user_id`, `sofia_role`, `iris_role` (owner/admin/manager/leader/member), `is_active`, `joined_at`
+
+### Notas
+- `teams` y `pm_projects` tienen columna `workspace_id` para filtrar por workspace
+- `iris_role` es editable independientemente de `sofia_role` (permite roles diferentes en Project Hub vs SOFIA)
+- `syncAllOrgMembers` solo inserta nuevos miembros, nunca sobreescribe `iris_role` existente
+
+---
+
+## 6. Otras Migraciones
 
 | Archivo | Descripcion |
 |---------|-------------|
 | `002_seed_test_user.sql` | Usuario de prueba |
 | `004_storage_user_avatars.sql` | Bucket de avatares |
-| `006_aria_multimodal.sql` | Tablas para ARIA multimodal |
-| `007_aria_usage_tracking.sql` | Tracking de uso de ARIA |
 | `009_faq_system.sql` | Sistema de FAQs |
 | `010_global_search.sql` | Configuracion de busqueda global |
 | `011_focus_mode_system.sql` | Sistema de modo enfoque |
@@ -1247,12 +1365,22 @@ const APP_CONFIG = {
 
 ## Frontend (.env.local)
 ```
+# Project Hub Supabase (BD principal)
 NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+
+# SOFIA Supabase (Auth master + organizaciones)
+NEXT_PUBLIC_SOFIA_SUPABASE_URL=
+NEXT_PUBLIC_SOFIA_SUPABASE_ANON_KEY=
+
+# AI
 GOOGLE_API_KEY=
 GEMINI_MODEL=gemini-2.0-flash
 GEMINI_MAX_TOKENS=8192
 GEMINI_TEMPERATURE=0.7
+
+# Auth
 JWT_SECRET=
 ```
 
@@ -1267,4 +1395,4 @@ JWT_SECRET=
 
 ---
 
-*Documentacion generada automaticamente - IRIS v1.3*
+*Documentacion generada automaticamente - Project Hub v2.0*
