@@ -201,8 +201,16 @@ export default function HomePage() {
                             © 2026 Project Hub
                         </span>
                     </div>
-                    <div className={`text-sm ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                        Sistema de Gestión de Proyectos
+                    <div className="flex items-center gap-6">
+                        <Link href="/privacy" className={`text-sm hover:underline ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Política de Privacidad
+                        </Link>
+                        <Link href="/terms" className={`text-sm hover:underline ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Términos de Servicio
+                        </Link>
+                        <div className={`text-sm ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                            Sistema de Gestión de Proyectos
+                        </div>
                     </div>
                 </div>
             </footer>
