@@ -16,10 +16,13 @@ const PUBLIC_PATHS = [
   '/auth/reset-password',
   '/login',
   '/register',
+  '/terms',               // Términos y Condiciones
+  '/privacy',             // Política de Privacidad
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/refresh',
   '/api/auth/reset-test-user', // Solo desarrollo
+  '/api/auth/callback/google', // OAuth Google callback (validado internamente via state)
   '/api/ai',              // AI Services (Agile Advisor, etc)
   '/api/focus',           // Focus Mode
   '/api/search',          // Global Search

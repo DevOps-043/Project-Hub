@@ -505,6 +505,166 @@ const MCPServersPanel = () => {
     );
 };
 
+const GoogleDrivePanel = () => {
+    const { workspace, isOwner, isAdmin } = useWorkspace();
+    const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email?: string }>({ connected: false });
+    const [templateId, setTemplateId] = useState('');
+    const [templateName, setTemplateName] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+
+    useEffect(() => {
+        // Check Google connection status
+        const checkGoogle = async () => {
+            try {
+                const token = localStorage.getItem('accessToken');
+                const res = await fetch('/api/auth/google/status', {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setGoogleStatus({ connected: data.connected, email: data.email });
+                }
+            } catch { /* ignore */ }
+        };
+        checkGoogle();
+
+        // Load existing template settings
+        const settings = (workspace?.settings || {}) as Record<string, string>;
+        if (settings.google_sheets_template_id) setTemplateId(settings.google_sheets_template_id);
+        if (settings.google_sheets_template_name) setTemplateName(settings.google_sheets_template_name);
+    }, [workspace]);
+
+    const handleSaveTemplate = async () => {
+        setSaving(true);
+        try {
+            const token = localStorage.getItem('accessToken');
+            const currentSettings = (workspace?.settings || {}) as Record<string, unknown>;
+            const res = await fetch(`/api/workspaces/${workspace.slug}/settings`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({
+                    settings: {
+                        ...currentSettings,
+                        google_sheets_template_id: templateId || null,
+                        google_sheets_template_name: templateName || null,
+                    },
+                }),
+            });
+            if (res.ok) {
+                setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
+            }
+        } catch { /* ignore */ }
+        setSaving(false);
+    };
+
+    const handleConnectGoogle = () => {
+        window.location.href = `/api/auth/google/connect?returnUrl=${encodeURIComponent(window.location.pathname)}`;
+    };
+
+    const handleDisconnectGoogle = async () => {
+        try {
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/auth/google/disconnect', {
+                method: 'DELETE',
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+            if (res.ok) {
+                setGoogleStatus({ connected: false });
+            }
+        } catch { /* ignore */ }
+    };
+
+    return (
+        <div className="space-y-8 animate-fadeIn">
+            <SectionTitle title="Google Drive" sub="Conecta tu cuenta de Google y configura plantillas para hojas de calculo." />
+
+            {/* Conexion Google */}
+            <div>
+                <div className="flex items-center gap-2 mb-4"><Icons.Zap /><h3 className="font-bold">Cuenta de Google</h3></div>
+                {googleStatus.connected ? (
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-green-500/20 bg-green-500/5">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
+                                <Icons.Check />
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium">Conectado</p>
+                                <p className="text-xs opacity-60">{googleStatus.email}</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleDisconnectGoogle}
+                            className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                        >
+                            Desconectar
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-gray-200 dark:border-white/10">
+                        <div>
+                            <p className="text-sm font-medium">No conectado</p>
+                            <p className="text-xs opacity-60">Conecta para vincular documentos de Google Drive a proyectos.</p>
+                        </div>
+                        <button
+                            onClick={handleConnectGoogle}
+                            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                        >
+                            Conectar Google
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Template de Sheets */}
+            {(isOwner || isAdmin) && (
+                <div>
+                    <div className="flex items-center gap-2 mb-4"><Icons.Key /><h3 className="font-bold">Plantilla Google Sheets</h3></div>
+                    <p className="text-xs opacity-60 mb-4">
+                        Configura un Template ID de Google Sheets. Al crear una hoja de calculo desde un proyecto, se clonara esta plantilla automaticamente.
+                    </p>
+                    <div className="space-y-3">
+                        <div>
+                            <label className="text-xs font-medium opacity-70 mb-1 block">Nombre de la plantilla</label>
+                            <input
+                                type="text"
+                                value={templateName}
+                                onChange={(e) => setTemplateName(e.target.value)}
+                                placeholder="Ej: Plantilla KPIs de Proyecto"
+                                className="w-full px-4 py-2.5 rounded-lg bg-transparent border border-gray-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500/30 text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-medium opacity-70 mb-1 block">Template ID de Google Sheets</label>
+                            <input
+                                type="text"
+                                value={templateId}
+                                onChange={(e) => setTemplateId(e.target.value)}
+                                placeholder="Ej: 1abc123..."
+                                className="w-full px-4 py-2.5 rounded-lg bg-transparent border border-gray-200 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500/30 text-sm font-mono"
+                            />
+                            <p className="text-[10px] opacity-40 mt-1">
+                                Encuentra el ID en la URL de tu Google Sheet: docs.google.com/spreadsheets/d/<strong>TEMPLATE_ID</strong>/edit
+                            </p>
+                        </div>
+                        <button
+                            onClick={handleSaveTemplate}
+                            disabled={saving}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                        >
+                            {saving ? 'Guardando...' : saved ? 'Guardado ✓' : 'Guardar plantilla'}
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const SecurityPanel = () => {
     return (
         <div className="space-y-8 animate-fadeIn">
@@ -534,6 +694,7 @@ export default function WorkspaceSettingsPage() {
 
     const tabs = [
         { id: 'notifications', label: 'Notificaciones', icon: <Icons.Bell /> },
+        { id: 'google-drive', label: 'Google Drive', icon: <Icons.Zap /> },
         { id: 'mcp', label: 'Project Hub Core Link (MCP)', icon: <Icons.Server /> },
         { id: 'security', label: 'Seguridad', icon: <Icons.Shield /> },
     ];
@@ -561,6 +722,7 @@ export default function WorkspaceSettingsPage() {
                 <div className="flex-1 bg-white dark:bg-[#161b22] rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm p-8 min-h-[500px]">
                     <AnimatePresence mode="wait">
                         {activeTab === 'notifications' && <NotificationsPanel key="notif" />}
+                        {activeTab === 'google-drive' && <GoogleDrivePanel key="gdrive" />}
                         {activeTab === 'mcp' && <MCPServersPanel key="mcp" />}
                         {activeTab === 'security' && <SecurityPanel key="security" />}
                     </AnimatePresence>

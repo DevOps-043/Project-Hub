@@ -61,14 +61,14 @@ export default function TermsOfServicePage() {
 
         <div className="space-y-12 shadow-2xl rounded-3xl p-8 sm:p-12 mb-12" style={{ backgroundColor: isDark ? 'rgba(30,35,41,0.5)' : colors.bgCard, border: `1px solid ${colors.border}` }}>
           {sections.map((section, idx) => (
-            <secton key={idx}>
+            <section key={idx}>
               <h2 className="text-2xl font-bold mb-4" style={{ color: '#00D4B3' }}>
                 {section.title}
               </h2>
               <p className="text-lg leading-relaxed" style={{ color: colors.textSecondary }}>
                 {section.content}
               </p>
-            </secton>
+            </section>
           ))}
         </div>
 

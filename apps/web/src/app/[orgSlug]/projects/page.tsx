@@ -127,6 +127,7 @@ export default function MemberProjectsPage() {
             return (
               <div
                 key={project.project_id}
+                onClick={() => router.push(`/${workspace.slug}/projects/${project.project_id}`)}
                 className="p-5 rounded-xl transition-all hover:shadow-md cursor-pointer"
                 style={{
                   background: isDark ? 'rgba(30, 35, 41, 0.5)' : colors.bgCard,

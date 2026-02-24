@@ -16,6 +16,7 @@ import { format, addDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay
 import { es } from 'date-fns/locale';
 import { ProjectUpdatesView } from '@/components/admin/projects/views/ProjectUpdatesView';
 import { ProjectIssuesView } from '@/components/admin/projects/views/ProjectIssuesView';
+import { ProjectDocumentsView } from '@/components/admin/projects/views/ProjectDocumentsView';
 
 // Status options
 const STATUS_OPTIONS = [
@@ -81,6 +82,12 @@ interface ProjectDetail {
   metadata?: {
     resources?: ProjectResource[];
   };
+  workspace?: {
+    workspace_id: string;
+    slug: string;
+    name: string;
+    settings?: Record<string, any>;
+  } | null;
 }
 
 interface UserOption {
@@ -269,7 +276,7 @@ export default function ProjectDetailPage() {
 
         <div className="flex items-center gap-2">
           <div className={`flex p-1 rounded-lg border ${borderSub} ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
-            {['Overview', 'Updates', 'Issues'].map((tab) => (
+            {['Overview', 'Updates', 'Issues', 'Documents'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab.toLowerCase())}
@@ -429,7 +436,7 @@ export default function ProjectDetailPage() {
             )}
 
             {activeTab === 'issues' && (
-               <motion.div 
+               <motion.div
                 key="issues"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -438,6 +445,23 @@ export default function ProjectDetailPage() {
                 className="w-full h-full"
               >
                   <ProjectIssuesView projectId={project.project_id} />
+              </motion.div>
+            )}
+
+            {activeTab === 'documents' && (
+              <motion.div
+                key="documents"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ProjectDocumentsView
+                  projectId={project.project_id}
+                  projectKey={project.project_key}
+                  workspaceSlug={project.workspace?.slug}
+                  sheetsTemplateId={project.workspace?.settings?.google_sheets_template_id}
+                />
               </motion.div>
             )}
           </AnimatePresence>

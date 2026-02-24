@@ -37,8 +37,14 @@ export async function GET(
           milestone_id,
           milestone_name,
           milestone_status,
-          due_date:target_date, 
-          progress_percentage:sort_order 
+          due_date:target_date,
+          progress_percentage:sort_order
+        ),
+        workspace:workspaces!pm_projects_workspace_id_fkey (
+          workspace_id,
+          slug,
+          name,
+          settings
         )
       `)
       .eq('project_id', projectId)
