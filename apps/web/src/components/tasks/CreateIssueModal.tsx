@@ -6,6 +6,10 @@ import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { createPortal } from 'react-dom';
+import { useGoogleConnection } from '@/shared/hooks/useGoogleConnection';
+import { GoogleDrivePicker } from '@/components/google/GoogleDrivePicker';
+import type { PickedFile } from '@/components/google/GoogleDrivePicker';
+import { classifyGoogleFile, parseGoogleUrl, uploadFileToDrive } from '@/lib/google/document-utils';
 
 // Types
 interface Status {
@@ -52,6 +56,12 @@ interface CreateIssueModalProps {
   teamId: string;
   onIssueCreated: (issue: any) => void;
   initialStatus?: string;
+  workspaceSlug?: string;
+}
+
+interface PendingDocument {
+  file: PickedFile;
+  source: 'picker' | 'upload' | 'url';
 }
 
 // Status Icon Component
@@ -341,12 +351,13 @@ function PortalCalendar({ isOpen, onClose, triggerRef, value, onChange, isDark, 
   );
 }
 
-export default function CreateIssueModal({ 
-  isOpen, 
-  onClose, 
-  teamId, 
+export default function CreateIssueModal({
+  isOpen,
+  onClose,
+  teamId,
   onIssueCreated,
-  initialStatus 
+  initialStatus,
+  workspaceSlug
 }: CreateIssueModalProps) {
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
@@ -387,6 +398,17 @@ export default function CreateIssueModal({
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // Document attachment state
+  const google = useGoogleConnection();
+  const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([]);
+  const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const [docUploading, setDocUploading] = useState(false);
+  const [showDocUrlInput, setShowDocUrlInput] = useState(false);
+  const [docUrlValue, setDocUrlValue] = useState('');
+  const [docUrlError, setDocUrlError] = useState('');
+  const [docLinkingUrl, setDocLinkingUrl] = useState(false);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
 
   // Get selected items for display
   const selectedStatus = statuses.find(s => s.status_id === statusId);
@@ -467,6 +489,10 @@ export default function CreateIssueModal({
     setEstimatePoints('');
     setSelectedLabels([]);
     setActiveDropdown(null);
+    setPendingDocuments([]);
+    setDocUrlValue('');
+    setDocUrlError('');
+    setShowDocUrlInput(false);
   };
 
   // Handle close
@@ -504,6 +530,38 @@ export default function CreateIssueModal({
 
       if (res.ok) {
         const data = await res.json();
+
+        // Vincular documentos pendientes a la issue creada
+        if (pendingDocuments.length > 0 && data.issue?.issue_id) {
+          const docApiBase = workspaceSlug
+            ? `/api/workspaces/${workspaceSlug}/teams/${teamId}/issues/${data.issue.issue_id}/documents`
+            : `/api/admin/teams/${teamId}/issues/${data.issue.issue_id}/documents`;
+
+          for (const pending of pendingDocuments) {
+            const { provider, docType } = classifyGoogleFile(pending.file.mimeType);
+            try {
+              await fetch(docApiBase, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({
+                  name: pending.file.name,
+                  provider,
+                  external_id: pending.file.id,
+                  external_url: pending.file.url,
+                  doc_type: docType,
+                  mime_type: pending.file.mimeType,
+                  thumbnail_url: pending.file.iconUrl || null,
+                }),
+              });
+            } catch (docError) {
+              console.error('Error vinculando documento:', docError);
+            }
+          }
+        }
+
         onIssueCreated(data.issue);
         handleClose();
       }
@@ -517,18 +575,106 @@ export default function CreateIssueModal({
   // Toggle label
   const toggleLabel = (labelId: string) => {
     setSelectedLabels(prev => 
-      prev.includes(labelId) 
+      prev.includes(labelId)
         ? prev.filter(id => id !== labelId)
         : [...prev, labelId]
     );
   };
 
+  // ─── Document handlers ──────────────────────────────
+
+  const handleDocPickerSelect = (file: PickedFile) => {
+    setDocPickerOpen(false);
+    if (pendingDocuments.some((d) => d.file.id === file.id)) return;
+    setPendingDocuments((prev) => [...prev, { file, source: 'picker' }]);
+  };
+
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setDocUploading(true);
+    try {
+      const tokenFromStorage = localStorage.getItem('accessToken');
+      const tokenRes = await fetch('/api/auth/google/token', {
+        headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
+      });
+      if (!tokenRes.ok) { alert('No se pudo acceder a Google. Reconecta tu cuenta.'); return; }
+      const { accessToken } = await tokenRes.json();
+      const uploaded = await uploadFileToDrive(file, accessToken);
+      if (!uploaded) { alert('Error al subir el archivo a Drive.'); return; }
+      const pickedFile: PickedFile = {
+        id: uploaded.id,
+        name: uploaded.name,
+        url: uploaded.webViewLink,
+        mimeType: uploaded.mimeType,
+      };
+      setPendingDocuments((prev) => [...prev, { file: pickedFile, source: 'upload' }]);
+    } catch (err) {
+      console.error('Error subiendo archivo:', err);
+    } finally {
+      setDocUploading(false);
+      if (docFileInputRef.current) docFileInputRef.current.value = '';
+    }
+  };
+
+  const handleDocPasteUrl = async () => {
+    setDocUrlError('');
+    const parsed = parseGoogleUrl(docUrlValue.trim());
+    if (!parsed) { setDocUrlError('URL no válida. Usa un enlace de Google Docs, Sheets, Slides o Drive.'); return; }
+    setDocLinkingUrl(true);
+    try {
+      let fileName = 'Documento de Google';
+      let mimeType = parsed.mimeType;
+      try {
+        const tokenFromStorage = localStorage.getItem('accessToken');
+        const tokenRes = await fetch('/api/auth/google/token', {
+          headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
+        });
+        if (tokenRes.ok) {
+          const { accessToken } = await tokenRes.json();
+          const metaRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${parsed.fileId}?fields=name,mimeType`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (metaRes.ok) {
+            const meta = await metaRes.json();
+            fileName = meta.name || fileName;
+            if (!mimeType && meta.mimeType) mimeType = meta.mimeType;
+          }
+        }
+      } catch { /* usa defaults */ }
+
+      const pickedFile: PickedFile = {
+        id: parsed.fileId,
+        name: fileName,
+        url: docUrlValue.trim(),
+        mimeType: mimeType || '',
+      };
+      if (!pendingDocuments.some((d) => d.file.id === parsed.fileId)) {
+        setPendingDocuments((prev) => [...prev, { file: pickedFile, source: 'url' }]);
+      }
+      setDocUrlValue('');
+      setShowDocUrlInput(false);
+    } catch (err) {
+      console.error('Error vinculando URL:', err);
+      setDocUrlError('Error al procesar la URL.');
+    } finally {
+      setDocLinkingUrl(false);
+    }
+  };
+
+  const removePendingDoc = (fileId: string) => {
+    setPendingDocuments((prev) => prev.filter((d) => d.file.id !== fileId));
+  };
+
   if (!isOpen) return null;
 
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
-        <div 
+        <div
+          key="create-issue-modal"
           className="fixed inset-0 flex items-center justify-center p-4"
           style={{ zIndex: 99999 }}
         >
@@ -954,6 +1100,119 @@ export default function CreateIssueModal({
                       )}
                     </div>
                   )}
+
+                  {/* Documentos adjuntos */}
+                  <div className="px-6 pb-4">
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.textPrimary }}>
+                      Documentos
+                    </label>
+
+                    {!google.isConnected ? (
+                      <button
+                        type="button"
+                        onClick={() => google.connect()}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed text-sm transition-colors hover:border-blue-500/50"
+                        style={{ borderColor: colors.border, color: colors.textSecondary }}
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24">
+                          <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                          <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        </svg>
+                        Conectar Google Drive para adjuntar documentos
+                      </button>
+                    ) : (
+                      <>
+                      {/* Botones de adjuntar */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <input ref={docFileInputRef} type="file" className="hidden" onChange={handleDocFileUpload} />
+                        <button
+                          type="button"
+                          onClick={() => docFileInputRef.current?.click()}
+                          disabled={docUploading}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border"
+                          style={{ borderColor: colors.border, color: colors.textSecondary }}
+                        >
+                          {docUploading ? (
+                            <div className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                          ) : (
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                          )}
+                          Subir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowDocUrlInput(!showDocUrlInput)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border"
+                          style={{
+                            borderColor: showDocUrlInput ? '#3B82F6' : colors.border,
+                            color: showDocUrlInput ? '#3B82F6' : colors.textSecondary,
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                          URL
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDocPickerOpen(true)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          Drive
+                        </button>
+                      </div>
+
+                      {/* URL input */}
+                      <AnimatePresence>
+                        {showDocUrlInput && (
+                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden mb-2">
+                            <div className="flex items-center gap-2 p-2 rounded-lg border" style={{ backgroundColor: isDark ? '#0F1419' : '#F9FAFB', borderColor: colors.border }}>
+                              <input
+                                type="url"
+                                value={docUrlValue}
+                                onChange={(e) => { setDocUrlValue(e.target.value); setDocUrlError(''); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleDocPasteUrl(); } }}
+                                placeholder="URL de Google Docs, Sheets o Slides..."
+                                className="flex-1 text-xs bg-transparent outline-none"
+                                style={{ color: colors.textPrimary }}
+                                autoFocus
+                              />
+                              <button onClick={handleDocPasteUrl} disabled={!docUrlValue.trim() || docLinkingUrl}
+                                className="px-2 py-1 rounded-md bg-blue-600 text-white text-xs font-medium disabled:opacity-50">
+                                {docLinkingUrl ? '...' : 'Vincular'}
+                              </button>
+                              <button onClick={() => { setShowDocUrlInput(false); setDocUrlValue(''); setDocUrlError(''); }}
+                                className="p-1 rounded-md" style={{ color: colors.textMuted }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </button>
+                            </div>
+                            {docUrlError && <p className="text-xs text-red-500 mt-1">{docUrlError}</p>}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Documentos pendientes */}
+                      {pendingDocuments.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {pendingDocuments.map((pd) => (
+                            <div
+                              key={pd.file.id}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs"
+                              style={{ borderColor: colors.border, color: colors.textPrimary, backgroundColor: isDark ? '#0F1419' : '#F9FAFB' }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: '#4285F4' }}>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                              </svg>
+                              <span className="truncate max-w-[150px]">{pd.file.name}</span>
+                              <button onClick={() => removePendingDoc(pd.file.id)} className="p-0.5 rounded hover:bg-red-500/10 hover:text-red-500 transition-colors" style={{ color: colors.textMuted }}>
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {/* Footer */}
@@ -977,6 +1236,14 @@ export default function CreateIssueModal({
           </motion.div>
         </div>
       )}
+
     </AnimatePresence>
+    {/* Google Drive Picker */}
+    <GoogleDrivePicker
+      isOpen={docPickerOpen}
+      onSelect={handleDocPickerSelect}
+      onCancel={() => setDocPickerOpen(false)}
+    />
+    </>
   );
 }

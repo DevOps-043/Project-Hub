@@ -69,7 +69,8 @@ interface LoginResponse {
 export async function POST(request: NextRequest) {
   try {
     const body: LoginRequest = await request.json();
-    const { email, password } = body;
+    const email = body.email?.trim();
+    const { password } = body;
 
     // Validaciones básicas
     if (!email || !password) {
@@ -77,6 +78,25 @@ export async function POST(request: NextRequest) {
         { error: 'Email y contraseña son requeridos' },
         { status: 400 }
       );
+    }
+
+    // Si contiene '@', tratar como email
+    if (email.includes('@')) {
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(email)) {
+        return NextResponse.json(
+          { error: 'Formato de correo inválido' },
+          { status: 400 }
+        );
+      }
+    } else {
+      const usernameRegex = /^[a-zA-Z0-9_-]{3,20}$/;
+      if (!usernameRegex.test(email)) {
+        return NextResponse.json(
+          { error: 'Formato de usuario inválido' },
+          { status: 400 }
+        );
+      }
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -93,10 +113,15 @@ export async function POST(request: NextRequest) {
         // Verificar estado de cuenta en SOFIA
         if (sofiaUser.locked_until) {
           const lockTime = new Date(sofiaUser.locked_until);
-          if (lockTime > new Date()) {
+          const now = new Date();
+          if (lockTime > now) {
+            const secondsLeft = Math.ceil((lockTime.getTime() - now.getTime()) / 1000);
             await logLoginAttempt(email, request, 'account_locked', null);
             return NextResponse.json(
-              { error: 'Cuenta bloqueada temporalmente. Intenta más tarde.' },
+              { 
+                error: 'Cuenta bloqueada temporalmente. Intenta más tarde.',
+                lockoutSeconds: secondsLeft
+              },
               { status: 423 }
             );
           }
@@ -232,11 +257,16 @@ export async function POST(request: NextRequest) {
     // Verificar si la cuenta está bloqueada
     if (accountUser.locked_until) {
       const lockTime = new Date(accountUser.locked_until);
-      if (lockTime > new Date()) {
+      const now = new Date();
+      if (lockTime > now) {
+        const secondsLeft = Math.ceil((lockTime.getTime() - now.getTime()) / 1000);
         loginLog.login_status = 'account_locked';
         await supabaseAdmin.from('auth_login_history').insert(loginLog);
         return NextResponse.json(
-          { error: 'Cuenta bloqueada temporalmente. Intenta más tarde.' },
+          { 
+            error: 'Cuenta bloqueada temporalmente. Intenta más tarde.',
+            lockoutSeconds: secondsLeft
+          },
           { status: 423 }
         );
       }

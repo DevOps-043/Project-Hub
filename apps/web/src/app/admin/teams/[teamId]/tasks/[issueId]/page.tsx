@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { IssueDocumentsView } from '@/components/tasks/IssueDocumentsView';
 
 // Types
 interface Status {
@@ -396,6 +397,11 @@ export default function IssueDetailPage() {
                   Sin descripción
                 </p>
               )}
+            </div>
+
+            {/* Documents Section */}
+            <div className="mb-8 border-t pt-8" style={{ borderColor: colors.border }}>
+              <IssueDocumentsView issueId={issueId} teamId={teamId} />
             </div>
 
             {/* Activity Section */}

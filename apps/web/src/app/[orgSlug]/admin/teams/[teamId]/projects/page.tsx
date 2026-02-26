@@ -457,7 +457,7 @@ export default function TeamProjectsPage() {
                 transition={{ delay: index * 0.03 }}
               >
                 <Link
-                  href={`/admin/projects/${project.project_id}`}
+                  href={`/${orgSlug}/admin/projects/${project.project_id}`}
                   className="flex items-center gap-4 p-4 rounded-xl border transition-all hover:border-white/20 hover:bg-white/5"
                   style={{ borderColor: colors.border }}
                 >

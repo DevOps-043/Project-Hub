@@ -16,6 +16,7 @@ interface Project {
 
 interface ProjectBoardViewProps {
   projects: Project[];
+  basePath?: string;
 }
 
 const COLUMN_CONFIG = [
@@ -25,7 +26,7 @@ const COLUMN_CONFIG = [
   { id: 'cancelled', label: 'Canceled', color: '#EF4444' }, // red-500
 ];
 
-export function ProjectBoardView({ projects }: ProjectBoardViewProps) {
+export function ProjectBoardView({ projects, basePath = '/admin' }: ProjectBoardViewProps) {
   const router = useRouter();
   const { isDark } = useTheme();
 
@@ -78,7 +79,7 @@ export function ProjectBoardView({ projects }: ProjectBoardViewProps) {
             {col.items.map(project => (
               <div
                 key={project.project_id}
-                onClick={() => router.push(`/admin/projects/${project.project_id}`)}
+                onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}
                 className={`group relative ${cardBg} border ${cardBorder} p-3 rounded-lg ${cardShadow} ${cardHoverBorder} transition-all cursor-pointer flex flex-col gap-2`}
               >
                 <div className="flex items-start justify-between">

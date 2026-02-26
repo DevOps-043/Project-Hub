@@ -57,6 +57,7 @@ interface AuthState {
     error: string | null;
     authSource: 'sofia' | 'local' | null;
     workspaces: WorkspaceInfo[];
+    lockoutTimer: number;
 
     // Actions
     login: (credentials: LoginCredentials) => Promise<void>;
@@ -67,6 +68,7 @@ interface AuthState {
     clearError: () => void;
     setUser: (user: User | null) => void;
     setWorkspaces: (workspaces: WorkspaceInfo[]) => void;
+    setLockoutTimer: (seconds: number) => void;
     initialize: () => Promise<void>;
 }
 
@@ -92,6 +94,7 @@ export const useAuthStore = create<AuthState>()(
             error: null,
             authSource: null,
             workspaces: [],
+            lockoutTimer: 0,
 
             // Initialize - verificar sesión existente al cargar la app
             initialize: async () => {
@@ -132,6 +135,9 @@ export const useAuthStore = create<AuthState>()(
                     const data = await res.json();
 
                     if (!res.ok) {
+                        if (res.status === 423 && data.lockoutSeconds) {
+                            set({ lockoutTimer: data.lockoutSeconds, isLoading: false });
+                        }
                         throw new Error(data.error || 'Error al iniciar sesión');
                     }
 
@@ -145,8 +151,12 @@ export const useAuthStore = create<AuthState>()(
                         error: null,
                         authSource: data.authSource || 'local',
                         workspaces: data.workspaces || [],
+                        lockoutTimer: 0, // Resetear al entrar
                     });
                 } catch (error: unknown) {
+                    // Ver si el error es de tipo lockout
+                    // El manejo de 423 ya se hace en el bloque `if (!res.ok)`
+                    // Si se lanza un error desde allí, se capturará aquí.
                     const errorMessage =
                         error instanceof Error ? error.message : 'Error al iniciar sesión';
                     set({
@@ -314,6 +324,9 @@ export const useAuthStore = create<AuthState>()(
 
             setWorkspaces: (workspaces: WorkspaceInfo[]) =>
                 set({ workspaces }),
+
+            setLockoutTimer: (seconds: number) =>
+                set({ lockoutTimer: Math.max(0, seconds) }),
         }),
         {
             name: 'auth-storage',
@@ -322,6 +335,7 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: state.isAuthenticated,
                 authSource: state.authSource,
                 workspaces: state.workspaces,
+                lockoutTimer: state.lockoutTimer,
             }),
         }
     )

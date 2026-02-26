@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useGoogleConnection } from '@/shared/hooks/useGoogleConnection';
+import { GoogleDrivePicker } from '@/components/google/GoogleDrivePicker';
+import type { PickedFile } from '@/components/google/GoogleDrivePicker';
+import { classifyGoogleFile, parseGoogleUrl, uploadFileToDrive } from '@/lib/google/document-utils';
 
 // ============================================
 // TYPES
@@ -300,6 +304,23 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
+  // Document attachment state
+  const google = useGoogleConnection();
+  const [pendingDocuments, setPendingDocuments] = useState<PickedFile[]>([]);
+  const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const [docUploading, setDocUploading] = useState(false);
+  const [showDocUrlInput, setShowDocUrlInput] = useState(false);
+  const [docUrlValue, setDocUrlValue] = useState('');
+  const [docUrlError, setDocUrlError] = useState('');
+  const [docLinkingUrl, setDocLinkingUrl] = useState(false);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
+
+  // AI auto-generation state
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [aiProgress, setAiProgress] = useState('');
+  const [aiResult, setAiResult] = useState<{ count: number; issues: any[] } | null>(null);
+  const [showAiResult, setShowAiResult] = useState(false);
+
   // Fetch teams and users
   useEffect(() => {
     if (isOpen) {
@@ -370,16 +391,102 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
           start_date: startDate || null,
           target_date: targetDate || null,
           created_by_user_id: currentUserId,
-          target_date: targetDate || null,
-          created_by_user_id: currentUserId,
           tags: labels,
-          milestones: milestones // Add milestones to payload
+          milestones: milestones
         })
       });
 
+      const resData = await res.json();
+
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error al crear proyecto');
+        throw new Error(resData.error || 'Error al crear proyecto');
+      }
+
+      const newProjectId = resData.project?.project_id || resData.project_id;
+
+      // Vincular documentos pendientes al proyecto creado
+      if (pendingDocuments.length > 0 && newProjectId) {
+        const docApiBase = workspaceSlug
+          ? `/api/workspaces/${workspaceSlug}/projects/${newProjectId}/documents`
+          : `/api/admin/projects/${newProjectId}/documents`;
+
+        for (const file of pendingDocuments) {
+          const { provider, docType } = classifyGoogleFile(file.mimeType);
+          try {
+            await fetch(docApiBase, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({
+                name: file.name,
+                provider,
+                external_id: file.id,
+                external_url: file.url,
+                doc_type: docType,
+                mime_type: file.mimeType,
+                thumbnail_url: file.iconUrl || null,
+              }),
+            });
+          } catch (docError) {
+            console.error('Error vinculando documento al proyecto:', docError);
+          }
+        }
+
+        // Auto-generate issues from documents if team is assigned
+        const resolvedTeamId = teamId || initialTeamId;
+        if (resolvedTeamId && newProjectId) {
+          setAiAnalyzing(true);
+          setAiProgress('Analizando documentos con IA...');
+          try {
+            const analyzeRes = await fetch('/api/ai/analyze-documents', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({
+                projectId: newProjectId,
+                teamId: resolvedTeamId,
+                documents: pendingDocuments.map((d) => ({
+                  external_id: d.id,
+                  mime_type: d.mimeType,
+                  name: d.name,
+                })),
+              }),
+            });
+
+            const analyzeData = await analyzeRes.json();
+
+            if (analyzeRes.ok && analyzeData.count > 0) {
+              setAiResult({ count: analyzeData.count, issues: analyzeData.issues || [] });
+              setAiProgress(`Se crearon ${analyzeData.count} tareas automáticamente`);
+              setShowAiResult(true);
+              // Wait for user to see result before closing
+              onSuccess?.();
+              return;
+            } else {
+              setAiProgress(analyzeData.message || 'No se detectaron tareas en los documentos.');
+              // Auto-close after showing message
+              setTimeout(() => {
+                setAiAnalyzing(false);
+                onSuccess?.();
+                handleClose();
+              }, 2000);
+              return;
+            }
+          } catch (aiError) {
+            console.error('Error en análisis IA:', aiError);
+            setAiProgress('Error al analizar documentos. El proyecto fue creado correctamente.');
+            setTimeout(() => {
+              setAiAnalyzing(false);
+              onSuccess?.();
+              handleClose();
+            }, 2000);
+            return;
+          }
+        }
       }
 
       onSuccess?.();
@@ -402,13 +509,20 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
     setLeadId(null);
     setTeamId(null);
     setStartDate('');
-    setStartDate('');
     setTargetDate('');
     setLabels([]);
     setMilestones([]);
     setShowMilestoneForm(false);
     setNewMilestoneName('');
     setNewMilestoneDesc('');
+    setPendingDocuments([]);
+    setDocUrlValue('');
+    setDocUrlError('');
+    setShowDocUrlInput(false);
+    setAiAnalyzing(false);
+    setAiProgress('');
+    setAiResult(null);
+    setShowAiResult(false);
     setError(null);
     onClose();
   };
@@ -427,11 +541,96 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
   const selectedTeam = teams.find(t => (t.id || t.team_id) === teamId);
   const selectedLead = users.find(u => u.id === leadId);
 
+  // ─── Document handlers ──────────────────────────────
+
+  const handleDocPickerSelect = (file: PickedFile) => {
+    setDocPickerOpen(false);
+    if (pendingDocuments.some((d) => d.id === file.id)) return;
+    setPendingDocuments((prev) => [...prev, file]);
+  };
+
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setDocUploading(true);
+    try {
+      const tokenFromStorage = localStorage.getItem('accessToken');
+      const tokenRes = await fetch('/api/auth/google/token', {
+        headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
+      });
+      if (!tokenRes.ok) { alert('No se pudo acceder a Google. Reconecta tu cuenta.'); return; }
+      const { accessToken } = await tokenRes.json();
+      const uploaded = await uploadFileToDrive(file, accessToken);
+      if (!uploaded) { alert('Error al subir el archivo a Drive.'); return; }
+      setPendingDocuments((prev) => [...prev, {
+        id: uploaded.id,
+        name: uploaded.name,
+        url: uploaded.webViewLink,
+        mimeType: uploaded.mimeType,
+      }]);
+    } catch (err) {
+      console.error('Error subiendo archivo:', err);
+    } finally {
+      setDocUploading(false);
+      if (docFileInputRef.current) docFileInputRef.current.value = '';
+    }
+  };
+
+  const handleDocPasteUrl = async () => {
+    setDocUrlError('');
+    const parsed = parseGoogleUrl(docUrlValue.trim());
+    if (!parsed) { setDocUrlError('URL no válida.'); return; }
+    setDocLinkingUrl(true);
+    try {
+      let fileName = 'Documento de Google';
+      let mimeType = parsed.mimeType;
+      try {
+        const tokenFromStorage = localStorage.getItem('accessToken');
+        const tokenRes = await fetch('/api/auth/google/token', {
+          headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
+        });
+        if (tokenRes.ok) {
+          const { accessToken } = await tokenRes.json();
+          const metaRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${parsed.fileId}?fields=name,mimeType`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (metaRes.ok) {
+            const meta = await metaRes.json();
+            fileName = meta.name || fileName;
+            if (!mimeType && meta.mimeType) mimeType = meta.mimeType;
+          }
+        }
+      } catch { /* usa defaults */ }
+
+      if (!pendingDocuments.some((d) => d.id === parsed.fileId)) {
+        setPendingDocuments((prev) => [...prev, {
+          id: parsed.fileId,
+          name: fileName,
+          url: docUrlValue.trim(),
+          mimeType: mimeType || '',
+        }]);
+      }
+      setDocUrlValue('');
+      setShowDocUrlInput(false);
+    } catch (err) {
+      console.error('Error vinculando URL:', err);
+      setDocUrlError('Error al procesar la URL.');
+    } finally {
+      setDocLinkingUrl(false);
+    }
+  };
+
+  const removePendingDoc = (fileId: string) => {
+    setPendingDocuments((prev) => prev.filter((d) => d.id !== fileId));
+  };
+
   if (!isOpen) return null;
 
   return (
+    <>
     <AnimatePresence>
-      <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 99999 }}>
+      <div key="create-project-modal" className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 99999 }}>
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -875,6 +1074,118 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
               )}
             </div>
 
+            {/* Documentos adjuntos */}
+            <div className="mt-6">
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.textPrimary }}>
+                Documentos
+              </label>
+
+              {!google.isConnected ? (
+                <button
+                  type="button"
+                  onClick={() => google.connect()}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed text-sm transition-colors hover:border-blue-500/50"
+                  style={{ borderColor: colors.border, color: colors.textSecondary }}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                    <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  </svg>
+                  Conectar Google Drive para adjuntar documentos
+                </button>
+              ) : (
+                <>
+                <div className="flex items-center gap-2 mb-2">
+                  <input ref={docFileInputRef} type="file" className="hidden" onChange={handleDocFileUpload} />
+                  <button
+                    type="button"
+                    onClick={() => docFileInputRef.current?.click()}
+                    disabled={docUploading}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border"
+                    style={{ borderColor: colors.border, color: colors.textSecondary }}
+                  >
+                    {docUploading ? (
+                      <div className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    )}
+                    Subir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDocUrlInput(!showDocUrlInput)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border"
+                    style={{
+                      borderColor: showDocUrlInput ? '#3B82F6' : colors.border,
+                      color: showDocUrlInput ? '#3B82F6' : colors.textSecondary,
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    URL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDocPickerOpen(true)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Drive
+                  </button>
+                </div>
+
+                {/* URL input */}
+                <AnimatePresence>
+                  {showDocUrlInput && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden mb-2">
+                      <div className="flex items-center gap-2 p-2 rounded-lg border" style={{ backgroundColor: isDark ? '#0F1419' : '#F9FAFB', borderColor: colors.border }}>
+                        <input
+                          type="url"
+                          value={docUrlValue}
+                          onChange={(e) => { setDocUrlValue(e.target.value); setDocUrlError(''); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleDocPasteUrl(); } }}
+                          placeholder="URL de Google Docs, Sheets o Slides..."
+                          className="flex-1 text-xs bg-transparent outline-none"
+                          style={{ color: colors.textPrimary }}
+                          autoFocus
+                        />
+                        <button onClick={handleDocPasteUrl} disabled={!docUrlValue.trim() || docLinkingUrl}
+                          className="px-2 py-1 rounded-md bg-blue-600 text-white text-xs font-medium disabled:opacity-50">
+                          {docLinkingUrl ? '...' : 'Vincular'}
+                        </button>
+                        <button onClick={() => { setShowDocUrlInput(false); setDocUrlValue(''); setDocUrlError(''); }}
+                          className="p-1 rounded-md" style={{ color: colors.textMuted }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
+                      {docUrlError && <p className="text-xs text-red-500 mt-1">{docUrlError}</p>}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Documentos pendientes */}
+                {pendingDocuments.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {pendingDocuments.map((file) => (
+                      <div
+                        key={file.id}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs"
+                        style={{ borderColor: colors.border, color: colors.textPrimary, backgroundColor: isDark ? '#0F1419' : '#F9FAFB' }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: '#4285F4' }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <span className="truncate max-w-[150px]">{file.name}</span>
+                        <button onClick={() => removePendingDoc(file.id)} className="p-0.5 rounded hover:bg-red-500/10 hover:text-red-500 transition-colors" style={{ color: colors.textMuted }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                </>
+              )}
+            </div>
+
             {/* Error Message */}
             {error && (
               <div className="mt-4 p-3 rounded-xl text-sm" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444' }}>
@@ -883,8 +1194,73 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
             )}
           </div>
 
+          {/* AI Analysis Progress/Result */}
+          <AnimatePresence>
+            {(aiAnalyzing || showAiResult) && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="px-6 py-4 border-t"
+                style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border }}
+              >
+                {aiAnalyzing && !showAiResult && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 h-5 border-2 border-[#00D4B3]/30 border-t-[#00D4B3] rounded-full animate-spin" />
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: colors.textPrimary }}>{aiProgress}</p>
+                      <p className="text-xs mt-0.5" style={{ color: colors.textMuted }}>Gemini está analizando los documentos para detectar tareas...</p>
+                    </div>
+                  </div>
+                )}
+                {showAiResult && aiResult && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" className="flex-shrink-0">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                      </svg>
+                      <p className="text-sm font-medium" style={{ color: '#10B981' }}>
+                        {aiResult.count} {aiResult.count === 1 ? 'tarea creada' : 'tareas creadas'} automáticamente
+                      </p>
+                    </div>
+                    <div className="max-h-[200px] overflow-y-auto space-y-1.5">
+                      {aiResult.issues.slice(0, 10).map((issue: any, idx: number) => (
+                        <div key={issue.issue_id || idx} className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }}>
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', color: colors.textMuted }}>
+                            {issue.identifier || `#${idx + 1}`}
+                          </span>
+                          <span className="truncate" style={{ color: colors.textPrimary }}>{issue.title}</span>
+                          {issue.priority && (
+                            <span className="ml-auto flex-shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: issue.priority?.color || '#6B7280' }} />
+                          )}
+                          {issue.assignee && (
+                            <span className="flex-shrink-0 text-[10px]" style={{ color: colors.textMuted }}>
+                              {issue.assignee.display_name || issue.assignee.first_name}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                      {aiResult.issues.length > 10 && (
+                        <p className="text-xs text-center py-1" style={{ color: colors.textMuted }}>
+                          +{aiResult.issues.length - 10} tareas más
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { onSuccess?.(); handleClose(); }}
+                      className="w-full py-2 rounded-lg text-sm font-medium text-white bg-[#10B981] hover:bg-[#059669] transition-colors"
+                    >
+                      Listo
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Footer */}
-          <div 
+          {!aiAnalyzing && !showAiResult && (
+          <div
             className="flex items-center justify-end gap-3 px-6 py-4 border-t"
             style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border }}
           >
@@ -901,16 +1277,24 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
               onClick={handleSubmit}
               disabled={loading || !projectName.trim()}
               className="px-5 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ 
+              style={{
                 background: '#0A2540',
                 boxShadow: '0 4px 15px rgba(10, 37, 64, 0.3)'
               }}
             >
-              {loading ? 'Creating...' : 'Create project'}
+              {loading ? (aiAnalyzing ? 'Analizando...' : 'Creating...') : (pendingDocuments.length > 0 && teamId ? 'Crear proyecto + generar tareas' : 'Create project')}
             </motion.button>
           </div>
+          )}
         </motion.div>
       </div>
     </AnimatePresence>
+    {/* Google Drive Picker */}
+    <GoogleDrivePicker
+      isOpen={docPickerOpen}
+      onSelect={handleDocPickerSelect}
+      onCancel={() => setDocPickerOpen(false)}
+    />
+    </>
   );
 }

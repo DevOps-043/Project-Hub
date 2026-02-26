@@ -12,6 +12,7 @@ export default function SignUpPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const logoControls = useAnimationControls();
 
@@ -21,11 +22,47 @@ export default function SignUpPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!acceptTerms) return;
+    setLocalError(null);
+
+    if (!acceptTerms) {
+      setLocalError('Debes aceptar los términos y condiciones');
+      return;
+    }
+
+    // Validaciones
+    const nameParts = formData.name.trim().split(/\s+/);
+    if (nameParts.length < 2) {
+      setLocalError('Por favor, ingresa tu nombre completo (Nombre y Apellido)');
+      return;
+    }
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(formData.email)) {
+      setLocalError('Por favor, ingresa un correo electrónico válido');
+      return;
+    }
+
+    if (!passwordChecks.length || !passwordChecks.uppercase || !passwordChecks.number) {
+      setLocalError('La contraseña no cumple con los requisitos mínimos');
+      return;
+    }
+
+    if (!passwordChecks.match) {
+      setLocalError('Las contraseñas no coinciden');
+      return;
+    }
+
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    console.log(formData);
-    setIsLoading(false);
+    try {
+      // Aquí iría la llamada al store de registro si existiera/estuviera implementado
+      // Por ahora mantenemos el simulacro pero con validaciones reales
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      console.log('Registro exitoso:', formData);
+      setIsLoading(false);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Error al registrarse');
+      setIsLoading(false);
+    }
   };
 
   const handleLogoHover = () => {
@@ -78,6 +115,20 @@ export default function SignUpPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Mensaje de error */}
+            {localError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-3 p-4 rounded-lg bg-red-50 border border-red-200"
+              >
+                <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-xs font-bold">!</span>
+                </div>
+                <p className="text-sm text-red-700">{localError}</p>
+              </motion.div>
+            )}
+
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-[#0A2540] dark:text-gray-200 mb-1.5">Nombre completo</label>
               <div className="relative">

@@ -268,15 +268,16 @@ export default function WorkspaceProjectsPage() {
                 loading={loading}
                 error={error}
                 onRefresh={fetchProjects}
+                basePath={`/${workspace.slug}/admin`}
              />
          )}
 
          {currentView === 'board' && (
-             <ProjectBoardView projects={projects as any[]} />
+             <ProjectBoardView projects={projects as any[]} basePath={`/${workspace.slug}/admin`} />
          )}
 
          {currentView === 'timeline' && (
-             <ProjectTimelineView projects={projects as any[]} />
+             <ProjectTimelineView projects={projects as any[]} basePath={`/${workspace.slug}/admin`} />
          )}
       </div>
 

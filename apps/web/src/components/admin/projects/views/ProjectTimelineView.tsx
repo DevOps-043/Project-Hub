@@ -14,6 +14,7 @@ interface Project {
 
 interface ProjectTimelineViewProps {
   projects: Project[];
+  basePath?: string;
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -36,7 +37,7 @@ function getPosition(dateStr: string | null, fallbackDate: string) {
     return (month * CELL_WIDTH) + (day * (CELL_WIDTH / 30));
 }
 
-export function ProjectTimelineView({ projects }: ProjectTimelineViewProps) {
+export function ProjectTimelineView({ projects, basePath = '/admin' }: ProjectTimelineViewProps) {
   const router = useRouter();
   const { isDark } = useTheme();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -102,7 +103,7 @@ export function ProjectTimelineView({ projects }: ProjectTimelineViewProps) {
                  <div 
                     key={project.project_id} 
                     className={`h-12 border-b ${isDark ? 'border-white/5' : 'border-gray-100'} flex items-center px-4 gap-3 cursor-pointer ${isDark ? 'hover:bg-white/[0.03]' : 'hover:bg-gray-50'} transition-colors group`}
-                    onClick={() => router.push(`/admin/projects/${project.project_id}`)}
+                    onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}
                  >
                      <div className="w-2.5 h-2.5 rounded-sm shadow-sm flex-shrink-0" style={{ backgroundColor: project.icon_color || '#3B82F6' }} />
                      <div className="min-w-0">
@@ -154,7 +155,7 @@ export function ProjectTimelineView({ projects }: ProjectTimelineViewProps) {
                              <div key={project.project_id} className="h-12 border-b border-transparent flex items-center relative hover:bg-black/[0.02]">
                                  <div 
                                      className={`absolute h-7 rounded-[4px] shadow-sm border flex items-center px-3 text-xs overflow-hidden whitespace-nowrap cursor-pointer hover:brightness-110 transition-all group ${isDark ? 'text-white border-white/10' : 'text-gray-800 border-black/5'}`}
-                                     onClick={() => router.push(`/admin/projects/${project.project_id}`)}
+                                     onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}
                                      style={{ 
                                          left: `${startX}px`, 
                                          width: `${width}px`,

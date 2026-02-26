@@ -31,6 +31,7 @@ interface ProjectListViewProps {
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  basePath?: string;
 }
 
 // Sub-components helpers
@@ -95,7 +96,7 @@ const TableSkeleton = ({ isDark }: { isDark: boolean }) => (
     </div>
 );
 
-export function ProjectListView({ projects, loading, error, onRefresh }: ProjectListViewProps) {
+export function ProjectListView({ projects, loading, error, onRefresh, basePath = '/admin' }: ProjectListViewProps) {
   const router = useRouter();
   const { isDark } = useTheme();
   
@@ -140,7 +141,7 @@ export function ProjectListView({ projects, loading, error, onRefresh }: Project
           {projects.map((project) => (
             <tr 
               key={project.project_id}
-              onClick={() => router.push(`/admin/projects/${project.project_id}`)}
+              onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}
               className={`border-b ${borderColor} transition-colors ${hoverBg} cursor-pointer group last:border-0`}
             >
               {/* Name */}

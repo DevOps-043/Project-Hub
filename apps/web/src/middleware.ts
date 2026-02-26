@@ -44,10 +44,11 @@ const GUEST_ONLY_PATHS = [
   '/register',
 ];
 
-// Rutas que requieren rol de admin
+// Rutas de página que requieren rol de admin (system-level)
+// Nota: /api/admin/* NO se bloquea aquí porque cada ruta API maneja su propia auth.
+// Las páginas workspace (/[orgSlug]/admin/*) NO coinciden con /admin ya que tienen prefijo de slug.
 const ADMIN_PATHS = [
   '/admin',
-  '/api/admin',
 ];
 
 // Rutas protegidas (requieren auth, no admin) - incluye rutas de org con slug
