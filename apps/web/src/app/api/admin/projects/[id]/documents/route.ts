@@ -26,6 +26,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const supabase = getSupabaseAdmin();
 
+    // Resolver projectId si es Key
+    let finalProjectId = projectId;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+    if (!isUUID) {
+      const { data: pData } = await supabase
+        .from('pm_projects')
+        .select('project_id')
+        .eq('project_key', projectId)
+        .single();
+      if (pData) finalProjectId = pData.project_id;
+    }
+
     const { data: documents, error } = await supabase
       .from('pm_project_documents')
       .select(`
@@ -34,7 +46,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           user_id, first_name, last_name_paternal, display_name, avatar_url
         )
       `)
-      .eq('project_id', projectId)
+      .eq('project_id', finalProjectId)
       .order('created_at', { ascending: false });
 
     if (error) {

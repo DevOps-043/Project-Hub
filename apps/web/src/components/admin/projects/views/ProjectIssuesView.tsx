@@ -4,8 +4,9 @@ import { motion } from 'framer-motion';
 import { useTheme } from '@/contexts/ThemeContext';
 import Link from 'next/link';
 import { 
-    CheckCircle2, Circle, AlertCircle, Search, Filter, User
+    CheckCircle2, Circle, AlertCircle, Search, Filter, User, Plus
 } from 'lucide-react';
+import CreateIssueModal from '@/components/tasks/CreateIssueModal';
 
 interface Issue {
     issue_id: string;
@@ -35,7 +36,7 @@ interface Issue {
     created_at: string;
 }
 
-export function ProjectIssuesView({ projectId }: { projectId: string }) {
+export function ProjectIssuesView({ projectId, teamId, workspaceSlug }: { projectId: string; teamId?: string; workspaceSlug?: string }) {
     const { isDark } = useTheme();
     const colors = isDark ? {
         bg: '#1E2329',
@@ -54,6 +55,7 @@ export function ProjectIssuesView({ projectId }: { projectId: string }) {
     const [issues, setIssues] = useState<Issue[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [showCreateModal, setShowCreateModal] = useState(false);
 
     useEffect(() => {
         const fetchIssues = async () => {
@@ -111,6 +113,15 @@ export function ProjectIssuesView({ projectId }: { projectId: string }) {
                     <Filter size={14} />
                     Vista
                 </button>
+                {teamId && (
+                    <button 
+                        onClick={() => setShowCreateModal(true)}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+                    >
+                        <Plus size={14} />
+                        Nuevo Issue
+                    </button>
+                )}
             </div>
 
             {/* Header */}
@@ -190,6 +201,19 @@ export function ProjectIssuesView({ projectId }: { projectId: string }) {
                     </div>
                 )}
             </div>
+
+            {teamId && (
+                <CreateIssueModal 
+                    isOpen={showCreateModal}
+                    onClose={() => setShowCreateModal(false)}
+                    teamId={teamId}
+                    projectId={projectId}
+                    workspaceSlug={workspaceSlug}
+                    onIssueCreated={(issue) => {
+                        setIssues(prev => [issue, ...prev]);
+                    }}
+                />
+            )}
         </div>
     );
 }

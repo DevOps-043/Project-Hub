@@ -17,6 +17,8 @@ import { es } from 'date-fns/locale';
 import { ProjectUpdatesView } from '@/components/admin/projects/views/ProjectUpdatesView';
 import { ProjectIssuesView } from '@/components/admin/projects/views/ProjectIssuesView';
 import { ProjectDocumentsView } from '@/components/admin/projects/views/ProjectDocumentsView';
+import { ProjectSettingsView } from '@/components/admin/projects/views/ProjectSettingsView';
+import { ProjectCyclesView } from '@/components/admin/projects/views/ProjectCyclesView';
 
 // Status options
 const STATUS_OPTIONS = [
@@ -276,7 +278,7 @@ export default function ProjectDetailPage() {
 
         <div className="flex items-center gap-2">
           <div className={`flex p-1 rounded-lg border ${borderSub} ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
-            {['Overview', 'Updates', 'Issues', 'Documents'].map((tab) => (
+            {['Overview', 'Updates', 'Issues', 'Cycles', 'Documents', 'Settings'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab.toLowerCase())}
@@ -444,7 +446,27 @@ export default function ProjectDetailPage() {
                 transition={{ duration: 0.2 }}
                 className="w-full h-full"
               >
-                  <ProjectIssuesView projectId={project.project_id} />
+                  <ProjectIssuesView 
+                    projectId={project.project_id} 
+                    teamId={project.team_id}
+                    workspaceSlug={project.workspace?.slug}
+                  />
+              </motion.div>
+            )}
+
+            {activeTab === 'cycles' && (
+              <motion.div
+                key="cycles"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ProjectCyclesView
+                  projectId={project.project_id}
+                  teamId={project.team_id || project.team?.team_id}
+                  workspaceSlug={project.workspace?.slug}
+                />
               </motion.div>
             )}
 
@@ -461,6 +483,26 @@ export default function ProjectDetailPage() {
                   projectKey={project.project_key}
                   workspaceSlug={project.workspace?.slug}
                   sheetsTemplateId={project.workspace?.settings?.google_sheets_template_id}
+                  teamId={project.team_id || project.team?.team_id}
+                  onNavigateToIssues={() => setActiveTab('issues')}
+                />
+              </motion.div>
+            )}
+
+            {activeTab === 'settings' && (
+              <motion.div
+                key="settings"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ProjectSettingsView 
+                  project={project} 
+                  onUpdate={updateProject} 
+                  users={users}
+                  teams={teams}
+                  saving={saving}
                 />
               </motion.div>
             )}

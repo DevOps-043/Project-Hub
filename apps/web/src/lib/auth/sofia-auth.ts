@@ -78,6 +78,12 @@ export async function findSofiaUser(emailOrUsername: string): Promise<SofiaUser 
 
     console.log('[SOFIA AUTH] Usuario encontrado en SOFIA:', data.email, '| username:', data.username);
 
+    // Resolver avatar desde múltiples posibles nombres de columna en SofLIA
+    // En SofLIA Learning, la columna es "profile_picture_url"
+    const resolvedAvatar = data.profile_picture_url || data.avatar_url || data.avatar || data.profile_image_url || data.photo_url || null;
+    console.log('[SOFIA AUTH] Avatar resuelto:', resolvedAvatar ? resolvedAvatar.substring(0, 80) + '...' : 'NULL');
+    console.log('[SOFIA AUTH] Campos disponibles:', Object.keys(data).join(', '));
+
     // Mapear columnas de SOFIA (users) al formato SofiaUser
     const mapped: SofiaUser = {
       user_id: data.id || data.user_id,
@@ -89,12 +95,12 @@ export async function findSofiaUser(emailOrUsername: string): Promise<SofiaUser 
       email: data.email,
       password_hash: data.password_hash,
       permission_level: data.permission_level || data.role || 'user',
-      company_role: data.company_role || null,
-      department: data.department || null,
+      company_role: data.company_role || data.bio || null,
+      department: data.department || data.location || null,
       account_status: data.account_status || data.status || 'active',
       is_email_verified: data.is_email_verified ?? true,
       email_verified_at: data.email_verified_at || null,
-      avatar_url: data.avatar_url || data.avatar || null,
+      avatar_url: resolvedAvatar,
       phone_number: data.phone_number || null,
       timezone: data.timezone || 'America/Mexico_City',
       locale: data.locale || 'es-MX',

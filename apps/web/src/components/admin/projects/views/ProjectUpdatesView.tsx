@@ -110,45 +110,66 @@ export function ProjectUpdatesView({ projectId }: { projectId: string }) {
     return (
         <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Input Area */}
-            <div className={`rounded-xl border p-4 shadow-sm transition-all focus-within:ring-2 ring-blue-500/20`}
-                 style={{ backgroundColor: colors.bg, borderColor: colors.border }}>
-                
-                <div className="flex items-center gap-2 mb-4">
-                    <div className="flex p-1 rounded-lg border" style={{ borderColor: colors.border }}>
-                        {(['on_track', 'at_risk', 'off_track'] as const).map(h => (
-                            <button
-                                key={h}
-                                onClick={() => setHealth(h)}
-                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2`}
-                                style={{ 
-                                    backgroundColor: health === h ? `${getHealthColor(h)}15` : 'transparent',
-                                    color: health === h ? getHealthColor(h) : colors.textSec
-                                }}
-                            >
-                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getHealthColor(h) }} />
-                                {getHealthLabel(h)}
-                            </button>
-                        ))}
+            <div 
+                className={`group rounded-2xl border p-1 shadow-lg transition-all duration-300 focus-within:ring-4 focus-within:ring-blue-500/10 focus-within:scale-[1.01]`}
+                style={{ 
+                    backgroundColor: isDark ? 'rgba(30, 35, 41, 0.7)' : '#FFF', 
+                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB',
+                    backdropFilter: 'blur(12px)'
+                }}
+            >
+                <div className="p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="flex p-1 rounded-xl bg-black/5 dark:bg-white/5 border border-white/5">
+                            {(['on_track', 'at_risk', 'off_track'] as const).map(h => (
+                                <button
+                                    key={h}
+                                    onClick={() => setHealth(h)}
+                                    className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 flex items-center gap-2 relative ${
+                                        health === h ? 'shadow-sm translate-y-[-1px]' : 'hover:bg-black/5 dark:hover:bg-white/5 opacity-60 hover:opacity-100'
+                                    }`}
+                                    style={{ 
+                                        backgroundColor: health === h ? getHealthColor(h) : 'transparent',
+                                        color: health === h ? '#FFF' : colors.textSec
+                                    }}
+                                >
+                                    {health === h && (
+                                        <motion.div 
+                                            layoutId="health-pill"
+                                            className="absolute inset-0 rounded-lg -z-10"
+                                            transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                        />
+                                    )}
+                                    <div className={`w-2 h-2 rounded-full transition-transform ${health === h ? 'bg-white scale-125' : ''}`} 
+                                         style={{ backgroundColor: health === h ? 'white' : getHealthColor(h) }} />
+                                    {getHealthLabel(h)}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                </div>
 
-                <textarea
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder="Write a project update..."
-                    className="w-full h-32 bg-transparent resize-none outline-none text-base placeholder-opacity-50"
-                    style={{ color: colors.text }}
-                />
+                    <textarea
+                        value={content}
+                        onChange={(e) => setContent(e.target.value)}
+                        placeholder="Write a project update..."
+                        className="w-full h-32 bg-transparent resize-none outline-none text-base placeholder:text-gray-500/50 leading-relaxed scrollbar-hide"
+                        style={{ color: colors.text }}
+                    />
 
-                <div className="flex justify-end pt-2 border-t mt-2" style={{ borderColor: colors.border }}>
-                    <button
-                        onClick={handlePost}
-                        disabled={!content.trim() || posting}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-colors"
-                    >
-                        {posting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-                        Post Update
-                    </button>
+                    <div className="flex items-center justify-between pt-4 mt-2 border-t border-white/5">
+                        <div className="text-[10px] uppercase tracking-wider font-bold opacity-30 px-1">
+                            {content.length} characters
+                        </div>
+                        <button
+                            onClick={handlePost}
+                            disabled={!content.trim() || posting}
+                            className="group/btn relative flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm transition-all active:scale-95 overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700" />
+                            {posting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} className="group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" />}
+                            <span>Post Update</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -181,33 +202,49 @@ export function ProjectUpdatesView({ projectId }: { projectId: string }) {
                             </span>
                         </div>
 
-                        <div className={`p-6 rounded-2xl border ${isDark ? 'bg-white/5' : 'bg-white'} shadow-sm`}
-                             style={{ borderColor: colors.border }}>
+                        <div className={`group p-6 rounded-2xl border transition-all duration-300 hover:shadow-xl hover:scale-[1.01] ${isDark ? 'bg-white/5' : 'bg-white'} shadow-sm`}
+                             style={{ 
+                                 borderColor: colors.border,
+                                 backdropFilter: isDark ? 'blur(10px)' : 'none'
+                             }}>
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-xs text-white font-bold">
-                                    {update.author.first_name?.[0]}
+                                <div className="relative">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-sm text-white font-bold shadow-lg ring-2 ring-white/10">
+                                        {update.author.first_name?.[0]}
+                                    </div>
+                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-[#1E2329] flex items-center justify-center bg-green-500">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                    </div>
                                 </div>
                                 <div>
-                                    <div className="text-sm font-medium" style={{ color: colors.text }}>
+                                    <div className="text-sm font-bold tracking-tight" style={{ color: colors.text }}>
                                         {update.author.display_name || update.author.first_name}
                                     </div>
-                                    <div className="text-xs opacity-60 flex items-center gap-2">
-                                        created the update • {format(new Date(update.created_at), 'MMM d')}
+                                    <div className="text-[11px] font-medium opacity-50 flex items-center gap-1 uppercase tracking-wider">
+                                        <span>Update •</span>
+                                        <span>{format(new Date(update.created_at), 'MMM d, p')}</span>
                                     </div>
                                 </div>
-                                <div className="ml-auto px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1.5"
+                                <div className="ml-auto px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all group-hover:shadow-inner"
                                      style={{ 
                                          borderColor: `${getHealthColor(update.health_status_snapshot)}30`,
                                          color: getHealthColor(update.health_status_snapshot),
                                          backgroundColor: `${getHealthColor(update.health_status_snapshot)}10`
                                      }}>
-                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getHealthColor(update.health_status_snapshot) }} />
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getHealthColor(update.health_status_snapshot) }} />
                                     {getHealthLabel(update.health_status_snapshot)}
                                 </div>
                             </div>
                             
                             <div className="prose prose-sm max-w-none dark:prose-invert">
-                                <p className="whitespace-pre-line leading-relaxed opacity-90">{update.update_content}</p>
+                                <div className="whitespace-pre-line leading-relaxed text-sm opacity-90" style={{ color: colors.text }}>
+                                    {update.update_content}
+                                </div>
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                <button className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity">Edit</button>
+                                <button className="text-[10px] font-bold uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity text-red-500">Delete</button>
                             </div>
                         </div>
                     </motion.div>

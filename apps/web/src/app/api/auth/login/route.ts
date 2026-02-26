@@ -368,18 +368,33 @@ async function syncSofiaUserToIris(sofiaUser: any): Promise<AccountUser> {
 
   if (existingUser) {
     // Actualizar datos del usuario existente con los de SOFIA
+    const updateData: Record<string, any> = {
+      first_name: sofiaUser.first_name,
+      last_name_paternal: sofiaUser.last_name_paternal,
+      last_name_maternal: sofiaUser.last_name_maternal,
+      display_name: sofiaUser.display_name || `${sofiaUser.first_name} ${sofiaUser.last_name_paternal}`,
+      username: sofiaUser.username || existingUser.username,
+      last_login_at: new Date().toISOString(),
+      last_activity_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Sincronizar campos opcionales solo si SOFIA los tiene
+    if (sofiaUser.company_role) updateData.company_role = sofiaUser.company_role;
+    if (sofiaUser.department) updateData.department = sofiaUser.department;
+    if (sofiaUser.phone_number) updateData.phone_number = sofiaUser.phone_number;
+
+    // Solo actualizar avatar si SOFIA tiene uno (no sobrescribir con null)
+    if (sofiaUser.avatar_url) {
+      updateData.avatar_url = sofiaUser.avatar_url;
+      console.log('🖼️ [SYNC] Sincronizando avatar desde SOFIA:', sofiaUser.avatar_url.substring(0, 60) + '...');
+    } else {
+      console.log('🖼️ [SYNC] SOFIA no tiene avatar, manteniendo el existente:', existingUser.avatar_url ? 'tiene' : 'vacío');
+    }
+
     const { data: updatedUser } = await supabaseAdmin
       .from('account_users')
-      .update({
-        first_name: sofiaUser.first_name,
-        last_name_paternal: sofiaUser.last_name_paternal,
-        last_name_maternal: sofiaUser.last_name_maternal,
-        display_name: sofiaUser.display_name || `${sofiaUser.first_name} ${sofiaUser.last_name_paternal}`,
-        avatar_url: sofiaUser.avatar_url,
-        last_login_at: new Date().toISOString(),
-        last_activity_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('user_id', existingUser.user_id)
       .select()
       .single();

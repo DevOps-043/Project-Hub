@@ -294,7 +294,21 @@ export const useAuthStore = create<AuthState>()(
                             }
                             return;
                         }
-                        throw new Error('Error al obtener usuario');
+                        // Para errores transitorios (404, 500, etc), intentar refresh
+                        // Si ya tenemos un usuario en el store, no limpiar la sesión
+                        console.warn(`[AUTH] /auth/me respondió con ${res.status}, intentando recuperar...`);
+                        const currentUser = get().user;
+                        if (currentUser) {
+                            // Mantener la sesión actual, no interrumpir al usuario
+                            console.warn('[AUTH] Manteniendo sesión existente a pesar del error transitorio');
+                            return;
+                        }
+                        // Sin usuario en store, intentar refresh
+                        const refreshed = await get().refreshToken();
+                        if (!refreshed) {
+                            throw new Error('Error al obtener usuario');
+                        }
+                        return;
                     }
 
                     const userData = await res.json();
@@ -309,7 +323,10 @@ export const useAuthStore = create<AuthState>()(
                     });
                 } catch (error) {
                     console.error('Error al obtener usuario:', error);
-                    set({ isAuthenticated: false, user: null });
+                    // Solo limpiar sesión si no hay usuario existente
+                    if (!get().user) {
+                        set({ isAuthenticated: false, user: null });
+                    }
                     throw error;
                 }
             },

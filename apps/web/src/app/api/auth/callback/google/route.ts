@@ -130,6 +130,7 @@ export async function GET(request: NextRequest) {
         provider_avatar_url: profile.picture,
         granted_scopes: [
           'https://www.googleapis.com/auth/drive.file',
+          'https://www.googleapis.com/auth/drive.readonly',
           'https://www.googleapis.com/auth/spreadsheets',
           'https://www.googleapis.com/auth/userinfo.email',
           'https://www.googleapis.com/auth/userinfo.profile',

@@ -14,6 +14,8 @@ import { es } from 'date-fns/locale';
 import { ProjectUpdatesView } from '@/components/admin/projects/views/ProjectUpdatesView';
 import { ProjectIssuesView } from '@/components/admin/projects/views/ProjectIssuesView';
 import { ProjectDocumentsView } from '@/components/admin/projects/views/ProjectDocumentsView';
+import { ProjectSettingsView } from '@/components/admin/projects/views/ProjectSettingsView';
+import { ProjectCyclesView } from '@/components/admin/projects/views/ProjectCyclesView';
 
 interface ProjectDetail {
   project_id: string;
@@ -75,7 +77,7 @@ const PRIORITY_LABELS: Record<string, { label: string; color: string }> = {
   none: { label: 'Sin prioridad', color: '#9CA3AF' },
 };
 
-const TABS = ['Overview', 'Updates', 'Issues', 'Documents'] as const;
+const TABS = ['Overview', 'Updates', 'Issues', 'Cycles', 'Documents', 'Settings'] as const;
 
 export default function WorkspaceProjectDetailPage() {
   const params = useParams();
@@ -92,6 +94,9 @@ export default function WorkspaceProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -121,6 +126,54 @@ export default function WorkspaceProjectDetailPage() {
 
     if (orgSlug && projectId) fetchProject();
   }, [orgSlug, projectId]);
+
+  useEffect(() => {
+    const fetchOptions = async () => {
+      try {
+        const [usersRes, teamsRes] = await Promise.all([
+          fetch(`/api/admin/users?limit=100`),
+          fetch(`/api/admin/teams?limit=50`)
+        ]);
+        if (usersRes.ok) {
+          const data = await usersRes.json();
+          setUsers(data.users || []);
+        }
+        if (teamsRes.ok) {
+          const data = await teamsRes.json();
+          setTeams(data.teams || []);
+        }
+      } catch (e) {
+        console.error('Error fetching options:', e);
+      }
+    };
+    fetchOptions();
+  }, []);
+
+  const updateProject = async (field: string, value: any) => {
+    if (!project) return;
+    
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+
+      const data = await res.json();
+      
+      if (res.ok) {
+        setProject(prev => prev ? { ...prev, ...data.project } : null);
+      } else {
+        alert(data.error || 'Error al actualizar');
+      }
+    } catch (error) {
+      console.error('Error updating project:', error);
+      alert('Error de conexión');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const textMain = isDark ? 'text-white' : 'text-gray-900';
   const textSub = isDark ? 'text-gray-400' : 'text-gray-500';
@@ -313,6 +366,22 @@ export default function WorkspaceProjectDetailPage() {
               </motion.div>
             )}
 
+            {activeTab === 'cycles' && (
+              <motion.div
+                key="cycles"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ProjectCyclesView
+                  projectId={project.project_id}
+                  teamId={project.team?.team_id}
+                  workspaceSlug={orgSlug}
+                />
+              </motion.div>
+            )}
+
             {activeTab === 'documents' && (
               <motion.div
                 key="documents"
@@ -326,6 +395,26 @@ export default function WorkspaceProjectDetailPage() {
                   workspaceSlug={orgSlug}
                   projectKey={project.project_key}
                   sheetsTemplateId={sheetsTemplateId}
+                  teamId={project.team?.team_id}
+                  onNavigateToIssues={() => setActiveTab('issues')}
+                />
+              </motion.div>
+            )}
+
+            {activeTab === 'settings' && (
+              <motion.div
+                key="settings"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ProjectSettingsView
+                  project={project}
+                  onUpdate={updateProject}
+                  users={users}
+                  teams={teams}
+                  saving={saving}
                 />
               </motion.div>
             )}

@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { decryptToken } from '@/lib/auth/token-encryption';
 import { readMultipleDocuments } from '@/lib/google/drive-reader';
 import { generateText } from '@/lib/ai/gemini';
+import { addDays } from 'date-fns';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60 seconds for AI processing
@@ -23,10 +24,19 @@ interface ParsedIssue {
   title: string;
   description: string;
   priority: 'urgent' | 'high' | 'medium' | 'low';
+  status_type: 'backlog' | 'todo' | 'in_progress' | null;
   assignee_name: string | null;
   estimate_points: number | null;
   due_date: string | null;
   labels: string[];
+  cycle_name: string | null;
+}
+
+interface ParsedCycle {
+  name: string;
+  description: string | null;
+  start_date: string;
+  end_date: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -118,8 +128,12 @@ export async function POST(request: NextRequest) {
     const documentContents = await readMultipleDocuments(googleAccessToken, documents);
 
     if (documentContents.length === 0) {
+      // Intentar detectar si fue por error de permisos (403) revisando los logs previos o asumiendo el caso común
       return NextResponse.json(
-        { error: 'No se pudo leer ninguno de los documentos proporcionados.' },
+        { 
+          error: 'No se pudo leer ninguno de los documentos. Por favor, desconecta y vuelve a conectar tu cuenta de Google permitiendo el acceso de lectura.',
+          code: 'GOOGLE_AUTH_REQUIRED'
+        },
         { status: 400 }
       );
     }
@@ -159,7 +173,7 @@ export async function POST(request: NextRequest) {
       if (key === 'low') priorityMap['baja'] = p.priority_id;
     });
 
-    // 5. Obtener estado default del equipo
+    // 5. Obtener estado default del equipo (o crear estados por defecto)
     const { data: defaultStatus } = await supabase
       .from('task_statuses')
       .select('status_id')
@@ -179,11 +193,51 @@ export async function POST(request: NextRequest) {
       defaultStatusId = firstStatus?.status_id;
     }
 
+    // Si no hay estados, crear los default automáticamente
     if (!defaultStatusId) {
-      return NextResponse.json(
-        { error: 'El equipo no tiene estados configurados.' },
-        { status: 400 }
-      );
+      console.log('⚙️ [AI] Creando estados por defecto para equipo:', teamId);
+      const defaultStatuses = [
+        { name: 'Backlog',     status_type: 'backlog',     color: '#6B7280', icon: 'circle-dashed', position: 0, is_default: true,  is_closed: false },
+        { name: 'Todo',        status_type: 'todo',         color: '#3B82F6', icon: 'circle',        position: 1, is_default: false, is_closed: false },
+        { name: 'In Progress', status_type: 'in_progress',  color: '#F59E0B', icon: 'loader',        position: 2, is_default: false, is_closed: false },
+        { name: 'In Review',   status_type: 'in_review',    color: '#8B5CF6', icon: 'eye',           position: 3, is_default: false, is_closed: false },
+        { name: 'Done',        status_type: 'done',        color: '#10B981', icon: 'check-circle',  position: 4, is_default: false, is_closed: true  },
+        { name: 'Cancelled',   status_type: 'cancelled',   color: '#EF4444', icon: 'x-circle',      position: 5, is_default: false, is_closed: true  },
+      ];
+
+      const { data: createdStatuses, error: statusError } = await supabase
+        .from('task_statuses')
+        .insert(defaultStatuses.map(s => ({ ...s, team_id: teamId })))
+        .select('status_id, is_default');
+
+      if (statusError || !createdStatuses?.length) {
+        console.error('❌ [AI] Error creando estados:', statusError);
+        return NextResponse.json(
+          { error: 'No se pudieron crear los estados del equipo. Configúralos manualmente.' },
+          { status: 500 }
+        );
+      }
+
+      defaultStatusId = createdStatuses.find(s => s.is_default)?.status_id || createdStatuses[0].status_id;
+      console.log('✅ [AI] Estados creados exitosamente. Default:', defaultStatusId);
+    }
+
+    // 5.5 Construir mapa status_type -> status_id para asignar estados variados
+    const { data: allTeamStatuses } = await supabase
+      .from('task_statuses')
+      .select('status_id, status_type, is_default')
+      .eq('team_id', teamId)
+      .order('position');
+
+    const statusTypeMap: Record<string, string> = {};
+    (allTeamStatuses || []).forEach((s: any) => {
+      statusTypeMap[s.status_type] = s.status_id;
+    });
+
+    // Asegurar que defaultStatusId esta definido
+    if (!defaultStatusId) {
+      const defaultRow = (allTeamStatuses || []).find((s: any) => s.is_default);
+      defaultStatusId = defaultRow?.status_id || (allTeamStatuses || [])[0]?.status_id;
     }
 
     // 6. Construir prompt para Gemini
@@ -195,112 +249,177 @@ export async function POST(request: NextRequest) {
       ? membersList.map((m) => `- ${m.name} (${m.email}) - Rol: ${m.role}`).join('\n')
       : 'No hay miembros asignados al equipo.';
 
-    const prompt = `Eres un asistente experto en gestión de proyectos. Analiza los siguientes documentos de un proyecto y extrae TODAS las tareas, actividades, entregables o items de trabajo que se describen o se pueden inferir.
+    const today = new Date().toISOString().split('T')[0];
 
-Para cada tarea proporciona:
-- title: título conciso y claro de la tarea (máximo 100 caracteres)
-- description: descripción detallada de lo que se debe hacer, incluyendo criterios de aceptación si los hay
-- priority: nivel de prioridad basado en la urgencia/importancia descrita ("urgent", "high", "medium", "low")
-- assignee_name: nombre EXACTO del miembro del equipo más adecuado para esta tarea basado en su rol, o null si no se puede determinar. IMPORTANTE: usa exactamente los nombres de la lista de miembros.
-- estimate_points: puntos de esfuerzo estimados usando la escala Fibonacci (1, 2, 3, 5, 8, 13). Basa tu estimación en la complejidad descrita.
-- due_date: fecha límite en formato YYYY-MM-DD si se menciona explícitamente en el documento, o null si no se menciona
-- labels: array de etiquetas descriptivas relevantes (ej: ["backend", "diseño", "urgente", "investigación"])
+    const prompt = `Eres SofLIA, un asistente experto en planificación y gestión de proyectos. Analiza los siguientes documentos y genera un plan de trabajo completo con ciclos (fases de trabajo) y tareas.
 
-Miembros disponibles del equipo:
+## QUÉ SON LOS CICLOS
+Los ciclos son **fases o etapas de trabajo** con fechas definidas. Aplican a cualquier tipo de proyecto: empresarial, académico, creativo, técnico, etc. Cada ciclo agrupa tareas relacionadas que deben completarse en ese periodo.
+
+## FORMATO DE RESPUESTA
+Responde ÚNICAMENTE con JSON válido (sin markdown, sin comentarios, sin texto adicional):
+{
+  "cycles": [
+    {
+      "name": "Nombre de la fase/etapa",
+      "description": "Objetivo principal de esta fase",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD"
+    }
+  ],
+  "issues": [
+    {
+      "title": "Título conciso (máx 100 chars)",
+      "description": "Descripción detallada de qué se debe hacer y qué entregable se espera",
+      "priority": "urgent|high|medium|low",
+      "status_type": "backlog|todo|in_progress",
+      "assignee_name": "Nombre exacto del miembro o null",
+      "estimate_points": 3,
+      "due_date": "YYYY-MM-DD o null",
+      "labels": ["etiqueta1", "etiqueta2"],
+      "cycle_name": "Nombre exacto del ciclo o null"
+    }
+  ]
+}
+
+## REGLAS PARA CICLOS
+- Identifica las fases o etapas naturales que los documentos sugieren (ej: "Investigación", "Diseño", "Desarrollo", "Implementación", "Lanzamiento", etc.).
+- Si los documentos no tienen fechas explícitas, genera ciclos lógicos empezando desde la fecha actual (${today}), con duraciones razonables según la complejidad.
+- Las fechas de los ciclos deben ser consecutivas y no solaparse.
+- Cada ciclo debe tener un objetivo/scope claro descrito en su description.
+
+## REGLAS PARA ISSUES (TAREAS)
+- Extrae TODAS las tareas, actividades, entregables o items de trabajo posibles del contenido de los documentos.
+- **status_type**: "todo" para tareas del primer ciclo o listas para comenzar, "backlog" para tareas de ciclos futuros o sin prioridad inmediata, "in_progress" SOLO si el documento indica explícitamente que ya se está trabajando en ello.
+- **priority**: "urgent" para bloqueantes o con fecha límite cercana, "high" para importantes, "medium" para regulares, "low" para mejoras o tareas opcionales.
+- **estimate_points**: Escala Fibonacci - 1 (trivial), 2 (simple), 3 (mediano), 5 (complejo), 8 (muy complejo), 13 (épico).
+- **assignee_name**: Asigna SOLO si puedes inferir claramente quién debería hacerlo. Usa el nombre EXACTO de la lista de miembros. Si no es claro, usa null.
+- **labels**: Etiquetas descriptivas relevantes al contenido (ej: "diseño", "documentación", "investigación", "logística", "comunicación", "presupuesto", etc.).
+- **cycle_name**: DEBE coincidir exactamente con el "name" de un ciclo del array cycles.
+- **due_date**: Debe estar dentro del rango de fechas del ciclo asignado. Si no hay fecha específica, usa null.
+
+## MIEMBROS DEL EQUIPO DISPONIBLES
 ${membersText}
 
-Documentos del proyecto:
+## DOCUMENTOS DEL PROYECTO
 ${documentsText}
 
-INSTRUCCIONES IMPORTANTES:
-1. Extrae TODAS las tareas posibles, incluso las implícitas
-2. Sé específico en las descripciones, no genérico
-3. Si el documento menciona responsables, intenta mapearlos a los miembros del equipo
-4. Las etiquetas deben ser útiles para categorizar el trabajo
-5. Responde ÚNICAMENTE con JSON válido, sin markdown, sin comentarios
-6. Formato exacto de respuesta: {"issues": [...]}
+## FECHA ACTUAL
+${today}
 
-Responde SOLO con el JSON:`;
+Genera el plan completo en JSON válido.`;
 
     // 7. Enviar a Gemini
     const aiResponse = await generateText(prompt);
 
     // 8. Parsear respuesta
     let parsedIssues: ParsedIssue[];
+    let parsedCycles: ParsedCycle[];
     try {
-      // Clean the response - remove markdown code blocks if present
       let cleanResponse = aiResponse.trim();
-      if (cleanResponse.startsWith('```json')) {
-        cleanResponse = cleanResponse.slice(7);
-      } else if (cleanResponse.startsWith('```')) {
-        cleanResponse = cleanResponse.slice(3);
-      }
-      if (cleanResponse.endsWith('```')) {
-        cleanResponse = cleanResponse.slice(0, -3);
-      }
+      if (cleanResponse.startsWith('```json')) cleanResponse = cleanResponse.slice(7);
+      else if (cleanResponse.startsWith('```')) cleanResponse = cleanResponse.slice(3);
+      if (cleanResponse.endsWith('```')) cleanResponse = cleanResponse.slice(0, -3);
       cleanResponse = cleanResponse.trim();
 
       const parsed = JSON.parse(cleanResponse);
       parsedIssues = parsed.issues || [];
+      parsedCycles = parsed.cycles || [];
     } catch (parseError) {
       console.error('Error parsing AI response:', aiResponse);
-      return NextResponse.json(
-        { error: 'La IA generó una respuesta inválida. Intenta de nuevo.' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'La IA generó una respuesta inválida.' }, { status: 500 });
     }
 
-    if (parsedIssues.length === 0) {
-      return NextResponse.json({
-        message: 'No se detectaron tareas en los documentos.',
-        issues: [],
-        count: 0,
-      });
-    }
-
-    // 9. Resolver assignees por nombre
+    // 9. Resolver assignees y ciclos
     const nameToUserId: Record<string, string> = {};
-    membersList.forEach((m) => {
-      nameToUserId[m.name.toLowerCase()] = m.user_id;
-    });
+    membersList.forEach((m) => nameToUserId[m.name.toLowerCase()] = m.user_id);
 
-    // 10. Crear issues en batch
+    // 10. Crear ciclos si no existen
+    const cycleNameToId: Record<string, string> = {};
+
+    // Obtener el max cycle_number actual del equipo
+    const { data: lastCycleData } = await supabase
+      .from('task_cycles')
+      .select('cycle_number')
+      .eq('team_id', teamId)
+      .order('cycle_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let nextCycleNumber = (lastCycleData?.cycle_number || 0) + 1;
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    for (const c of parsedCycles) {
+      // Buscar si ya existe un ciclo con ese nombre en el equipo
+      const { data: existingCycle } = await supabase
+        .from('task_cycles')
+        .select('cycle_id')
+        .eq('team_id', teamId)
+        .eq('name', c.name)
+        .maybeSingle();
+
+      if (existingCycle) {
+        cycleNameToId[c.name.toLowerCase()] = existingCycle.cycle_id;
+      } else {
+        // Determinar fechas con fallback
+        const startDate = c.start_date || todayStr;
+        const endDate = c.end_date || addDays(new Date(startDate), 42).toISOString().split('T')[0];
+
+        // Determinar status basado en fechas
+        let cycleStatus: string;
+        if (startDate > todayStr) {
+          cycleStatus = 'upcoming';
+        } else if (endDate >= todayStr) {
+          cycleStatus = 'active';
+        } else {
+          cycleStatus = 'completed';
+        }
+
+        const { data: newCycle, error: cycleError } = await supabase
+          .from('task_cycles')
+          .insert({
+            team_id: teamId,
+            cycle_number: nextCycleNumber,
+            name: c.name,
+            description: c.description,
+            start_date: startDate,
+            end_date: endDate,
+            status: cycleStatus,
+            created_by: payload.sub,
+          })
+          .select('cycle_id')
+          .single();
+
+        if (cycleError) {
+          console.error('Error creating cycle:', c.name, cycleError);
+          continue;
+        }
+        if (newCycle) {
+          cycleNameToId[c.name.toLowerCase()] = newCycle.cycle_id;
+          nextCycleNumber++;
+        }
+      }
+    }
+
+    // 11. Crear issues en batch
     const createdIssues: any[] = [];
-
     for (const issue of parsedIssues) {
-      // Resolve assignee
       let assigneeId: string | null = null;
       if (issue.assignee_name) {
         const normalizedName = issue.assignee_name.toLowerCase();
         assigneeId = nameToUserId[normalizedName] || null;
-
-        // Try partial match if exact match fails
-        if (!assigneeId) {
-          const match = Object.entries(nameToUserId).find(([name]) =>
-            name.includes(normalizedName) || normalizedName.includes(name)
-          );
-          if (match) assigneeId = match[1];
-        }
       }
 
-      // Resolve priority
       const priorityKey = issue.priority?.toLowerCase() || 'medium';
       const priorityId = priorityMap[priorityKey] || priorityMap['medium'] || null;
 
-      // Validate estimate points
-      const validPoints = [1, 2, 3, 5, 8, 13, 21];
-      const estimatePoints = issue.estimate_points && validPoints.includes(issue.estimate_points)
-        ? issue.estimate_points
-        : null;
+      const cycleId = issue.cycle_name ? cycleNameToId[issue.cycle_name.toLowerCase()] : null;
 
-      // Validate due date
-      let dueDate: string | null = null;
-      if (issue.due_date) {
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (dateRegex.test(issue.due_date)) {
-          dueDate = issue.due_date;
-        }
-      }
+      // Resolver status_id desde el status_type sugerido por la IA
+      const issueStatusType = issue.status_type?.toLowerCase();
+      const resolvedStatusId = (issueStatusType && statusTypeMap[issueStatusType])
+        ? statusTypeMap[issueStatusType]
+        : defaultStatusId;
 
       const { data: created, error } = await supabase
         .from('task_issues')
@@ -308,13 +427,14 @@ Responde SOLO con el JSON:`;
           team_id: teamId,
           title: (issue.title || 'Tarea sin título').substring(0, 500),
           description: issue.description || null,
-          status_id: defaultStatusId,
+          status_id: resolvedStatusId,
           priority_id: priorityId,
           assignee_id: assigneeId,
           project_id: projectId,
+          cycle_id: cycleId,
           creator_id: payload.sub,
-          due_date: dueDate,
-          estimate_points: estimatePoints,
+          due_date: issue.due_date,
+          estimate_points: issue.estimate_points,
           sort_order: 0,
         })
         .select(`
@@ -330,10 +450,9 @@ Responde SOLO con el JSON:`;
         continue;
       }
 
-      // Add labels if any
+      // Labels
       if (issue.labels?.length > 0 && created) {
         for (const labelName of issue.labels) {
-          // Try to find existing label or create new one
           const { data: existingLabel } = await supabase
             .from('task_labels')
             .select('label_id')
@@ -342,54 +461,31 @@ Responde SOLO con el JSON:`;
             .single();
 
           let labelId = existingLabel?.label_id;
-
           if (!labelId) {
-            // Create label
-            const { data: newLabel } = await supabase
-              .from('task_labels')
-              .insert({
-                team_id: teamId,
-                name: labelName.substring(0, 100),
-                color: getRandomLabelColor(),
-                created_by: payload.sub,
-              })
-              .select('label_id')
-              .single();
+            const { data: newLabel } = await supabase.from('task_labels').insert({
+              team_id: teamId,
+              name: labelName.substring(0, 100),
+              color: getRandomLabelColor(),
+              created_by: payload.sub
+            }).select('label_id').single();
             labelId = newLabel?.label_id;
           }
-
           if (labelId) {
-            await supabase
-              .from('task_issue_labels')
-              .insert({ issue_id: created.issue_id, label_id: labelId })
-              .select()
-              .maybeSingle();
+            await supabase.from('task_issue_labels').insert({ issue_id: created.issue_id, label_id: labelId }).maybeSingle();
           }
         }
       }
 
-      if (created) {
-        // Get team slug for identifier
-        const { data: team } = await supabase
-          .from('teams')
-          .select('slug')
-          .eq('team_id', teamId)
-          .single();
-
-        const teamPrefix = team?.slug ? team.slug.toUpperCase() : 'TASK';
-        createdIssues.push({
-          ...created,
-          identifier: `${teamPrefix}-${created.issue_number}`,
-          suggested_labels: issue.labels || [],
-        });
-      }
+      if (created) createdIssues.push(created);
     }
 
+    const cyclesCreatedCount = Object.keys(cycleNameToId).length;
+
     return NextResponse.json({
-      message: `Se crearon ${createdIssues.length} tareas automáticamente.`,
-      issues: createdIssues,
-      count: createdIssues.length,
-      total_detected: parsedIssues.length,
+      message: `SofLIA detectó ${cyclesCreatedCount} ciclos y creó ${createdIssues.length} tareas automáticamente.`,
+      issues_count: createdIssues.length,
+      cycles_count: cyclesCreatedCount,
+      cycles_created: Object.entries(cycleNameToId).map(([name, id]) => ({ name, cycle_id: id })),
     });
   } catch (error) {
     console.error('Error in analyze-documents:', error);

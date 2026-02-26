@@ -15,7 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const { teamId } = await params;
+    let { teamId } = await params;
     
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
@@ -25,6 +25,17 @@ export async function GET(
     const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    }
+
+    // RESOLUCIÓN DE TEAM ID (UUID o Slug)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    if (!isUUID) {
+       const { data: teamData } = await supabaseAdmin
+         .from('teams')
+         .select('team_id')
+         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .single();
+       if (teamData) teamId = teamData.team_id;
     }
 
     const { data: statuses, error } = await supabaseAdmin
@@ -50,7 +61,7 @@ export async function POST(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const { teamId } = await params;
+    let { teamId } = await params;
     
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
@@ -60,6 +71,17 @@ export async function POST(
     const payload = await verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    }
+
+    // RESOLUCIÓN DE TEAM ID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    if (!isUUID) {
+       const { data: teamData } = await supabaseAdmin
+         .from('teams')
+         .select('team_id')
+         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .single();
+       if (teamData) teamId = teamData.team_id;
     }
 
     const body = await request.json();

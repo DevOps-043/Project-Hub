@@ -9,10 +9,21 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const { teamId } = await params;
+    let { teamId } = await params;
 
     if (!teamId) {
       return NextResponse.json({ error: 'Team ID is required' }, { status: 400 });
+    }
+
+    // RESOLUCIÓN DE TEAM ID (UUID o Slug)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    if (!isUUID) {
+       const { data: teamData } = await supabaseAdmin
+         .from('teams')
+         .select('team_id')
+         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .single();
+       if (teamData) teamId = teamData.team_id;
     }
 
     // Fetch cycles with issue counts

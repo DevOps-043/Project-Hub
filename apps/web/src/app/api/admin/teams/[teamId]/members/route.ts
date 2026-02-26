@@ -7,9 +7,20 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   const supabase = getSupabaseAdmin();
-  const { teamId } = await params;
+  let { teamId } = await params;
 
   try {
+    // RESOLUCIÓN DE TEAM ID (UUID o Slug)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    if (!isUUID) {
+       const { data: teamData } = await supabase
+         .from('teams')
+         .select('team_id')
+         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .single();
+       if (teamData) teamId = teamData.team_id;
+    }
+
     // 1. Get Team Details
     const { data: team, error: teamError } = await supabase
       .from('teams')

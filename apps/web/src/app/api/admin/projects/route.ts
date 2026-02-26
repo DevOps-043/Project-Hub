@@ -49,6 +49,19 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
+    let finalTeamId = teamId;
+    if (teamId) {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+      if (!isUUID) {
+        const { data: teamData } = await supabase
+          .from('teams')
+          .select('team_id')
+          .or(`slug.eq.${teamId},name.eq.${teamId}`)
+          .single();
+        if (teamData) finalTeamId = teamData.team_id;
+      }
+    }
+
     // Intentar usar la vista primero, si no existe usar query directa
     let projects: any[] = [];
     let useView = true;
@@ -77,8 +90,8 @@ export async function GET(request: NextRequest) {
       query = query.eq('health_status', health);
     }
 
-    if (teamId) {
-      query = query.eq('team_id', teamId);
+    if (finalTeamId) {
+      query = query.eq('team_id', finalTeamId);
     }
 
     const { data: viewData, error: viewError } = await query;

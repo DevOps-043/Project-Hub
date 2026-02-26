@@ -16,7 +16,10 @@ export async function GET(
     }
 
     // 1. Obtener detalles del proyecto con relaciones
-    const { data: project, error } = await supabaseAdmin
+    // Verificar si es UUID o Key de proyecto
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+    
+    let query = supabaseAdmin
       .from('pm_projects')
       .select(`
         *,
@@ -46,9 +49,15 @@ export async function GET(
           name,
           settings
         )
-      `)
-      .eq('project_id', projectId)
-      .single();
+      `);
+
+    if (isUUID) {
+      query = query.eq('project_id', projectId);
+    } else {
+      query = query.eq('project_key', projectId);
+    }
+
+    const { data: project, error } = await query.single();
 
     if (error) {
       console.error('Error fetching project:', error);

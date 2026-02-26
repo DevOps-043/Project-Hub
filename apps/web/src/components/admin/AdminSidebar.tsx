@@ -692,7 +692,7 @@ function UserProfileMenu({ isCollapsed, basePath }: { isCollapsed: boolean; base
               style={{ background: 'linear-gradient(135deg, #00D4B3 0%, #00A896 100%)' }}
             >
               {user?.avatar ? (
-                <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 getInitials()
               )}

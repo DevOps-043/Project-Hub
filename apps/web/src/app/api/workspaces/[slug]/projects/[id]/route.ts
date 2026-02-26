@@ -29,7 +29,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const supabase = getSupabaseAdmin();
 
     // Obtener proyecto con relaciones
-    const { data: project, error } = await supabase
+    // Verificar si es UUID o Key de proyecto
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+    
+    let query = supabase
       .from('pm_projects')
       .select(`
         *,
@@ -43,9 +46,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           milestone_id, milestone_name, milestone_status,
           due_date:target_date, progress_percentage:sort_order
         )
-      `)
-      .eq('project_id', projectId)
-      .single();
+      `);
+
+    if (isUUID) {
+      query = query.eq('project_id', projectId);
+    } else {
+      query = query.eq('project_key', projectId);
+    }
+
+    const { data: project, error } = await query.single();
 
     if (error || !project) {
       return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 });

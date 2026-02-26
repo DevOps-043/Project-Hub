@@ -15,7 +15,8 @@ import {
 } from '@/lib/google/document-utils';
 import {
   FileSpreadsheet, Link2, Plus, Loader2, X,
-  CloudOff, Upload, LinkIcon,
+  CloudOff, Upload, LinkIcon, Sparkles, CheckCircle,
+  Brain, AlertCircle, ChevronRight, Check
 } from 'lucide-react';
 
 interface ProjectDocumentsViewProps {
@@ -24,9 +25,13 @@ interface ProjectDocumentsViewProps {
   projectKey?: string;
   /** Template ID de Google Sheets del workspace */
   sheetsTemplateId?: string;
+  /** ID del equipo para crear issues con la IA */
+  teamId?: string;
+  /** Callback para navegar al tab de Issues tras generar plan */
+  onNavigateToIssues?: () => void;
 }
 
-export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, sheetsTemplateId }: ProjectDocumentsViewProps) {
+export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, sheetsTemplateId, teamId, onNavigateToIssues }: ProjectDocumentsViewProps) {
   const { isDark } = useTheme();
   const google = useGoogleConnection();
   const colors = isDark ? {
@@ -55,6 +60,11 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
   const [urlValue, setUrlValue] = useState('');
   const [urlError, setUrlError] = useState('');
   const [linkingUrl, setLinkingUrl] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [isSofLIAModalOpen, setIsSofLIAModalOpen] = useState(false);
+  const [scanResult, setScanResult] = useState<{ count: number; message: string } | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [scanPhase, setScanPhase] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Usa ruta workspace si hay slug, sino ruta admin
@@ -333,6 +343,68 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
     }
   };
 
+  // ─── SofLIA AI Scan ────────────────────────────────────────
+  
+  const handleSofLIAScan = () => {
+    if (scanning || documents.length === 0) return;
+    setIsSofLIAModalOpen(true);
+  };
+
+  const executeSofLIAScan = async () => {
+    setScanning(true);
+    setScanResult(null);
+    setScanError(null);
+    setScanPhase(1);
+
+    // Timers para avanzar fases visualmente mientras la API procesa
+    const phaseTimer2 = setTimeout(() => setScanPhase(2), 3000);
+    const phaseTimer3 = setTimeout(() => setScanPhase(3), 8000);
+
+    try {
+      const token = localStorage.getItem('accessToken');
+
+      const res = await fetch('/api/ai/analyze-documents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          projectId,
+          teamId,
+          documents: documents.map(d => ({
+            external_id: d.external_id,
+            mime_type: d.mime_type,
+            name: d.name
+          }))
+        }),
+      });
+
+      clearTimeout(phaseTimer2);
+      clearTimeout(phaseTimer3);
+      setScanPhase(3);
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setScanResult({
+          count: data.issues_count || 0,
+          message: data.message || 'Proceso completado con éxito.'
+        });
+        setIsSofLIAModalOpen(false);
+      } else {
+        setScanError(data.error || 'Error al procesar con SofLIA');
+      }
+    } catch (error) {
+      console.error('Error in SofLIA scan:', error);
+      clearTimeout(phaseTimer2);
+      clearTimeout(phaseTimer3);
+      setScanError('Ocurrió un error inesperado al conectar con SofLIA');
+    } finally {
+      setScanning(false);
+    }
+  };
+
   // ─── Banner: Google no conectado ───────────────────────────
 
   if (!google.isLoading && !google.isConnected) {
@@ -365,70 +437,132 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Header con acciones */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium" style={{ color: colors.textSec }}>
-            {documents.length} documento{documents.length !== 1 ? 's' : ''} vinculado{documents.length !== 1 ? 's' : ''}
-          </h3>
-          {google.isConnected && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/10 text-green-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              {google.googleEmail}
-            </span>
-          )}
+      {/* Mensaje de éxito de Scan */}
+      <AnimatePresence>
+        {scanResult && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="p-4 rounded-xl border border-green-500/20 bg-green-500/5 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-500">
+                <CheckCircle size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-green-500">¡Plan Generado!</p>
+                <p className="text-xs text-green-500/80">{scanResult.message}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {scanResult.count > 0 && onNavigateToIssues && (
+                <button
+                  onClick={() => { setScanResult(null); onNavigateToIssues(); }}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-500/20 text-green-500 text-xs font-medium hover:bg-green-500/30 transition-colors"
+                >
+                  Ver tareas <ChevronRight size={14} />
+                </button>
+              )}
+              <button
+                onClick={() => setScanResult(null)}
+                className="p-2 hover:bg-green-500/10 rounded-lg transition-colors text-green-500"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Header */}
+      <div className="space-y-4">
+        {/* Top row: Info + SofLIA */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
+                <Link2 size={16} style={{ color: colors.textSec }} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: colors.text }}>
+                  {documents.length} documento{documents.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+            </div>
+            {google.isConnected && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                {google.googleEmail}
+              </span>
+            )}
+          </div>
+
+          {/* SofLIA Button - Premium diseño */}
+          <button
+            onClick={handleSofLIAScan}
+            disabled={scanning || documents.length === 0 || !google.isConnected}
+            className="group relative inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97]"
+            style={{
+              background: scanning ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)') : 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+              color: scanning ? colors.textSec : '#FFFFFF',
+              boxShadow: documents.length > 0 && !scanning ? '0 4px 14px rgba(99,102,241,0.25)' : 'none',
+            }}
+          >
+            {scanning ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            <span>SofLIA: Generar Plan</span>
+            {documents.length > 0 && !scanning && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            )}
+          </button>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Subir archivo */}
+
+        {/* Actions toolbar */}
+        <div className="flex items-center gap-2 flex-wrap">
           <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+
+          {/* Botón: Subir */}
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={!google.isConnected || uploading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border disabled:opacity-50"
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all border disabled:opacity-40 ${isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}
             style={{ borderColor: colors.border, color: colors.textSec }}
-            title="Subir archivo a Drive"
           >
             {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-            Subir
+            Subir archivo
           </button>
 
-          {/* Pegar URL */}
+          {/* Botón: URL */}
           <button
             onClick={() => setShowUrlInput(!showUrlInput)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border"
-            style={{
-              borderColor: showUrlInput ? '#3B82F6' : colors.border,
-              color: showUrlInput ? '#3B82F6' : colors.textSec,
-            }}
-            title="Pegar URL de Google"
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all border ${showUrlInput ? 'border-blue-500/50 text-blue-500' : ''} ${!showUrlInput && isDark ? 'hover:bg-white/5' : ''} ${!showUrlInput && !isDark ? 'hover:bg-gray-50' : ''}`}
+            style={!showUrlInput ? { borderColor: colors.border, color: colors.textSec } : {}}
           >
             <LinkIcon size={14} />
-            URL
+            Pegar URL
           </button>
 
-          {/* Crear Sheet */}
+          {/* Botón: Crear Hoja */}
           <button
             onClick={handleCreateSheet}
             disabled={creatingSheet || !google.isConnected}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all border disabled:opacity-40 hover:bg-emerald-500/5"
             style={{
-              borderColor: '#0F9D5830',
-              color: '#0F9D58',
-              backgroundColor: '#0F9D5808',
+              borderColor: isDark ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.3)',
+              color: '#10B981',
             }}
           >
             {creatingSheet ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
             Crear Hoja
           </button>
 
-          {/* Adjuntar desde Drive */}
+          {/* Botón: Drive */}
           <button
             onClick={() => setPickerOpen(true)}
             disabled={!google.isConnected}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-all disabled:opacity-40"
           >
             <Plus size={14} />
-            Drive
+            Google Drive
           </button>
         </div>
       </div>
@@ -512,6 +646,168 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
         onSelect={handlePickerSelect}
         onCancel={() => setPickerOpen(false)}
       />
+
+      {/* MODAL MÁGICO DE SOFLIA */}
+      <AnimatePresence>
+        {isSofLIAModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="w-full max-w-md my-auto overflow-hidden rounded-3xl shadow-2xl border relative"
+              style={{ backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: colors.border }}
+            >
+              {/* Fondo Animado sutil */}
+              <div className="absolute inset-0 opacity-10 pointer-events-none overflow-hidden">
+                <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-full blur-[100px] animate-pulse" />
+              </div>
+
+              <div className="relative p-5 sm:p-6">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6 sm:mb-8">
+                  <div className="flex items-center gap-2.5 sm:gap-3">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20 flex-shrink-0">
+                      <Brain size={20} className="sm:w-6 sm:h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-bold" style={{ color: colors.text }}>Planificación SofLIA</h2>
+                      <p className="text-[10px] sm:text-xs" style={{ color: colors.textSec }}>Inteligencia Artificial Generativa</p>
+                    </div>
+                  </div>
+                  {!scanning && (
+                    <button 
+                      onClick={() => setIsSofLIAModalOpen(false)}
+                      className="p-1.5 sm:p-2 hover:bg-white/10 rounded-full transition-colors"
+                      style={{ color: colors.textSec }}
+                    >
+                      <X size={18} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Contenido principal */}
+                {!scanning ? (
+                  <div className="space-y-4 sm:space-y-6">
+                    <div className="p-4 rounded-2xl border" style={{ borderColor: colors.border, backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }}>
+                      <p className="text-sm mb-4" style={{ color: colors.text }}>
+                        SofLIA analizará <span className="font-bold text-indigo-500">{documents.length} documento(s)</span> para estructurar tu proyecto automáticamente.
+                      </p>
+                      
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-xs">
+                          <span style={{ color: colors.textSec }}>Equipo Asignado:</span>
+                          {teamId ? (
+                            <span className="flex items-center gap-1.5 font-medium px-2 py-1 rounded-lg bg-green-500/10 text-green-500">
+                              <Check size={12} /> Detectado
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1.5 font-medium px-2 py-1 rounded-lg bg-red-500/10 text-red-500">
+                              <AlertCircle size={12} /> No asignado
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <span style={{ color: colors.textSec }}>Acción:</span>
+                          <span style={{ color: colors.text }}>Crear Tareas, Ciclos y Etiquetas</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {!teamId && (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex gap-2">
+                        <AlertCircle className="text-amber-500 flex-shrink-0" size={16} />
+                        <p className="text-[11px] leading-relaxed text-amber-500 font-medium">
+                          El proyecto no tiene un equipo asignado. Asígnalo en Configuración antes de continuar.
+                        </p>
+                      </div>
+                    )}
+
+                    {scanError && (
+                      <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 flex gap-2">
+                        <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
+                        <div>
+                          <p className="text-[11px] leading-relaxed text-red-500 font-medium">
+                            {scanError}
+                          </p>
+                          <button
+                            onClick={() => setScanError(null)}
+                            className="text-[10px] text-red-400 underline mt-1"
+                          >
+                            Cerrar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={() => setIsSofLIAModalOpen(false)}
+                        className="px-4 py-2.5 sm:py-3 rounded-2xl text-sm font-bold transition-all border hover:bg-white/5 active:scale-95"
+                        style={{ color: colors.text, borderColor: colors.border }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={executeSofLIAScan}
+                        disabled={!teamId}
+                        className="px-4 py-2.5 sm:py-3 rounded-2xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/25 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Empezar Escaneo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-4 sm:py-8 space-y-6 sm:space-y-8">
+                    {/* Animación de escaneo */}
+                    <div className="relative flex justify-center">
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <motion.div
+                          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
+                          transition={{ repeat: Infinity, duration: 2 }}
+                          className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-2 border-indigo-500"
+                        />
+                      </div>
+                      <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-2xl">
+                        <Sparkles size={32} className="sm:w-10 sm:h-10 animate-pulse" />
+                      </div>
+                    </div>
+
+                    <div className="text-center space-y-1 sm:space-y-2">
+                       <h3 className="text-base sm:text-lg font-bold animate-pulse" style={{ color: colors.text }}>SofLIA está pensando...</h3>
+                       <div className="flex flex-col items-center gap-1">
+                          <span className="text-[10px] sm:text-xs" style={{ color: colors.textSec }}>Analizando contenido de los documentos</span>
+                          <div className="flex gap-1 mt-1 sm:mt-2">
+                             <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.5, delay: 0 }} className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                             <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.5, delay: 0.5 }} className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                             <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.5, delay: 1 }} className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                          </div>
+                       </div>
+                    </div>
+
+                    <div className="space-y-2.5 sm:space-y-3 px-2 sm:px-4">
+                       {[
+                         { id: 1, label: 'Leyendo documentos vinculados' },
+                         { id: 2, label: 'Identificando tareas y estructura del proyecto' },
+                         { id: 3, label: 'Creando plan de trabajo y ciclos' },
+                       ].map((step) => (
+                         <div key={step.id} className="flex items-center gap-3">
+                           <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center border ${scanPhase >= step.id ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-gray-500/30'}`}>
+                             {scanPhase >= step.id ? <Check size={8} className="sm:w-3 sm:h-3" /> : <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-gray-500" />}
+                           </div>
+                           <span className={`text-[11px] sm:text-xs ${scanPhase >= step.id ? 'font-medium' : 'opacity-40'}`} style={{ color: colors.text }}>
+                             {step.label}
+                           </span>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

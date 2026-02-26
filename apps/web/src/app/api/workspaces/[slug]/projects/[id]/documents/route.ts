@@ -27,11 +27,19 @@ async function validateAccess(request: NextRequest, params: Promise<{ slug: stri
 
   // Verificar que el proyecto pertenece al workspace
   const supabase = getSupabaseAdmin();
-  const { data: project } = await supabase
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+  
+  let query = supabase
     .from('pm_projects')
-    .select('project_id, project_key, workspace_id')
-    .eq('project_id', projectId)
-    .single();
+    .select('project_id, project_key, workspace_id');
+
+  if (isUUID) {
+    query = query.eq('project_id', projectId);
+  } else {
+    query = query.eq('project_key', projectId);
+  }
+
+  const { data: project } = await query.single();
 
   if (!project) return { error: NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 }) };
   if (project.workspace_id !== workspace.workspace_id) {
