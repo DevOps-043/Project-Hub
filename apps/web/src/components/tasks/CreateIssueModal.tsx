@@ -667,24 +667,30 @@ export default function CreateIssueModal({
     setCreating(true);
     try {
       const token = localStorage.getItem('accessToken');
+      
+      // Validate that IDs are real UUIDs before sending (fallback IDs like 'backlog' are not valid)
+      const isValidUUID = (id: string | null) => id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      
+      const payload: Record<string, any> = {
+        title: title.trim(),
+        description: description.trim() || null,
+        status_id: isValidUUID(statusId) ? statusId : null,
+        priority_id: isValidUUID(priorityId) ? priorityId : null,
+        assignee_id: isValidUUID(assigneeId) ? assigneeId : null,
+        project_id: isValidUUID(projectId) ? projectId : null,
+        cycle_id: isValidUUID(cycleId) ? cycleId : null,
+        due_date: dueDate || null,
+        estimate_points: estimatePoints ? parseInt(estimatePoints) : null,
+        labels: selectedLabels.filter(id => isValidUUID(id))
+      };
+
       const res = await fetch(`/api/admin/teams/${teamId}/issues`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim() || null,
-          status_id: statusId || null,
-          priority_id: priorityId || null,
-          assignee_id: assigneeId || null,
-          project_id: projectId || null,
-          cycle_id: cycleId || null,
-          due_date: dueDate || null,
-          estimate_points: estimatePoints ? parseInt(estimatePoints) : null,
-          labels: selectedLabels
-        })
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
@@ -756,9 +762,15 @@ export default function CreateIssueModal({
 
         onIssueCreated(data.issue);
         handleClose();
+      } else {
+        // Surface error to user
+        const errData = await res.json().catch(() => ({ error: 'Error desconocido del servidor' }));
+        console.error('Error creating issue:', res.status, errData);
+        alert(`Error al crear la tarea: ${errData.error || 'Error interno del servidor'}`);
       }
     } catch (error) {
       console.error('Error creating issue:', error);
+      alert('Error de conexión al crear la tarea. Intenta de nuevo.');
     } finally {
       setCreating(false);
     }
@@ -1423,7 +1435,10 @@ export default function CreateIssueModal({
                 <button onClick={handleClose} className="px-4 py-2 rounded-xl text-sm font-medium transition-colors hover:bg-white/5" style={{ color: colors.textSecondary }}>Cancelar</button>
                 <button onClick={handleCreate} disabled={creating || !title.trim()}
                   className="px-6 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-all hover:opacity-90 active:scale-95"
-                  style={{ background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`, boxShadow: `0 4px 15px ${primaryColor}40` }}>
+                  style={{ 
+                    backgroundColor: isDark ? '#10B981' : '#0A2540', 
+                    boxShadow: isDark ? '0 4px 15px rgba(16, 185, 129, 0.4)' : '0 4px 15px rgba(10, 37, 64, 0.4)' 
+                  }}>
                   {creating ? (
                     <div className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />Creando...</div>
                   ) : (

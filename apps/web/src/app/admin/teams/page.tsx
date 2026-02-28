@@ -525,7 +525,7 @@ function TeamFormModal({ team, currentUserId, onClose, onSave }: { team: Team | 
       <div 
         className="relative rounded-2xl shadow-2xl overflow-hidden"
         style={{ 
-          backgroundColor: isDark ? '#1a1f2e' : colors.bgCard, 
+          backgroundColor: colors.bgCard, 
           border: `1px solid ${colors.border}`,
           maxWidth: '800px', 
           width: '100%' 
@@ -538,8 +538,8 @@ function TeamFormModal({ team, currentUserId, onClose, onSave }: { team: Team | 
             className="w-72 p-8 flex flex-col items-center"
             style={{ 
               background: isDark 
-                ? 'linear-gradient(135deg, rgba(0, 212, 179, 0.08), rgba(10, 37, 64, 0.15))'
-                : 'linear-gradient(135deg, rgba(0, 212, 179, 0.1), rgba(248, 250, 252, 1))',
+                ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08))'
+                : 'linear-gradient(135deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.05))',
               borderRight: `1px solid ${colors.border}`,
             }}
           >
@@ -650,7 +650,7 @@ function TeamFormModal({ team, currentUserId, onClose, onSave }: { team: Team | 
                       required
                       className="w-full py-2.5 px-3 rounded-xl border text-sm focus:outline-none transition-colors"
                       style={{
-                        backgroundColor: isDark ? '#0F1419' : colors.bgSecondary,
+                        backgroundColor: isDark ? '#1E2329' : colors.bgSecondary,
                         borderColor: colors.border,
                         color: colors.textPrimary,
                       }}
@@ -667,7 +667,7 @@ function TeamFormModal({ team, currentUserId, onClose, onSave }: { team: Team | 
                       rows={2}
                       className="w-full py-2.5 px-3 rounded-xl border text-sm focus:outline-none transition-colors resize-none"
                       style={{
-                        backgroundColor: isDark ? '#0F1419' : colors.bgSecondary,
+                        backgroundColor: isDark ? '#1E2329' : colors.bgSecondary,
                         borderColor: colors.border,
                         color: colors.textPrimary,
                       }}
@@ -694,7 +694,7 @@ function TeamFormModal({ team, currentUserId, onClose, onSave }: { team: Team | 
                           style={{ 
                             backgroundColor: color,
                             transform: form.color === color ? 'scale(1.1)' : 'scale(1)',
-                            boxShadow: form.color === color ? `0 0 0 2px ${isDark ? '#1a1f2e' : colors.bgCard}, 0 0 0 4px ${color}` : 'none',
+                            boxShadow: form.color === color ? `0 0 0 2px ${colors.bgCard}, 0 0 0 4px ${color}` : 'none',
                           }}
                         />
                       ))}
@@ -721,7 +721,7 @@ function TeamFormModal({ team, currentUserId, onClose, onSave }: { team: Team | 
                           style={{
                             backgroundColor: form.visibility === opt.value 
                               ? 'rgba(0, 212, 179, 0.1)' 
-                              : (isDark ? '#0F1419' : colors.bgSecondary),
+                              : (isDark ? '#1E2329' : colors.bgSecondary),
                             borderColor: form.visibility === opt.value ? '#00D4B3' : colors.border,
                             color: form.visibility === opt.value ? '#00D4B3' : colors.textSecondary,
                           }}
@@ -753,8 +753,8 @@ function TeamFormModal({ team, currentUserId, onClose, onSave }: { team: Team | 
                   disabled={loading}
                   className="flex-1 py-2.5 rounded-xl font-semibold text-white transition-all disabled:opacity-50"
                   style={{ 
-                    backgroundColor: '#0A2540',
-                    boxShadow: '0 4px 15px rgba(10, 37, 64, 0.4)'
+                    backgroundColor: isDark ? '#10B981' : '#0A2540',
+                    boxShadow: isDark ? '0 4px 15px rgba(16, 185, 129, 0.4)' : '0 4px 15px rgba(10, 37, 64, 0.4)'
                   }}
                 >
                   {loading ? 'Guardando...' : team ? 'Guardar cambios' : 'Crear equipo'}

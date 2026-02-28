@@ -17,6 +17,7 @@ interface Project {
 interface ProjectBoardViewProps {
   projects: Project[];
   basePath?: string;
+  onAddProject?: (status: string) => void;
 }
 
 const COLUMN_CONFIG = [
@@ -26,7 +27,7 @@ const COLUMN_CONFIG = [
   { id: 'cancelled', label: 'Canceled', color: '#EF4444' }, // red-500
 ];
 
-export function ProjectBoardView({ projects, basePath = '/admin' }: ProjectBoardViewProps) {
+export function ProjectBoardView({ projects, basePath = '/admin', onAddProject }: ProjectBoardViewProps) {
   const router = useRouter();
   const { isDark } = useTheme();
 
@@ -65,11 +66,11 @@ export function ProjectBoardView({ projects, basePath = '/admin' }: ProjectBoard
               <span className="text-xs text-gray-400 ml-1">{col.items.length}</span>
             </div>
             <div className="flex gap-1">
-              <button className={`text-gray-400 hover:text-gray-500 p-1 rounded ${isDark ? 'hover:bg-white/5' : 'hover:bg-gray-200'}`}>
+              <button 
+                onClick={() => onAddProject?.(col.id)}
+                className={`text-gray-400 hover:text-gray-500 p-1 rounded ${isDark ? 'hover:bg-white/5' : 'hover:bg-gray-200'} transition-colors`}
+              >
                 <Plus size={14} />
-              </button>
-              <button className={`text-gray-400 hover:text-gray-500 p-1 rounded ${isDark ? 'hover:bg-white/5' : 'hover:bg-gray-200'}`}>
-                <MoreHorizontal size={14} />
               </button>
             </div>
           </div>

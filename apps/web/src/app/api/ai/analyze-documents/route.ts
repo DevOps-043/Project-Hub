@@ -8,8 +8,9 @@ import { verifyToken } from '@/lib/auth/jwt';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { decryptToken } from '@/lib/auth/token-encryption';
 import { readMultipleDocuments } from '@/lib/google/drive-reader';
-import { generateText } from '@/lib/ai/gemini';
+import { generateText, geminiConfig } from '@/lib/ai/gemini';
 import { addDays } from 'date-fns';
+import { logAIUsage } from '@/lib/services/ai-usage-service';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60; // Allow up to 60 seconds for AI processing
@@ -310,7 +311,21 @@ ${today}
 Genera el plan completo en JSON válido.`;
 
     // 7. Enviar a Gemini
-    const aiResponse = await generateText(prompt);
+    const { text: aiResponse, usage } = await generateText(prompt);
+
+    // Log AI usage
+    if (usage) {
+      await logAIUsage({
+        user_id: payload.sub,
+        model: geminiConfig.model,
+        prompt_tokens: usage.promptTokenCount || 0,
+        completion_tokens: usage.candidatesTokenCount || 0,
+        total_tokens: usage.totalTokenCount || 0,
+        action_type: 'analyze-documents',
+        project_id: projectId,
+        team_id: teamId
+      });
+    }
 
     // 8. Parsear respuesta
     let parsedIssues: ParsedIssue[];

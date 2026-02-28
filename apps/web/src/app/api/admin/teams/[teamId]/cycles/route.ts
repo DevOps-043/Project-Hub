@@ -31,7 +31,7 @@ export async function GET(
       .from('task_cycles')
       .select('*')
       .eq('team_id', teamId)
-      .order('cycle_number', { ascending: false });
+      .order('number', { ascending: false });
 
     if (error) {
       console.error('Error fetching cycles:', error);
@@ -99,13 +99,13 @@ export async function POST(
     // Get the next cycle number for this team
     const { data: lastCycle } = await supabaseAdmin
       .from('task_cycles')
-      .select('cycle_number')
+      .select('number')
       .eq('team_id', teamId)
-      .order('cycle_number', { ascending: false })
+      .order('number', { ascending: false })
       .limit(1)
       .single();
 
-    const nextCycleNumber = (lastCycle?.cycle_number || 0) + 1;
+    const nextCycleNumber = (lastCycle?.number || 0) + 1;
 
     // Determine status based on dates
     const today = new Date();
@@ -124,7 +124,7 @@ export async function POST(
       .from('task_cycles')
       .insert({
         team_id: teamId,
-        cycle_number: nextCycleNumber,
+        number: nextCycleNumber,
         name: name || `Cycle ${nextCycleNumber}`,
         description: description || null,
         start_date,

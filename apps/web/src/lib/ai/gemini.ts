@@ -7,7 +7,7 @@ import { GoogleGenerativeAI, GenerativeModel, GenerationConfig } from '@google/g
 
 // Configuración por defecto
 const GEMINI_CONFIG = {
-  apiKey: process.env.GOOGLE_API_KEY || '',
+  apiKey: process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_AI_KEY || process.env.GOOGLE_AI_KEY || '',
   model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
   maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '8192'),
   temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
@@ -77,13 +77,16 @@ function formatMessageParts(message: ChatMessage) {
 }
 
 /**
- * Genera una respuesta simple de texto
+ * Genera una respuesta simple de texto con información de tokens
  */
-export async function generateText(prompt: string): Promise<string> {
+export async function generateText(prompt: string): Promise<{ text: string; usage?: any }> {
   const model = getGeminiModel();
   const result = await model.generateContent(prompt);
   const response = await result.response;
-  return response.text();
+  return {
+    text: response.text(),
+    usage: response.usageMetadata
+  };
 }
 
 /**

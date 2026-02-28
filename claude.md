@@ -3,11 +3,14 @@
 ## Descripcion del Proyecto
 
 **Project Hub** (anteriormente IRIS) es una plataforma educativa y de gestion de proyectos con inteligencia artificial integrada, construida como un monorepo con:
-- **Frontend**: Next.js 15/16 (App Router)
+
+- **Frontend**: Next.js 15+ (App Router)
 - **Backend**: Express 4 con TypeScript
-- **Base de Datos**: PostgreSQL via Supabase (dual: SOFIA + Project Hub)
+- **Base de Datos**: PostgreSQL via Supabase (multi-instancia: SOFIA + Project Hub + ContentGen + LIA)
 - **IA**: Google Gemini 2.0 Flash
 - **Auth**: SOFIA como auth master + sincronizacion de workspaces
+- **Google Drive**: Integracion OAuth2 completa (Drive, Sheets, Docs, Slides)
+- **Bridge MCP**: API para agentes externos con sistema de API Keys
 
 ---
 
@@ -22,10 +25,22 @@
 │ organization_users│────>│ workspace_members  │
 │ organizations    │─────>│ workspaces         │
 └─────────────────┘      └───────────────────┘
+       │                          │
+       │                   ┌──────┴───────────┐
+       │                   │ Content Generator │
+       │                   │ (Contenido IA)    │
+       │                   └──────────────────┘
+       │
+ ┌─────┴──────────┐
+ │  LIA Extension  │
+ │ (Conversaciones)│
+ └────────────────┘
 ```
 
 - **SOFIA**: Autenticacion, usuarios, organizaciones (fuente de verdad)
-- **Project Hub**: Datos de negocio, proyectos, tareas, workspaces
+- **Project Hub**: Datos de negocio, proyectos, tareas, workspaces, documentos, API keys
+- **Content Generator**: Contenido educativo generado por IA
+- **LIA Extension**: Datos de la extension de escritorio (conversaciones, meetings)
 - Al hacer login, se sincronizan datos de SOFIA a Project Hub
 - Al cargar miembros de un workspace, se sincronizan todos los miembros de la org SOFIA
 
@@ -33,10 +48,10 @@
 
 ## Dos Sistemas de Layout
 
-| Sistema | Ruta | Acceso | Descripcion |
-|---------|------|--------|-------------|
-| **Admin** | `/admin/*` | super_admin, admin | Panel de administracion global |
-| **Workspace** | `/[orgSlug]/*` | Todos los roles | Espacio de trabajo por organizacion |
+| Sistema       | Ruta           | Acceso             | Descripcion                         |
+| ------------- | -------------- | ------------------ | ----------------------------------- |
+| **Admin**     | `/admin/*`     | super_admin, admin | Panel de administracion global      |
+| **Workspace** | `/[orgSlug]/*` | Todos los roles    | Espacio de trabajo por organizacion |
 
 - `AdminSidebar` acepta `orgSlug` prop para cambiar dinamicamente entre rutas admin y workspace
 - El middleware redirige usuarios sin permisos de admin a `/unauthorized`
@@ -52,22 +67,30 @@ Project-Hub/
 │   ├── web/                    # Frontend Next.js
 │   │   └── src/
 │   │       ├── app/
-│   │       │   ├── [orgSlug]/  # Paginas workspace (dashboard, members, teams, etc.)
+│   │       │   ├── [orgSlug]/  # Paginas workspace (dashboard, members, teams, projects, analytics, etc.)
+│   │       │   │   ├── admin/  # Sub-panel admin dentro del workspace
+│   │       │   │   ├── projects/[id]/ # Detalle de proyecto con documentos
+│   │       │   │   └── teams/[teamId]/ # Detalle de equipo
 │   │       │   ├── admin/      # Paginas admin (super_admin/admin only)
 │   │       │   ├── api/
-│   │       │   │   ├── auth/       # Auth routes
+│   │       │   │   ├── auth/       # Auth routes + Google OAuth (connect, callback, status, token)
 │   │       │   │   ├── admin/      # Admin API routes
-│   │       │   │   ├── workspaces/ # Workspace API routes (scoped)
-│   │       │   │   └── ai/         # AI routes
+│   │       │   │   ├── workspaces/ # Workspace API routes (scoped) + api-keys + settings + documents
+│   │       │   │   ├── ai/         # AI routes (agile-advisor, analyze-documents, bridge, diagram, predictive)
+│   │       │   │   └── ext/        # API para extensiones externas (LIA: issues, projects)
 │   │       │   └── unauthorized/   # Error page acceso denegado
 │   │       ├── components/     # Componentes UI
+│   │       │   ├── google/     # GoogleDrivePicker, CollapsibleDocumentEmbed
+│   │       │   ├── guards/     # Guards de permisos
+│   │       │   └── tasks/      # Componentes de tareas
 │   │       ├── features/       # Modulos de negocio
 │   │       ├── shared/         # Utilidades compartidas
 │   │       ├── core/           # Stores y servicios
 │   │       ├── lib/
-│   │       │   ├── auth/       # JWT, passwords, SOFIA auth
-│   │       │   ├── supabase/   # Clientes Supabase (server, sofia-client, config)
-│   │       │   ├── services/   # workspace-service.ts
+│   │       │   ├── auth/       # JWT, passwords, SOFIA auth, token-encryption (AES-256-GCM)
+│   │       │   ├── supabase/   # Clientes multi-Supabase (server, sofia, content-gen, config)
+│   │       │   ├── services/   # workspace-service, api-key-service, iris-data
+│   │       │   ├── google/     # drive-service, drive-reader, document-utils
 │   │       │   ├── ai/         # Gemini integration
 │   │       │   └── notifications/
 │   │       └── contexts/       # ThemeContext, WorkspaceContext
@@ -91,19 +114,20 @@ Project-Hub/
 
 **Archivo:** `lib/ai/gemini.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `getGeminiClient()` | Obtiene instancia singleton del cliente GoogleGenerativeAI | Ninguno | `GoogleGenerativeAI` |
-| `getGeminiModel()` | Obtiene el modelo generativo configurado | Ninguno | `GenerativeModel` |
-| `generateText(prompt)` | Genera respuesta simple de texto | `prompt: string` | `Promise<string>` |
-| `generateChatResponse(messages, systemPrompt?)` | Genera respuesta de chat (sin streaming) | `messages: ChatMessage[], systemPrompt?: string` | `Promise<string>` |
-| `streamChatResponse(messages, systemPrompt?)` | Genera respuesta de chat con streaming | `messages: ChatMessage[], systemPrompt?: string` | `AsyncGenerator<string>` |
-| `formatMessageParts(message)` | Formatea mensaje con attachments para Gemini | `message: ChatMessage` | `any[]` |
+| Funcion                                         | Descripcion                                                | Parametros                                       | Retorno                  |
+| ----------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------ | ------------------------ |
+| `getGeminiClient()`                             | Obtiene instancia singleton del cliente GoogleGenerativeAI | Ninguno                                          | `GoogleGenerativeAI`     |
+| `getGeminiModel()`                              | Obtiene el modelo generativo configurado                   | Ninguno                                          | `GenerativeModel`        |
+| `generateText(prompt)`                          | Genera respuesta simple de texto                           | `prompt: string`                                 | `Promise<string>`        |
+| `generateChatResponse(messages, systemPrompt?)` | Genera respuesta de chat (sin streaming)                   | `messages: ChatMessage[], systemPrompt?: string` | `Promise<string>`        |
+| `streamChatResponse(messages, systemPrompt?)`   | Genera respuesta de chat con streaming                     | `messages: ChatMessage[], systemPrompt?: string` | `AsyncGenerator<string>` |
+| `formatMessageParts(message)`                   | Formatea mensaje con attachments para Gemini               | `message: ChatMessage`                           | `any[]`                  |
 
 **Interfaces:**
+
 ```typescript
 interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   attachments?: {
     mimeType: string;
@@ -118,26 +142,27 @@ interface ChatMessage {
 
 **Archivo:** `lib/auth/password.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `hashPassword(password)` | Genera hash seguro usando PBKDF2 | `password: string` | `Promise<string>` |
-| `verifyPassword(password, storedHash)` | Verifica contrasena contra hash | `password: string, storedHash: string` | `Promise<boolean>` |
-| `verifyPbkdf2Password(password, storedHash)` | Verifica contrasena PBKDF2 | `password: string, storedHash: string` | `Promise<boolean>` |
+| Funcion                                      | Descripcion                         | Parametros                             | Retorno            |
+| -------------------------------------------- | ----------------------------------- | -------------------------------------- | ------------------ |
+| `hashPassword(password)`                     | Genera hash seguro usando PBKDF2    | `password: string`                     | `Promise<string>`  |
+| `verifyPassword(password, storedHash)`       | Verifica contrasena contra hash     | `password: string, storedHash: string` | `Promise<boolean>` |
+| `verifyPbkdf2Password(password, storedHash)` | Verifica contrasena PBKDF2          | `password: string, storedHash: string` | `Promise<boolean>` |
 | `verifyBcryptPassword(password, storedHash)` | Verifica contrasena bcrypt (legacy) | `password: string, storedHash: string` | `Promise<boolean>` |
 
 **Archivo:** `lib/auth/jwt.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `verifyToken(token)` | Verifica y decodifica JWT | `token: string` | `Promise<JWTPayload \| null>` |
-| `generateTokenPair(user)` | Genera par de tokens (access + refresh) | `user: AccountUser` | `Promise<TokenPair>` |
-| `hashToken(token)` | Hash de token para almacenamiento seguro | `token: string` | `Promise<string>` |
-| `base64UrlEncode(str)` | Codifica string a Base64URL | `str: string` | `string` |
-| `base64UrlDecode(str)` | Decodifica Base64URL a string | `str: string` | `string` |
-| `createSignature(data)` | Crea firma HMAC-SHA256 | `data: string` | `Promise<string>` |
-| `generateToken(payload, expiresIn)` | Genera token JWT individual | `payload: Omit<JWTPayload, 'iat'\|'exp'>, expiresIn: number` | `Promise<string>` |
+| Funcion                             | Descripcion                              | Parametros                                                   | Retorno                       |
+| ----------------------------------- | ---------------------------------------- | ------------------------------------------------------------ | ----------------------------- |
+| `verifyToken(token)`                | Verifica y decodifica JWT                | `token: string`                                              | `Promise<JWTPayload \| null>` |
+| `generateTokenPair(user)`           | Genera par de tokens (access + refresh)  | `user: AccountUser`                                          | `Promise<TokenPair>`          |
+| `hashToken(token)`                  | Hash de token para almacenamiento seguro | `token: string`                                              | `Promise<string>`             |
+| `base64UrlEncode(str)`              | Codifica string a Base64URL              | `str: string`                                                | `string`                      |
+| `base64UrlDecode(str)`              | Decodifica Base64URL a string            | `str: string`                                                | `string`                      |
+| `createSignature(data)`             | Crea firma HMAC-SHA256                   | `data: string`                                               | `Promise<string>`             |
+| `generateToken(payload, expiresIn)` | Genera token JWT individual              | `payload: Omit<JWTPayload, 'iat'\|'exp'>, expiresIn: number` | `Promise<string>`             |
 
 **Interfaces:**
+
 ```typescript
 interface JWTPayload {
   sub: string;
@@ -147,7 +172,7 @@ interface JWTPayload {
   permissionLevel: string;
   iat: number;
   exp: number;
-  type: 'access' | 'refresh';
+  type: "access" | "refresh";
 }
 
 interface TokenPair {
@@ -163,14 +188,15 @@ interface TokenPair {
 
 **Archivo:** `lib/supabase/server.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `getSupabaseAdmin()` | Obtiene cliente Supabase con service role | Ninguno | `SupabaseClient` |
-| `supabaseAdmin.from(table)` | Acceso a tablas | `table: string` | `PostgrestQueryBuilder` |
-| `supabaseAdmin.rpc(fn, params)` | Llamada a funciones RPC | `fn: string, params: object` | `Promise` |
-| `supabaseAdmin.storage.from(bucket)` | Acceso a storage | `bucket: string` | `StorageFileApi` |
+| Funcion                              | Descripcion                               | Parametros                   | Retorno                 |
+| ------------------------------------ | ----------------------------------------- | ---------------------------- | ----------------------- |
+| `getSupabaseAdmin()`                 | Obtiene cliente Supabase con service role | Ninguno                      | `SupabaseClient`        |
+| `supabaseAdmin.from(table)`          | Acceso a tablas                           | `table: string`              | `PostgrestQueryBuilder` |
+| `supabaseAdmin.rpc(fn, params)`      | Llamada a funciones RPC                   | `fn: string, params: object` | `Promise`               |
+| `supabaseAdmin.storage.from(bucket)` | Acceso a storage                          | `bucket: string`             | `StorageFileApi`        |
 
 **Tipos:**
+
 ```typescript
 interface AccountUser {
   user_id: string;
@@ -181,10 +207,21 @@ interface AccountUser {
   username: string;
   email: string;
   password_hash: string;
-  permission_level: 'super_admin' | 'admin' | 'manager' | 'user' | 'viewer' | 'guest';
+  permission_level:
+    | "super_admin"
+    | "admin"
+    | "manager"
+    | "user"
+    | "viewer"
+    | "guest";
   company_role: string | null;
   department: string | null;
-  account_status: 'active' | 'inactive' | 'suspended' | 'pending_verification' | 'deleted';
+  account_status:
+    | "active"
+    | "inactive"
+    | "suspended"
+    | "pending_verification"
+    | "deleted";
   is_email_verified: boolean;
   avatar_url: string | null;
   timezone: string;
@@ -209,20 +246,21 @@ interface AuthSession {
 
 **Archivo:** `lib/notifications/notifier.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `sendNotification(payload)` | Envia notificacion a usuario especifico | `payload: NotificationPayload` | `Promise<boolean>` |
+| Funcion                                 | Descripcion                                          | Parametros                                                          | Retorno            |
+| --------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------- | ------------------ |
+| `sendNotification(payload)`             | Envia notificacion a usuario especifico              | `payload: NotificationPayload`                                      | `Promise<boolean>` |
 | `sendTeamNotification(teamId, payload)` | Envia notificacion a todos los miembros de un equipo | `teamId: string, payload: Omit<NotificationPayload, 'recipientId'>` | `Promise<boolean>` |
 
 **Interfaces:**
+
 ```typescript
 interface NotificationPayload {
   recipientId: string;
   actorId?: string;
   title: string;
   message?: string;
-  type?: 'info' | 'success' | 'warning' | 'error';
-  category?: 'task' | 'project' | 'team' | 'comment' | 'reminder' | 'system';
+  type?: "info" | "success" | "warning" | "error";
+  category?: "task" | "project" | "team" | "comment" | "reminder" | "system";
   entityId?: string;
   link?: string;
 }
@@ -234,19 +272,19 @@ interface NotificationPayload {
 
 **Archivo:** `lib/api/client.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `apiClient<T>(endpoint, config?)` | Cliente API con manejo automatico de auth | `endpoint: string, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
-| `api.get<T>(endpoint, config?)` | GET request | `endpoint: string, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
-| `api.post<T>(endpoint, body?, config?)` | POST request | `endpoint: string, body?: unknown, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
-| `api.put<T>(endpoint, body?, config?)` | PUT request | `endpoint: string, body?: unknown, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
-| `api.patch<T>(endpoint, body?, config?)` | PATCH request | `endpoint: string, body?: unknown, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
-| `api.delete<T>(endpoint, config?)` | DELETE request | `endpoint: string, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
-| `refreshTokens()` | Renueva tokens automaticamente | Ninguno | `Promise<boolean>` |
-| `getAccessToken()` | Obtiene token de localStorage | Ninguno | `string \| null` |
-| `getRefreshToken()` | Obtiene refresh token de localStorage | Ninguno | `string \| null` |
-| `setTokens(accessToken, refreshToken)` | Guarda tokens en localStorage | `accessToken: string, refreshToken: string` | `void` |
-| `clearTokens()` | Limpia tokens de localStorage | Ninguno | `void` |
+| Funcion                                  | Descripcion                               | Parametros                                                 | Retorno                   |
+| ---------------------------------------- | ----------------------------------------- | ---------------------------------------------------------- | ------------------------- |
+| `apiClient<T>(endpoint, config?)`        | Cliente API con manejo automatico de auth | `endpoint: string, config?: RequestConfig`                 | `Promise<ApiResponse<T>>` |
+| `api.get<T>(endpoint, config?)`          | GET request                               | `endpoint: string, config?: RequestConfig`                 | `Promise<ApiResponse<T>>` |
+| `api.post<T>(endpoint, body?, config?)`  | POST request                              | `endpoint: string, body?: unknown, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
+| `api.put<T>(endpoint, body?, config?)`   | PUT request                               | `endpoint: string, body?: unknown, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
+| `api.patch<T>(endpoint, body?, config?)` | PATCH request                             | `endpoint: string, body?: unknown, config?: RequestConfig` | `Promise<ApiResponse<T>>` |
+| `api.delete<T>(endpoint, config?)`       | DELETE request                            | `endpoint: string, config?: RequestConfig`                 | `Promise<ApiResponse<T>>` |
+| `refreshTokens()`                        | Renueva tokens automaticamente            | Ninguno                                                    | `Promise<boolean>`        |
+| `getAccessToken()`                       | Obtiene token de localStorage             | Ninguno                                                    | `string \| null`          |
+| `getRefreshToken()`                      | Obtiene refresh token de localStorage     | Ninguno                                                    | `string \| null`          |
+| `setTokens(accessToken, refreshToken)`   | Guarda tokens en localStorage             | `accessToken: string, refreshToken: string`                | `void`                    |
+| `clearTokens()`                          | Limpia tokens de localStorage             | Ninguno                                                    | `void`                    |
 
 ---
 
@@ -254,17 +292,18 @@ interface NotificationPayload {
 
 **Archivo:** `lib/services/workspace-service.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `syncWorkspacesFromSofia(irisUserId, sofiaOrgs)` | Sincroniza orgs SOFIA con workspaces (solo usuario actual, se ejecuta en login) | `irisUserId: string, sofiaOrgs: SofiaOrgData[]` | `Promise<WorkspaceWithRole[]>` |
-| `syncAllOrgMembers(workspaceId, sofiaOrgId)` | Sincroniza TODOS los miembros de una org SOFIA con el workspace. Solo inserta nuevos, nunca sobreescribe iris_role | `workspaceId: string, sofiaOrgId: string` | `Promise<void>` |
-| `getWorkspacesForUser(userId)` | Obtiene todos los workspaces de un usuario con roles | `userId: string` | `Promise<WorkspaceWithRole[]>` |
-| `getWorkspaceBySlug(slug)` | Obtiene workspace por slug | `slug: string` | `Promise<Workspace \| null>` |
-| `getUserWorkspaceRole(workspaceId, userId)` | Obtiene rol del usuario en un workspace | `workspaceId: string, userId: string` | `Promise<WorkspaceMember \| null>` |
-| `getWorkspaceMembers(workspaceId)` | Obtiene todos los miembros de un workspace (join con account_users) | `workspaceId: string` | `Promise<any[]>` |
-| `updateMemberRole(workspaceId, userId, newRole)` | Actualiza iris_role de un miembro | `workspaceId: string, userId: string, newRole: IrisRole` | `Promise<boolean>` |
+| Funcion                                          | Descripcion                                                                                                        | Parametros                                               | Retorno                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- | ---------------------------------- |
+| `syncWorkspacesFromSofia(irisUserId, sofiaOrgs)` | Sincroniza orgs SOFIA con workspaces (solo usuario actual, se ejecuta en login)                                    | `irisUserId: string, sofiaOrgs: SofiaOrgData[]`          | `Promise<WorkspaceWithRole[]>`     |
+| `syncAllOrgMembers(workspaceId, sofiaOrgId)`     | Sincroniza TODOS los miembros de una org SOFIA con el workspace. Solo inserta nuevos, nunca sobreescribe iris_role | `workspaceId: string, sofiaOrgId: string`                | `Promise<void>`                    |
+| `getWorkspacesForUser(userId)`                   | Obtiene todos los workspaces de un usuario con roles                                                               | `userId: string`                                         | `Promise<WorkspaceWithRole[]>`     |
+| `getWorkspaceBySlug(slug)`                       | Obtiene workspace por slug                                                                                         | `slug: string`                                           | `Promise<Workspace \| null>`       |
+| `getUserWorkspaceRole(workspaceId, userId)`      | Obtiene rol del usuario en un workspace                                                                            | `workspaceId: string, userId: string`                    | `Promise<WorkspaceMember \| null>` |
+| `getWorkspaceMembers(workspaceId)`               | Obtiene todos los miembros de un workspace (join con account_users)                                                | `workspaceId: string`                                    | `Promise<any[]>`                   |
+| `updateMemberRole(workspaceId, userId, newRole)` | Actualiza iris_role de un miembro                                                                                  | `workspaceId: string, userId: string, newRole: IrisRole` | `Promise<boolean>`                 |
 
 **Interfaces:**
+
 ```typescript
 interface Workspace {
   workspace_id: string;
@@ -283,12 +322,13 @@ interface WorkspaceMember {
   workspace_id: string;
   user_id: string;
   sofia_role: string;
-  iris_role: 'owner' | 'admin' | 'manager' | 'leader' | 'member';
+  iris_role: "owner" | "admin" | "manager" | "leader" | "member";
   is_active: boolean;
 }
 ```
 
 **Logica de sincronizacion:**
+
 - `syncWorkspacesFromSofia`: Se ejecuta en login, solo sincroniza el usuario actual
 - `syncAllOrgMembers`: Se ejecuta al cargar miembros. Consulta SOFIA `organization_users` + `users`, inserta solo miembros nuevos en `account_users` y `workspace_members`. Nunca sobreescribe `iris_role` de miembros existentes (permite edicion independiente)
 
@@ -298,13 +338,13 @@ interface WorkspaceMember {
 
 **Archivo:** `lib/auth/sofia-auth.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `isSofiaAuthEnabled()` | Verifica si SOFIA esta configurado | Ninguno | `boolean` |
-| `findSofiaUser(emailOrUsername)` | Busca usuario en SOFIA por email/username | `emailOrUsername: string` | `Promise<SofiaUser \| null>` |
-| `findSofiaUserById(userId)` | Busca usuario en SOFIA por ID | `userId: string` | `Promise<SofiaUser \| null>` |
-| `getSofiaUserOrgs(userId)` | Obtiene organizaciones del usuario en SOFIA | `userId: string` | `Promise<any[]>` |
-| `recordSofiaLogin(userId)` | Registra login exitoso en SOFIA | `userId: string` | `Promise<void>` |
+| Funcion                          | Descripcion                                 | Parametros                | Retorno                      |
+| -------------------------------- | ------------------------------------------- | ------------------------- | ---------------------------- |
+| `isSofiaAuthEnabled()`           | Verifica si SOFIA esta configurado          | Ninguno                   | `boolean`                    |
+| `findSofiaUser(emailOrUsername)` | Busca usuario en SOFIA por email/username   | `emailOrUsername: string` | `Promise<SofiaUser \| null>` |
+| `findSofiaUserById(userId)`      | Busca usuario en SOFIA por ID               | `userId: string`          | `Promise<SofiaUser \| null>` |
+| `getSofiaUserOrgs(userId)`       | Obtiene organizaciones del usuario en SOFIA | `userId: string`          | `Promise<any[]>`             |
+| `recordSofiaLogin(userId)`       | Registra login exitoso en SOFIA             | `userId: string`          | `Promise<void>`              |
 
 ---
 
@@ -312,19 +352,104 @@ interface WorkspaceMember {
 
 **Archivo:** `lib/supabase/config.ts`
 
-| Constante | Descripcion |
-|-----------|-------------|
-| `IRIS_SUPABASE` | Config de Project Hub Supabase (BD principal) |
-| `SOFIA_SUPABASE` | Config de SOFIA Supabase (auth + orgs) |
-| `CONTENT_GEN_SUPABASE` | Config de Content Generator Supabase |
+| Constante              | Descripcion                                   |
+| ---------------------- | --------------------------------------------- |
+| `IRIS_SUPABASE`        | Config de Project Hub Supabase (BD principal) |
+| `SOFIA_SUPABASE`       | Config de SOFIA Supabase (auth + orgs)        |
+| `CONTENT_GEN_SUPABASE` | Config de Content Generator Supabase          |
 
 **Archivo:** `lib/supabase/sofia-client.ts`
 
-| Funcion | Descripcion | Retorno |
-|---------|-------------|---------|
-| `getSofiaClient()` | Cliente SOFIA browser-side (con session) | `SupabaseClient \| null` |
-| `getSofiaAdmin()` | Cliente SOFIA server-side (sin session) | `SupabaseClient \| null` |
-| `isSofiaConfigured()` | Verifica si SOFIA esta configurado | `boolean` |
+| Funcion               | Descripcion                              | Retorno                  |
+| --------------------- | ---------------------------------------- | ------------------------ |
+| `getSofiaClient()`    | Cliente SOFIA browser-side (con session) | `SupabaseClient \| null` |
+| `getSofiaAdmin()`     | Cliente SOFIA server-side (sin session)  | `SupabaseClient \| null` |
+| `isSofiaConfigured()` | Verifica si SOFIA esta configurado       | `boolean`                |
+
+**Archivo:** `lib/supabase/content-gen-client.ts`
+
+| Funcion                    | Descripcion                                 | Retorno                  |
+| -------------------------- | ------------------------------------------- | ------------------------ |
+| `getContentGenClient()`    | Cliente ContentGen browser-side (singleton) | `SupabaseClient \| null` |
+| `isContentGenConfigured()` | Verifica si ContentGen esta configurado     | `boolean`                |
+
+---
+
+### 1.9 Token Encryption (OAuth)
+
+**Archivo:** `lib/auth/token-encryption.ts`
+
+Encriptacion/desencriptacion de tokens OAuth con AES-256-GCM via Web Crypto API. Se usa para almacenar access/refresh tokens de Google de forma segura en `auth_oauth_providers`.
+
+| Funcion                    | Descripcion                                                   | Parametros           | Retorno           |
+| -------------------------- | ------------------------------------------------------------- | -------------------- | ----------------- |
+| `encryptToken(plainToken)` | Encripta token con AES-256-GCM. Formato: `salt:iv:ciphertext` | `plainToken: string` | `Promise<string>` |
+| `decryptToken(encrypted)`  | Desencripta token desde formato `salt:iv:ciphertext`          | `encrypted: string`  | `Promise<string>` |
+
+---
+
+### 1.10 Google Drive Services
+
+**Archivo:** `lib/google/drive-service.ts` (Server-side)
+
+| Funcion                                              | Descripcion                                                     | Parametros                                                | Retorno                      |
+| ---------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------- |
+| `getValidAccessToken(userId)`                        | Obtiene access token valido de Google. Auto-refresh si expirado | `userId: string`                                          | `Promise<string \| null>`    |
+| `getFileMetadata(accessToken, fileId)`               | Obtiene metadata de archivo de Drive                            | `accessToken: string, fileId: string`                     | `Promise<DriveFile \| null>` |
+| `createSpreadsheet(accessToken, title, templateId?)` | Crea Google Spreadsheet (vacio o desde template)                | `accessToken: string, title: string, templateId?: string` | `Promise<DriveFile \| null>` |
+
+**Archivo:** `lib/google/drive-reader.ts` (Server-side)
+
+| Funcion                                             | Descripcion                                           | Parametros                                                              | Retorno                           |
+| --------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------- |
+| `readGoogleDocument(accessToken, fileId, mimeType)` | Lee contenido de un Google Doc/Sheet/Slide como texto | `accessToken, fileId, mimeType: string`                                 | `Promise<string>`                 |
+| `readMultipleDocuments(accessToken, documents)`     | Lee multiples documentos, omite los que fallen        | `accessToken: string, documents: Array<{external_id, mime_type, name}>` | `Promise<Array<{name, content}>>` |
+
+**Archivo:** `lib/google/document-utils.ts` (Client/Shared)
+
+| Funcion                                | Descripcion                                                | Parametros                        | Retorno                                              |
+| -------------------------------------- | ---------------------------------------------------------- | --------------------------------- | ---------------------------------------------------- |
+| `classifyGoogleFile(mimeType)`         | Detecta doc_type y provider segun mimeType                 | `mimeType: string`                | `{provider, docType}`                                |
+| `getEmbedUrl(doc)`                     | Genera URL de embed/preview para Google Docs/Sheets/Slides | `doc: {mime_type, external_id}`   | `string`                                             |
+| `parseGoogleUrl(url)`                  | Parsea URL de Google y extrae fileId + metadata            | `url: string`                     | `{fileId, provider, docType, mimeType} \| null`      |
+| `uploadFileToDrive(file, accessToken)` | Sube archivo local al Google Drive del usuario             | `file: File, accessToken: string` | `Promise<{id, name, mimeType, webViewLink} \| null>` |
+
+---
+
+### 1.11 API Key Service (Bridge MCP)
+
+**Archivo:** `lib/services/api-key-service.ts`
+
+| Funcion                                                             | Descripcion                                                          | Parametros                                                                    | Retorno                          |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------- |
+| `generateApiKey(workspaceId, createdBy, name, scopes?, expiresAt?)` | Genera API key `phub_...` hasheada. Retorna texto plano UNA SOLA VEZ | `workspaceId, createdBy, name: string, scopes?: string[], expiresAt?: string` | `Promise<{plainKey, keyRecord}>` |
+| `verifyApiKey(plainKey)`                                            | Verifica API key contra BD. Actualiza uso atomicamente               | `plainKey: string`                                                            | `Promise<VerifyResult \| null>`  |
+| `listApiKeys(workspaceId)`                                          | Lista API keys del workspace (sin hashes)                            | `workspaceId: string`                                                         | `Promise<McpApiKeyDisplay[]>`    |
+| `revokeApiKey(keyId, workspaceId)`                                  | Revoca API key (soft delete)                                         | `keyId, workspaceId: string`                                                  | `Promise<boolean>`               |
+
+---
+
+### 1.12 IRIS Data Service
+
+**Archivo:** `lib/services/iris-data.ts`
+
+Servicio de datos para acceso CRUD contra la Supabase de Project Hub. Usado por el web y por extensiones.
+
+| Funcion                          | Descripcion                         | Retorno                        |
+| -------------------------------- | ----------------------------------- | ------------------------------ |
+| `getProjects(teamId?)`           | Lista proyectos (opcional por team) | `Promise<IrisProject[]>`       |
+| `getProjectById(id)`             | Obtiene proyecto por ID             | `Promise<IrisProject \| null>` |
+| `createProject(project)`         | Crea proyecto                       | `Promise<IrisProject \| null>` |
+| `updateProject(id, updates)`     | Actualiza proyecto                  | `Promise<IrisProject \| null>` |
+| `archiveProject(id)`             | Archiva proyecto                    | `Promise<IrisProject \| null>` |
+| `getIssues(projectId, filters?)` | Lista issues con filtros opcionales | `Promise<IrisIssue[]>`         |
+| `getIssueById(id)`               | Obtiene issue por ID                | `Promise<IrisIssue \| null>`   |
+| `createIssue(issue)`             | Crea issue                          | `Promise<IrisIssue \| null>`   |
+| `updateIssue(id, updates)`       | Actualiza issue                     | `Promise<IrisIssue \| null>`   |
+| `getCycles(projectId)`           | Lista ciclos/sprints                | `Promise<IrisCycle[]>`         |
+| `getMilestones(projectId)`       | Lista milestones                    | `Promise<IrisMilestone[]>`     |
+| `getTeams()`                     | Lista equipos                       | `Promise<IrisTeam[]>`          |
+| `getLabels(projectId?)`          | Lista labels                        | `Promise<IrisLabel[]>`         |
 
 ---
 
@@ -334,24 +459,24 @@ interface WorkspaceMember {
 
 **Archivo:** `core/stores/authStore.ts`
 
-| Estado | Tipo | Descripcion |
-|--------|------|-------------|
-| `user` | `User \| null` | Usuario autenticado |
-| `isAuthenticated` | `boolean` | Estado de autenticacion |
-| `isLoading` | `boolean` | Cargando operacion |
-| `isInitialized` | `boolean` | App inicializada |
-| `error` | `string \| null` | Error actual |
+| Estado            | Tipo             | Descripcion             |
+| ----------------- | ---------------- | ----------------------- |
+| `user`            | `User \| null`   | Usuario autenticado     |
+| `isAuthenticated` | `boolean`        | Estado de autenticacion |
+| `isLoading`       | `boolean`        | Cargando operacion      |
+| `isInitialized`   | `boolean`        | App inicializada        |
+| `error`           | `string \| null` | Error actual            |
 
-| Accion | Descripcion | Parametros | Retorno |
-|--------|-------------|------------|---------|
-| `initialize()` | Inicializa sesion al cargar app | Ninguno | `Promise<void>` |
-| `login(credentials)` | Inicia sesion | `{ email: string, password: string }` | `Promise<void>` |
-| `register(data)` | Registra nuevo usuario | `RegisterData` | `Promise<void>` |
-| `logout()` | Cierra sesion | Ninguno | `Promise<void>` |
-| `refreshToken()` | Renueva tokens | Ninguno | `Promise<boolean>` |
-| `fetchCurrentUser()` | Obtiene datos del usuario actual | Ninguno | `Promise<void>` |
-| `clearError()` | Limpia error | Ninguno | `void` |
-| `setUser(user)` | Establece usuario manualmente | `user: User \| null` | `void` |
+| Accion               | Descripcion                      | Parametros                            | Retorno            |
+| -------------------- | -------------------------------- | ------------------------------------- | ------------------ |
+| `initialize()`       | Inicializa sesion al cargar app  | Ninguno                               | `Promise<void>`    |
+| `login(credentials)` | Inicia sesion                    | `{ email: string, password: string }` | `Promise<void>`    |
+| `register(data)`     | Registra nuevo usuario           | `RegisterData`                        | `Promise<void>`    |
+| `logout()`           | Cierra sesion                    | Ninguno                               | `Promise<void>`    |
+| `refreshToken()`     | Renueva tokens                   | Ninguno                               | `Promise<boolean>` |
+| `fetchCurrentUser()` | Obtiene datos del usuario actual | Ninguno                               | `Promise<void>`    |
+| `clearError()`       | Limpia error                     | Ninguno                               | `void`             |
+| `setUser(user)`      | Establece usuario manualmente    | `user: User \| null`                  | `void`             |
 
 ---
 
@@ -361,14 +486,14 @@ interface WorkspaceMember {
 
 **Clase:** `ApiService`
 
-| Metodo | Descripcion | Parametros | Retorno |
-|--------|-------------|------------|---------|
-| `get<T>(url, params?)` | GET request | `url: string, params?: Record<string, unknown>` | `Promise<T>` |
-| `post<T>(url, data?)` | POST request | `url: string, data?: unknown` | `Promise<T>` |
-| `put<T>(url, data?)` | PUT request | `url: string, data?: unknown` | `Promise<T>` |
-| `patch<T>(url, data?)` | PATCH request | `url: string, data?: unknown` | `Promise<T>` |
-| `delete<T>(url)` | DELETE request | `url: string` | `Promise<T>` |
-| `setupInterceptors()` | Configura interceptores de auth | Ninguno | `void` |
+| Metodo                 | Descripcion                     | Parametros                                      | Retorno      |
+| ---------------------- | ------------------------------- | ----------------------------------------------- | ------------ |
+| `get<T>(url, params?)` | GET request                     | `url: string, params?: Record<string, unknown>` | `Promise<T>` |
+| `post<T>(url, data?)`  | POST request                    | `url: string, data?: unknown`                   | `Promise<T>` |
+| `put<T>(url, data?)`   | PUT request                     | `url: string, data?: unknown`                   | `Promise<T>` |
+| `patch<T>(url, data?)` | PATCH request                   | `url: string, data?: unknown`                   | `Promise<T>` |
+| `delete<T>(url)`       | DELETE request                  | `url: string`                                   | `Promise<T>` |
+| `setupInterceptors()`  | Configura interceptores de auth | Ninguno                                         | `void`       |
 
 ---
 
@@ -378,24 +503,24 @@ interface WorkspaceMember {
 
 **Archivo:** `shared/hooks/useDebounce.ts`
 
-| Hook | Descripcion | Parametros | Retorno |
-|------|-------------|------------|---------|
-| `useDebounce<T>(value, delay?)` | Debounce de valores | `value: T, delay?: number (default 300)` | `T` |
+| Hook                            | Descripcion         | Parametros                               | Retorno |
+| ------------------------------- | ------------------- | ---------------------------------------- | ------- |
+| `useDebounce<T>(value, delay?)` | Debounce de valores | `value: T, delay?: number (default 300)` | `T`     |
 
 **Archivo:** `shared/hooks/useLocalStorage.ts`
 
-| Hook | Descripcion | Parametros | Retorno |
-|------|-------------|------------|---------|
+| Hook                                    | Descripcion                  | Parametros                     | Retorno                   |
+| --------------------------------------- | ---------------------------- | ------------------------------ | ------------------------- |
 | `useLocalStorage<T>(key, initialValue)` | Persistencia en localStorage | `key: string, initialValue: T` | `[T, (value: T) => void]` |
 
 **Archivo:** `shared/hooks/useMediaQuery.ts`
 
-| Hook | Descripcion | Parametros | Retorno |
-|------|-------------|------------|---------|
-| `useMediaQuery(query)` | Detecta media query | `query: string` | `boolean` |
-| `useIsMobile()` | Detecta mobile (< 768px) | Ninguno | `boolean` |
-| `useIsTablet()` | Detecta tablet (769-1023px) | Ninguno | `boolean` |
-| `useIsDesktop()` | Detecta desktop (>= 1024px) | Ninguno | `boolean` |
+| Hook                   | Descripcion                 | Parametros      | Retorno   |
+| ---------------------- | --------------------------- | --------------- | --------- |
+| `useMediaQuery(query)` | Detecta media query         | `query: string` | `boolean` |
+| `useIsMobile()`        | Detecta mobile (< 768px)    | Ninguno         | `boolean` |
+| `useIsTablet()`        | Detecta tablet (769-1023px) | Ninguno         | `boolean` |
+| `useIsDesktop()`       | Detecta desktop (>= 1024px) | Ninguno         | `boolean` |
 
 ---
 
@@ -403,8 +528,8 @@ interface WorkspaceMember {
 
 **Archivo:** `shared/utils/cn.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
+| Funcion         | Descripcion                                     | Parametros                | Retorno  |
+| --------------- | ----------------------------------------------- | ------------------------- | -------- |
 | `cn(...inputs)` | Combina clases Tailwind (clsx + tailwind-merge) | `...inputs: ClassValue[]` | `string` |
 
 ---
@@ -415,11 +540,11 @@ interface WorkspaceMember {
 
 **Archivo:** `contexts/ThemeContext.tsx`
 
-| Componente/Hook | Descripcion | Props/Retorno |
-|-----------------|-------------|---------------|
-| `ThemeProvider` | Proveedor de tema | `children: ReactNode` |
-| `useTheme()` | Hook para acceder al tema | `{ theme: 'light'\|'dark', toggleTheme: () => void, isDark: boolean }` |
-| `themeColors` | Colores del sistema SOFIA | `{ dark: {...}, light: {...} }` |
+| Componente/Hook | Descripcion               | Props/Retorno                                                          |
+| --------------- | ------------------------- | ---------------------------------------------------------------------- |
+| `ThemeProvider` | Proveedor de tema         | `children: ReactNode`                                                  |
+| `useTheme()`    | Hook para acceder al tema | `{ theme: 'light'\|'dark', toggleTheme: () => void, isDark: boolean }` |
+| `themeColors`   | Colores del sistema SOFIA | `{ dark: {...}, light: {...} }`                                        |
 
 ---
 
@@ -427,16 +552,17 @@ interface WorkspaceMember {
 
 **Archivo:** `contexts/WorkspaceContext.tsx`
 
-| Componente/Hook | Descripcion | Props/Retorno |
-|-----------------|-------------|---------------|
+| Componente/Hook     | Descripcion                                     | Props/Retorno         |
+| ------------------- | ----------------------------------------------- | --------------------- |
 | `WorkspaceProvider` | Proveedor de workspace para paginas `[orgSlug]` | `children: ReactNode` |
-| `useWorkspace()` | Hook para acceder al workspace actual | Ver retorno abajo |
+| `useWorkspace()`    | Hook para acceder al workspace actual           | Ver retorno abajo     |
 
 **Retorno de `useWorkspace()`:**
+
 ```typescript
 {
-  workspace: WorkspaceData;        // Datos del workspace actual
-  userRole: IrisRole;              // Rol del usuario: 'owner' | 'admin' | 'manager' | 'leader' | 'member'
+  workspace: WorkspaceData; // Datos del workspace actual
+  userRole: IrisRole; // Rol del usuario: 'owner' | 'admin' | 'manager' | 'leader' | 'member'
   permissions: WorkspacePermissions; // Flags booleanos de permisos
   isOwner: boolean;
   isAdmin: boolean;
@@ -463,11 +589,12 @@ interface WorkspaceMember {
 
 **Archivo:** `features/auth/hooks/useAuth.ts`
 
-| Hook | Descripcion | Retorno |
-|------|-------------|---------|
+| Hook        | Descripcion                     | Retorno                         |
+| ----------- | ------------------------------- | ------------------------------- |
 | `useAuth()` | Hook principal de autenticacion | Estado + acciones del authStore |
 
 **Retorno de `useAuth()`:**
+
 ```typescript
 {
   // Estado
@@ -524,8 +651,8 @@ interface WorkspaceMember {
 
 **Archivo:** `app/api/auth/login/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint          | Descripcion   |
+| ------ | ----------------- | ------------- |
 | `POST` | `/api/auth/login` | Inicia sesion |
 
 **Funciones internas:**
@@ -539,40 +666,40 @@ interface WorkspaceMember {
 
 **Archivo:** `app/api/auth/register/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint             | Descripcion            |
+| ------ | -------------------- | ---------------------- |
 | `POST` | `/api/auth/register` | Registra nuevo usuario |
 
 ---
 
 **Archivo:** `app/api/auth/logout/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint           | Descripcion                   |
+| ------ | ------------------ | ----------------------------- |
 | `POST` | `/api/auth/logout` | Cierra sesion y revoca tokens |
 
 ---
 
 **Archivo:** `app/api/auth/refresh/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint            | Descripcion    |
+| ------ | ------------------- | -------------- |
 | `POST` | `/api/auth/refresh` | Renueva tokens |
 
 ---
 
 **Archivo:** `app/api/auth/me/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/auth/me` | Obtiene usuario autenticado |
+| Metodo | Endpoint       | Descripcion                 |
+| ------ | -------------- | --------------------------- |
+| `GET`  | `/api/auth/me` | Obtiene usuario autenticado |
 
 ---
 
 **Archivo:** `app/api/auth/change-password/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint                    | Descripcion       |
+| ------ | --------------------------- | ----------------- |
 | `POST` | `/api/auth/change-password` | Cambia contrasena |
 
 ---
@@ -581,11 +708,12 @@ interface WorkspaceMember {
 
 **Archivo:** `app/api/ai/agile-advisor/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint                | Descripcion                 |
+| ------ | ----------------------- | --------------------------- |
 | `POST` | `/api/ai/agile-advisor` | Recomienda metodologia agil |
 
 **Request Body:**
+
 ```typescript
 {
   content?: string;
@@ -595,6 +723,7 @@ interface WorkspaceMember {
 ```
 
 **Response:**
+
 ```typescript
 {
   methodology: string;
@@ -610,17 +739,38 @@ interface WorkspaceMember {
 
 **Archivo:** `app/api/ai/diagram-generator/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint                    | Descripcion              |
+| ------ | --------------------------- | ------------------------ |
 | `POST` | `/api/ai/diagram-generator` | Genera diagramas Mermaid |
 
 ---
 
 **Archivo:** `app/api/ai/predictive-report/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint                    | Descripcion               |
+| ------ | --------------------------- | ------------------------- |
 | `POST` | `/api/ai/predictive-report` | Genera reporte predictivo |
+
+---
+
+**Archivo:** `app/api/ai/analyze-documents/route.ts`
+
+| Metodo | Endpoint                    | Descripcion                                                             |
+| ------ | --------------------------- | ----------------------------------------------------------------------- |
+| `POST` | `/api/ai/analyze-documents` | Analiza documentos de Google Drive con IA y crea issues automaticamente |
+
+Lee contenido de documentos vinculados al proyecto via Google Drive API, los envia a Gemini para extraer tareas, y crea issues + cycles + labels automaticamente en el proyecto.
+
+---
+
+**Archivo:** `app/api/ai/bridge/route.ts`
+
+Bridge MCP para agentes externos. Autenticacion via API keys (`phub_...`) o legacy env var.
+
+| Metodo | Endpoint         | Descripcion                                                                                                                                    |
+| ------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/api/ai/bridge` | Obtiene contexto completo del workspace (proyectos, tareas, miembros, schema, capabilities). Scoped por workspace si la API key esta vinculada |
+| `POST` | `/api/ai/bridge` | Ejecuta acciones: `create_task`, `update_task`, `delete_task`, `update_project`, `create_milestone`, `create_cycle`. Requiere scope `write`    |
 
 ---
 
@@ -628,100 +778,100 @@ interface WorkspaceMember {
 
 **Archivo:** `app/api/admin/users/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/users` | Lista usuarios |
-| `POST` | `/api/admin/users` | Crea usuario |
+| Metodo | Endpoint           | Descripcion    |
+| ------ | ------------------ | -------------- |
+| `GET`  | `/api/admin/users` | Lista usuarios |
+| `POST` | `/api/admin/users` | Crea usuario   |
 
 ---
 
 **Archivo:** `app/api/admin/users/[id]/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/users/:id` | Obtiene usuario |
-| `PATCH` | `/api/admin/users/:id` | Actualiza usuario |
-| `DELETE` | `/api/admin/users/:id` | Elimina usuario |
+| Metodo   | Endpoint               | Descripcion       |
+| -------- | ---------------------- | ----------------- |
+| `GET`    | `/api/admin/users/:id` | Obtiene usuario   |
+| `PATCH`  | `/api/admin/users/:id` | Actualiza usuario |
+| `DELETE` | `/api/admin/users/:id` | Elimina usuario   |
 
 ---
 
 **Archivo:** `app/api/admin/teams/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/teams` | Lista equipos |
-| `POST` | `/api/admin/teams` | Crea equipo |
+| Metodo | Endpoint           | Descripcion   |
+| ------ | ------------------ | ------------- |
+| `GET`  | `/api/admin/teams` | Lista equipos |
+| `POST` | `/api/admin/teams` | Crea equipo   |
 
 ---
 
 **Archivo:** `app/api/admin/teams/[teamId]/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/teams/:teamId` | Obtiene equipo |
-| `PATCH` | `/api/admin/teams/:teamId` | Actualiza equipo |
-| `DELETE` | `/api/admin/teams/:teamId` | Elimina equipo |
+| Metodo   | Endpoint                   | Descripcion      |
+| -------- | -------------------------- | ---------------- |
+| `GET`    | `/api/admin/teams/:teamId` | Obtiene equipo   |
+| `PATCH`  | `/api/admin/teams/:teamId` | Actualiza equipo |
+| `DELETE` | `/api/admin/teams/:teamId` | Elimina equipo   |
 
 ---
 
 **Archivo:** `app/api/admin/teams/[teamId]/members/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/teams/:teamId/members` | Lista miembros |
+| Metodo | Endpoint                           | Descripcion    |
+| ------ | ---------------------------------- | -------------- |
+| `GET`  | `/api/admin/teams/:teamId/members` | Lista miembros |
 | `POST` | `/api/admin/teams/:teamId/members` | Agrega miembro |
 
 ---
 
 **Archivo:** `app/api/admin/teams/[teamId]/issues/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/teams/:teamId/issues` | Lista tareas |
-| `POST` | `/api/admin/teams/:teamId/issues` | Crea tarea |
+| Metodo | Endpoint                          | Descripcion  |
+| ------ | --------------------------------- | ------------ |
+| `GET`  | `/api/admin/teams/:teamId/issues` | Lista tareas |
+| `POST` | `/api/admin/teams/:teamId/issues` | Crea tarea   |
 
 ---
 
 **Archivo:** `app/api/admin/teams/[teamId]/statuses/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/teams/:teamId/statuses` | Lista estados de tareas |
+| Metodo | Endpoint                            | Descripcion             |
+| ------ | ----------------------------------- | ----------------------- |
+| `GET`  | `/api/admin/teams/:teamId/statuses` | Lista estados de tareas |
 
 ---
 
 **Archivo:** `app/api/admin/teams/[teamId]/labels/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/teams/:teamId/labels` | Lista etiquetas |
-| `POST` | `/api/admin/teams/:teamId/labels` | Crea etiqueta |
+| Metodo | Endpoint                          | Descripcion     |
+| ------ | --------------------------------- | --------------- |
+| `GET`  | `/api/admin/teams/:teamId/labels` | Lista etiquetas |
+| `POST` | `/api/admin/teams/:teamId/labels` | Crea etiqueta   |
 
 ---
 
 **Archivo:** `app/api/admin/priorities/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/priorities` | Lista prioridades |
+| Metodo | Endpoint                | Descripcion       |
+| ------ | ----------------------- | ----------------- |
+| `GET`  | `/api/admin/priorities` | Lista prioridades |
 
 ---
 
 **Archivo:** `app/api/admin/projects/[id]/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/projects/:id` | Obtiene proyecto |
-| `PATCH` | `/api/admin/projects/:id` | Actualiza proyecto |
-| `DELETE` | `/api/admin/projects/:id` | Elimina proyecto |
+| Metodo   | Endpoint                  | Descripcion        |
+| -------- | ------------------------- | ------------------ |
+| `GET`    | `/api/admin/projects/:id` | Obtiene proyecto   |
+| `PATCH`  | `/api/admin/projects/:id` | Actualiza proyecto |
+| `DELETE` | `/api/admin/projects/:id` | Elimina proyecto   |
 
 ---
 
 **Archivo:** `app/api/admin/analytics/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/admin/analytics` | Obtiene metricas del dashboard |
+| Metodo | Endpoint               | Descripcion                    |
+| ------ | ---------------------- | ------------------------------ |
+| `GET`  | `/api/admin/analytics` | Obtiene metricas del dashboard |
 
 ---
 
@@ -731,99 +881,185 @@ Rutas scoped por workspace. Auth se maneja internamente (JWT en header/cookie + 
 
 **Archivo:** `app/api/workspaces/[slug]/members/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/workspaces/:slug/members` | Lista miembros del workspace. Sync auto con SOFIA si hay <=1 miembro |
-| `GET` | `/api/workspaces/:slug/members?sync=true` | Fuerza re-sincronizacion de miembros desde SOFIA |
-| `PATCH` | `/api/workspaces/:slug/members` | Actualiza iris_role de un miembro (solo owner/admin) |
+| Metodo  | Endpoint                                  | Descripcion                                                          |
+| ------- | ----------------------------------------- | -------------------------------------------------------------------- |
+| `GET`   | `/api/workspaces/:slug/members`           | Lista miembros del workspace. Sync auto con SOFIA si hay <=1 miembro |
+| `GET`   | `/api/workspaces/:slug/members?sync=true` | Fuerza re-sincronizacion de miembros desde SOFIA                     |
+| `PATCH` | `/api/workspaces/:slug/members`           | Actualiza iris_role de un miembro (solo owner/admin)                 |
 
 **PATCH Body:**
+
 ```typescript
-{ userId: string; irisRole: 'owner' | 'admin' | 'manager' | 'leader' | 'member' }
+{
+  userId: string;
+  irisRole: "owner" | "admin" | "manager" | "leader" | "member";
+}
 ```
 
 ---
 
 **Archivo:** `app/api/workspaces/[slug]/teams/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/workspaces/:slug/teams` | Lista equipos del workspace (scoped por workspace_id) |
+| Metodo | Endpoint                      | Descripcion                                           |
+| ------ | ----------------------------- | ----------------------------------------------------- |
+| `GET`  | `/api/workspaces/:slug/teams` | Lista equipos del workspace (scoped por workspace_id) |
 
 ---
 
 **Archivo:** `app/api/workspaces/[slug]/projects/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/workspaces/:slug/projects` | Lista proyectos del workspace |
+| Metodo | Endpoint                         | Descripcion                   |
+| ------ | -------------------------------- | ----------------------------- |
+| `GET`  | `/api/workspaces/:slug/projects` | Lista proyectos del workspace |
 | `POST` | `/api/workspaces/:slug/projects` | Crea proyecto en el workspace |
 
 ---
 
 **Archivo:** `app/api/workspaces/[slug]/analytics/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/workspaces/:slug/analytics` | Metricas del workspace (proyectos, tareas, miembros) |
+| Metodo | Endpoint                          | Descripcion                                          |
+| ------ | --------------------------------- | ---------------------------------------------------- |
+| `GET`  | `/api/workspaces/:slug/analytics` | Metricas del workspace (proyectos, tareas, miembros) |
 
 ---
 
 **Archivo:** `app/api/workspaces/[slug]/reports/executive-summary/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/workspaces/:slug/reports/executive-summary` | Reporte ejecutivo scoped al workspace |
+| Metodo | Endpoint                                          | Descripcion                           |
+| ------ | ------------------------------------------------- | ------------------------------------- |
+| `GET`  | `/api/workspaces/:slug/reports/executive-summary` | Reporte ejecutivo scoped al workspace |
 
 ---
 
-### 6.5 Otras Routes
+**Archivo:** `app/api/workspaces/[slug]/settings/route.ts`
+
+| Metodo  | Endpoint                         | Descripcion                                               |
+| ------- | -------------------------------- | --------------------------------------------------------- |
+| `PATCH` | `/api/workspaces/:slug/settings` | Actualiza settings JSONB del workspace (solo owner/admin) |
+
+---
+
+**Archivo:** `app/api/workspaces/[slug]/api-keys/route.ts`
+
+| Metodo | Endpoint                         | Descripcion                               |
+| ------ | -------------------------------- | ----------------------------------------- |
+| `GET`  | `/api/workspaces/:slug/api-keys` | Lista API keys del workspace (sin hashes) |
+| `POST` | `/api/workspaces/:slug/api-keys` | Genera nueva API key para Bridge MCP      |
+
+**Archivo:** `app/api/workspaces/[slug]/api-keys/[keyId]/route.ts`
+
+| Metodo   | Endpoint                                | Descripcion    |
+| -------- | --------------------------------------- | -------------- |
+| `DELETE` | `/api/workspaces/:slug/api-keys/:keyId` | Revoca API key |
+
+---
+
+**Archivo:** `app/api/workspaces/[slug]/projects/[id]/documents/route.ts`
+
+| Metodo | Endpoint                                       | Descripcion                                   |
+| ------ | ---------------------------------------------- | --------------------------------------------- |
+| `GET`  | `/api/workspaces/:slug/projects/:id/documents` | Lista documentos vinculados al proyecto       |
+| `POST` | `/api/workspaces/:slug/projects/:id/documents` | Vincula documento de Google Drive al proyecto |
+
+---
+
+### 6.5 Google OAuth Routes
+
+**Archivo:** `app/api/auth/google/connect/route.ts`
+
+| Metodo | Endpoint                   | Descripcion                                                        |
+| ------ | -------------------------- | ------------------------------------------------------------------ |
+| `GET`  | `/api/auth/google/connect` | Inicia flujo OAuth2 de Google (redirige a pantalla consentimiento) |
+
+**Archivo:** `app/api/auth/callback/google/route.ts`
+
+| Metodo | Endpoint                    | Descripcion                                  |
+| ------ | --------------------------- | -------------------------------------------- |
+| `GET`  | `/api/auth/callback/google` | Callback OAuth2, almacena tokens encriptados |
+
+**Archivo:** `app/api/auth/google/status/route.ts`
+
+| Metodo | Endpoint                  | Descripcion                                    |
+| ------ | ------------------------- | ---------------------------------------------- |
+| `GET`  | `/api/auth/google/status` | Verifica si la cuenta de Google esta conectada |
+
+**Archivo:** `app/api/auth/google/disconnect/route.ts`
+
+| Metodo | Endpoint                      | Descripcion                       |
+| ------ | ----------------------------- | --------------------------------- |
+| `POST` | `/api/auth/google/disconnect` | Desconecta cuenta y revoca tokens |
+
+**Archivo:** `app/api/auth/google/token/route.ts`
+
+| Metodo | Endpoint                 | Descripcion                                |
+| ------ | ------------------------ | ------------------------------------------ |
+| `GET`  | `/api/auth/google/token` | Obtiene access token valido (auto-refresh) |
+
+---
+
+### 6.6 External API Routes (LIA Extension)
+
+**Archivo:** `app/api/ext/projects/route.ts`
+
+| Metodo | Endpoint            | Descripcion                      |
+| ------ | ------------------- | -------------------------------- |
+| `GET`  | `/api/ext/projects` | Lista proyectos para extensiones |
+
+**Archivo:** `app/api/ext/issues/route.ts`
+
+| Metodo | Endpoint          | Descripcion                   |
+| ------ | ----------------- | ----------------------------- |
+| `GET`  | `/api/ext/issues` | Lista issues para extensiones |
+
+---
+
+### 6.7 Otras Routes
 
 **Archivo:** `app/api/search/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/search?q=:query` | Busqueda global (proyectos, tareas, usuarios, equipos) |
+| Metodo | Endpoint               | Descripcion                                            |
+| ------ | ---------------------- | ------------------------------------------------------ |
+| `GET`  | `/api/search?q=:query` | Busqueda global (proyectos, tareas, usuarios, equipos) |
 
 ---
 
 **Archivo:** `app/api/notifications/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/notifications?userId=:id` | Lista notificaciones |
+| Metodo | Endpoint                        | Descripcion          |
+| ------ | ------------------------------- | -------------------- |
+| `GET`  | `/api/notifications?userId=:id` | Lista notificaciones |
 
 ---
 
 **Archivo:** `app/api/notifications/[id]/read/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo  | Endpoint                      | Descripcion      |
+| ------- | ----------------------------- | ---------------- |
 | `PATCH` | `/api/notifications/:id/read` | Marca como leida |
 
 ---
 
 **Archivo:** `app/api/faqs/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/faqs` | Lista FAQs |
+| Metodo | Endpoint    | Descripcion |
+| ------ | ----------- | ----------- |
+| `GET`  | `/api/faqs` | Lista FAQs  |
 
 ---
 
 **Archivo:** `app/api/focus/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `GET` | `/api/focus?userId=:id` | Verifica sesion de enfoque activa |
-| `POST` | `/api/focus` | Inicia sesion de enfoque |
+| Metodo | Endpoint                | Descripcion                       |
+| ------ | ----------------------- | --------------------------------- |
+| `GET`  | `/api/focus?userId=:id` | Verifica sesion de enfoque activa |
+| `POST` | `/api/focus`            | Inicia sesion de enfoque          |
 
 ---
 
 **Archivo:** `app/api/upload/avatar/route.ts`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
+| Metodo | Endpoint             | Descripcion            |
+| ------ | -------------------- | ---------------------- |
 | `POST` | `/api/upload/avatar` | Sube avatar de usuario |
 
 ---
@@ -832,17 +1068,17 @@ Rutas scoped por workspace. Auth se maneja internamente (JWT en header/cookie + 
 
 Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspace y permisos.
 
-| Pagina | Ruta | Descripcion |
-|--------|------|-------------|
-| Dashboard | `/[orgSlug]/dashboard` | Dashboard del workspace |
-| Members | `/[orgSlug]/members` | Miembros con edicion de roles (owner/admin). Sync con SOFIA |
-| Teams | `/[orgSlug]/teams` | Equipos del workspace |
-| Projects | `/[orgSlug]/projects` | Proyectos (list/board/timeline views). Usa `CreateProjectModal` con `workspaceSlug` |
-| Tools | `/[orgSlug]/tools` | FocusTimer, AgileAdvisor, DiagramArchitect |
-| Analytics | `/[orgSlug]/analytics` | Graficas con Recharts, ActivityHeatmap |
-| Reports | `/[orgSlug]/reports` | PDF generation (`@react-pdf/renderer`), CSV export |
-| Settings | `/[orgSlug]/settings` | Notificaciones, Project Hub Core Link (MCP), Seguridad |
-| Profile | `/[orgSlug]/profile` | Perfil del usuario, cambio de contrasena, avatar |
+| Pagina    | Ruta                   | Descripcion                                                                         |
+| --------- | ---------------------- | ----------------------------------------------------------------------------------- |
+| Dashboard | `/[orgSlug]/dashboard` | Dashboard del workspace                                                             |
+| Members   | `/[orgSlug]/members`   | Miembros con edicion de roles (owner/admin). Sync con SOFIA                         |
+| Teams     | `/[orgSlug]/teams`     | Equipos del workspace                                                               |
+| Projects  | `/[orgSlug]/projects`  | Proyectos (list/board/timeline views). Usa `CreateProjectModal` con `workspaceSlug` |
+| Tools     | `/[orgSlug]/tools`     | FocusTimer, AgileAdvisor, DiagramArchitect                                          |
+| Analytics | `/[orgSlug]/analytics` | Graficas con Recharts, ActivityHeatmap                                              |
+| Reports   | `/[orgSlug]/reports`   | PDF generation (`@react-pdf/renderer`), CSV export                                  |
+| Settings  | `/[orgSlug]/settings`  | Notificaciones, Project Hub Core Link (MCP), Seguridad                              |
+| Profile   | `/[orgSlug]/profile`   | Perfil del usuario, cambio de contrasena, avatar                                    |
 
 ---
 
@@ -850,8 +1086,8 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 **Archivo:** `middleware.ts`
 
-| Funcion | Descripcion |
-|---------|-------------|
+| Funcion               | Descripcion                       |
+| --------------------- | --------------------------------- |
 | `middleware(request)` | Middleware de proteccion de rutas |
 
 **Constantes:**
@@ -862,6 +1098,7 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 | `ADMIN_PATHS` | Rutas que requieren rol admin |
 
 **Logica:**
+
 1. Permite archivos estaticos
 2. Permite rutas publicas
 3. Verifica token JWT en cookie o header
@@ -877,16 +1114,16 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 **Archivo:** `server.ts`
 
-| Funcion/Config | Descripcion |
-|----------------|-------------|
-| `app` | Instancia de Express |
-| `helmet()` | Middleware de seguridad |
-| `cors()` | Configuracion CORS |
-| `limiter` | Rate limiting (100 req/15min) |
-| `morgan()` | Logging de requests |
-| `compression()` | Compresion gzip |
-| `cookieParser()` | Parser de cookies |
-| `errorHandler` | Manejador global de errores |
+| Funcion/Config   | Descripcion                   |
+| ---------------- | ----------------------------- |
+| `app`            | Instancia de Express          |
+| `helmet()`       | Middleware de seguridad       |
+| `cors()`         | Configuracion CORS            |
+| `limiter`        | Rate limiting (100 req/15min) |
+| `morgan()`       | Logging de requests           |
+| `compression()`  | Compresion gzip               |
+| `cookieParser()` | Parser de cookies             |
+| `errorHandler`   | Manejador global de errores   |
 
 **Endpoints:**
 | Endpoint | Descripcion |
@@ -903,12 +1140,12 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 **Archivo:** `core/middleware/errorHandler.ts`
 
-| Funcion/Clase | Descripcion | Parametros | Retorno |
-|---------------|-------------|------------|---------|
-| `AppError` | Clase de error personalizada | `message, statusCode, code` | - |
-| `createError(message, statusCode, code)` | Factory de AppError | `message: string, statusCode: number, code: string` | `AppError` |
-| `errorHandler(err, req, res, next)` | Middleware global de errores | Express params | `void` |
-| `asyncHandler(fn)` | Wrapper para async/await | `fn: AsyncFunction` | `RequestHandler` |
+| Funcion/Clase                            | Descripcion                  | Parametros                                          | Retorno          |
+| ---------------------------------------- | ---------------------------- | --------------------------------------------------- | ---------------- |
+| `AppError`                               | Clase de error personalizada | `message, statusCode, code`                         | -                |
+| `createError(message, statusCode, code)` | Factory de AppError          | `message: string, statusCode: number, code: string` | `AppError`       |
+| `errorHandler(err, req, res, next)`      | Middleware global de errores | Express params                                      | `void`           |
+| `asyncHandler(fn)`                       | Wrapper para async/await     | `fn: AsyncFunction`                                 | `RequestHandler` |
 
 ---
 
@@ -916,10 +1153,10 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 **Archivo:** `core/middleware/auth.middleware.ts`
 
-| Funcion | Descripcion | Parametros |
-|---------|-------------|------------|
-| `authenticate(req, res, next)` | Verifica JWT en Authorization header | Express params |
-| `authorize(...allowedRoles)` | Middleware de autorizacion por roles | `...allowedRoles: string[]` |
+| Funcion                        | Descripcion                          | Parametros                  |
+| ------------------------------ | ------------------------------------ | --------------------------- |
+| `authenticate(req, res, next)` | Verifica JWT en Authorization header | Express params              |
+| `authorize(...allowedRoles)`   | Middleware de autorizacion por roles | `...allowedRoles: string[]` |
 
 ---
 
@@ -931,13 +1168,13 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 **Clase:** `AuthController`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `login` | `POST /auth/login` | Inicia sesion |
-| `register` | `POST /auth/register` | Registra usuario |
-| `refreshToken` | `POST /auth/refresh` | Renueva tokens |
-| `logout` | `POST /auth/logout` | Cierra sesion |
-| `getMe` | `GET /auth/me` | Obtiene usuario actual |
+| Metodo         | Endpoint              | Descripcion            |
+| -------------- | --------------------- | ---------------------- |
+| `login`        | `POST /auth/login`    | Inicia sesion          |
+| `register`     | `POST /auth/register` | Registra usuario       |
+| `refreshToken` | `POST /auth/refresh`  | Renueva tokens         |
+| `logout`       | `POST /auth/logout`   | Cierra sesion          |
+| `getMe`        | `GET /auth/me`        | Obtiene usuario actual |
 
 ---
 
@@ -947,12 +1184,12 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 **Clase:** `AuthService`
 
-| Metodo | Descripcion | Parametros | Retorno |
-|--------|-------------|------------|---------|
-| `login(credentials)` | Login con email y password | `{ email, password }` | `Promise<{ user, accessToken, refreshToken }>` |
-| `register(data)` | Registra nuevo usuario | `{ name, email, password }` | `Promise<{ user, accessToken, refreshToken }>` |
-| `refreshToken(refreshToken)` | Renueva access token | `refreshToken: string` | `Promise<AuthTokens>` |
-| `logout(userId)` | Invalida sesion | `userId: string` | `Promise<void>` |
+| Metodo                       | Descripcion                | Parametros                  | Retorno                                        |
+| ---------------------------- | -------------------------- | --------------------------- | ---------------------------------------------- |
+| `login(credentials)`         | Login con email y password | `{ email, password }`       | `Promise<{ user, accessToken, refreshToken }>` |
+| `register(data)`             | Registra nuevo usuario     | `{ name, email, password }` | `Promise<{ user, accessToken, refreshToken }>` |
+| `refreshToken(refreshToken)` | Renueva access token       | `refreshToken: string`      | `Promise<AuthTokens>`                          |
+| `logout(userId)`             | Invalida sesion            | `userId: string`            | `Promise<void>`                                |
 
 ---
 
@@ -964,12 +1201,12 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 **Clase:** `UsersController`
 
-| Metodo | Endpoint | Descripcion |
-|--------|----------|-------------|
-| `getAll` | `GET /users` | Lista usuarios |
-| `getById` | `GET /users/:id` | Obtiene usuario |
-| `update` | `PATCH /users/:id` | Actualiza usuario |
-| `delete` | `DELETE /users/:id` | Elimina usuario |
+| Metodo    | Endpoint            | Descripcion       |
+| --------- | ------------------- | ----------------- |
+| `getAll`  | `GET /users`        | Lista usuarios    |
+| `getById` | `GET /users/:id`    | Obtiene usuario   |
+| `update`  | `PATCH /users/:id`  | Actualiza usuario |
+| `delete`  | `DELETE /users/:id` | Elimina usuario   |
 
 ---
 
@@ -979,12 +1216,12 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 **Clase:** `UsersService`
 
-| Metodo | Descripcion | Parametros | Retorno |
-|--------|-------------|------------|---------|
-| `getAll()` | Obtiene todos los usuarios | Ninguno | `Promise<User[]>` |
-| `getById(id)` | Obtiene usuario por ID | `id: string` | `Promise<User>` |
-| `update(id, data)` | Actualiza usuario | `id: string, data: UpdateUserInput` | `Promise<User>` |
-| `delete(id)` | Elimina usuario | `id: string` | `Promise<void>` |
+| Metodo             | Descripcion                | Parametros                          | Retorno           |
+| ------------------ | -------------------------- | ----------------------------------- | ----------------- |
+| `getAll()`         | Obtiene todos los usuarios | Ninguno                             | `Promise<User[]>` |
+| `getById(id)`      | Obtiene usuario por ID     | `id: string`                        | `Promise<User>`   |
+| `update(id, data)` | Actualiza usuario          | `id: string, data: UpdateUserInput` | `Promise<User>`   |
+| `delete(id)`       | Elimina usuario            | `id: string`                        | `Promise<void>`   |
 
 ---
 
@@ -1053,9 +1290,9 @@ interface AuthResponse {
 
 ```typescript
 enum UserRole {
-  ADMIN = 'admin',
-  USER = 'user',
-  GUEST = 'guest',
+  ADMIN = "admin",
+  USER = "user",
+  GUEST = "guest",
 }
 ```
 
@@ -1088,20 +1325,20 @@ const HTTP_STATUS = {
 
 ```typescript
 const ERROR_CODES = {
-  VALIDATION_ERROR: 'VALIDATION_ERROR',
-  INVALID_INPUT: 'INVALID_INPUT',
-  AUTHENTICATION_ERROR: 'AUTHENTICATION_ERROR',
-  TOKEN_EXPIRED: 'TOKEN_EXPIRED',
-  TOKEN_INVALID: 'TOKEN_INVALID',
-  FORBIDDEN: 'FORBIDDEN',
-  INSUFFICIENT_PERMISSIONS: 'INSUFFICIENT_PERMISSIONS',
-  NOT_FOUND: 'NOT_FOUND',
-  ALREADY_EXISTS: 'ALREADY_EXISTS',
-  CONFLICT: 'CONFLICT',
-  RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
-  INTERNAL_ERROR: 'INTERNAL_ERROR',
-  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
-  DATABASE_ERROR: 'DATABASE_ERROR',
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+  INVALID_INPUT: "INVALID_INPUT",
+  AUTHENTICATION_ERROR: "AUTHENTICATION_ERROR",
+  TOKEN_EXPIRED: "TOKEN_EXPIRED",
+  TOKEN_INVALID: "TOKEN_INVALID",
+  FORBIDDEN: "FORBIDDEN",
+  INSUFFICIENT_PERMISSIONS: "INSUFFICIENT_PERMISSIONS",
+  NOT_FOUND: "NOT_FOUND",
+  ALREADY_EXISTS: "ALREADY_EXISTS",
+  CONFLICT: "CONFLICT",
+  RATE_LIMIT_EXCEEDED: "RATE_LIMIT_EXCEEDED",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
+  DATABASE_ERROR: "DATABASE_ERROR",
 };
 ```
 
@@ -1109,12 +1346,12 @@ const ERROR_CODES = {
 
 ```typescript
 const API_ENDPOINTS = {
-  LOGIN: '/auth/login',
-  REGISTER: '/auth/register',
-  LOGOUT: '/auth/logout',
-  REFRESH: '/auth/refresh',
-  ME: '/auth/me',
-  USERS: '/users',
+  LOGIN: "/auth/login",
+  REGISTER: "/auth/register",
+  LOGOUT: "/auth/logout",
+  REFRESH: "/auth/refresh",
+  ME: "/auth/me",
+  USERS: "/users",
   USER_BY_ID: (id: string) => `/users/${id}`,
 };
 ```
@@ -1123,12 +1360,12 @@ const API_ENDPOINTS = {
 
 ```typescript
 const APP_CONFIG = {
-  NAME: 'Project Hub',
-  VERSION: '1.0.0',
+  NAME: "Project Hub",
+  VERSION: "1.0.0",
   DEFAULT_PAGE_SIZE: 10,
   MAX_PAGE_SIZE: 100,
-  TOKEN_EXPIRY: '7d',
-  REFRESH_TOKEN_EXPIRY: '30d',
+  TOKEN_EXPIRY: "7d",
+  REFRESH_TOKEN_EXPIRY: "30d",
 };
 ```
 
@@ -1138,15 +1375,15 @@ const APP_CONFIG = {
 
 **Archivo:** `utils/index.ts`
 
-| Funcion | Descripcion | Parametros | Retorno |
-|---------|-------------|------------|---------|
-| `formatDate(date, locale?)` | Formatea fecha | `date: Date\|string, locale?: string` | `string` |
-| `formatDateTime(date, locale?)` | Formatea fecha con hora | `date: Date\|string, locale?: string` | `string` |
-| `sleep(ms)` | Pausa asincrona | `ms: number` | `Promise<void>` |
-| `generateRandomString(length?)` | Genera string aleatorio | `length?: number (default 16)` | `string` |
-| `capitalize(str)` | Capitaliza primera letra | `str: string` | `string` |
-| `truncate(str, length)` | Trunca string con ellipsis | `str: string, length: number` | `string` |
-| `isEmpty(value)` | Verifica si valor esta vacio | `value: unknown` | `boolean` |
+| Funcion                         | Descripcion                  | Parametros                            | Retorno         |
+| ------------------------------- | ---------------------------- | ------------------------------------- | --------------- |
+| `formatDate(date, locale?)`     | Formatea fecha               | `date: Date\|string, locale?: string` | `string`        |
+| `formatDateTime(date, locale?)` | Formatea fecha con hora      | `date: Date\|string, locale?: string` | `string`        |
+| `sleep(ms)`                     | Pausa asincrona              | `ms: number`                          | `Promise<void>` |
+| `generateRandomString(length?)` | Genera string aleatorio      | `length?: number (default 16)`        | `string`        |
+| `capitalize(str)`               | Capitaliza primera letra     | `str: string`                         | `string`        |
+| `truncate(str, length)`         | Trunca string con ellipsis   | `str: string, length: number`         | `string`        |
+| `isEmpty(value)`                | Verifica si valor esta vacio | `value: unknown`                      | `boolean`       |
 
 ---
 
@@ -1156,30 +1393,30 @@ const APP_CONFIG = {
 
 ### Tablas
 
-| Tabla | Descripcion |
-|-------|-------------|
-| `account_users` | Usuarios del sistema |
-| `auth_sessions` | Sesiones activas |
-| `auth_refresh_tokens` | Tokens de refresh |
-| `auth_password_resets` | Solicitudes de reset de password |
-| `auth_email_verifications` | Verificaciones de email |
-| `auth_login_history` | Historial de intentos de login |
-| `auth_oauth_providers` | Proveedores OAuth vinculados |
-| `user_permissions` | Permisos especificos por usuario |
+| Tabla                      | Descripcion                      |
+| -------------------------- | -------------------------------- |
+| `account_users`            | Usuarios del sistema             |
+| `auth_sessions`            | Sesiones activas                 |
+| `auth_refresh_tokens`      | Tokens de refresh                |
+| `auth_password_resets`     | Solicitudes de reset de password |
+| `auth_email_verifications` | Verificaciones de email          |
+| `auth_login_history`       | Historial de intentos de login   |
+| `auth_oauth_providers`     | Proveedores OAuth vinculados     |
+| `user_permissions`         | Permisos especificos por usuario |
 
 ### Funciones SQL
 
-| Funcion | Descripcion | Parametros |
-|---------|-------------|------------|
-| `update_updated_at_column()` | Actualiza updated_at automaticamente | Trigger |
-| `handle_failed_login(p_user_id)` | Incrementa intentos fallidos y bloquea | `p_user_id: UUID` |
-| `reset_failed_login_attempts(p_user_id)` | Resetea intentos tras login exitoso | `p_user_id: UUID` |
+| Funcion                                  | Descripcion                            | Parametros        |
+| ---------------------------------------- | -------------------------------------- | ----------------- |
+| `update_updated_at_column()`             | Actualiza updated_at automaticamente   | Trigger           |
+| `handle_failed_login(p_user_id)`         | Incrementa intentos fallidos y bloquea | `p_user_id: UUID` |
+| `reset_failed_login_attempts(p_user_id)` | Resetea intentos tras login exitoso    | `p_user_id: UUID` |
 
 ### Triggers
 
-| Trigger | Tabla | Descripcion |
-|---------|-------|-------------|
-| `trigger_account_users_updated_at` | account_users | Auto-update updated_at |
+| Trigger                                   | Tabla                | Descripcion            |
+| ----------------------------------------- | -------------------- | ---------------------- |
+| `trigger_account_users_updated_at`        | account_users        | Auto-update updated_at |
 | `trigger_auth_oauth_providers_updated_at` | auth_oauth_providers | Auto-update updated_at |
 
 ---
@@ -1188,26 +1425,26 @@ const APP_CONFIG = {
 
 ### Tablas
 
-| Tabla | Descripcion |
-|-------|-------------|
-| `pm_projects` | Proyectos principales |
-| `pm_project_members` | Miembros de proyectos |
+| Tabla                         | Descripcion           |
+| ----------------------------- | --------------------- |
+| `pm_projects`                 | Proyectos principales |
+| `pm_project_members`          | Miembros de proyectos |
 | `pm_project_progress_history` | Historial de progreso |
-| `pm_project_views` | Vistas personalizadas |
-| `pm_milestones` | Hitos de proyectos |
-| `pm_project_updates` | Actualizaciones/notas |
+| `pm_project_views`            | Vistas personalizadas |
+| `pm_milestones`               | Hitos de proyectos    |
+| `pm_project_updates`          | Actualizaciones/notas |
 
 ### Funciones SQL
 
-| Funcion | Descripcion | Parametros |
-|---------|-------------|------------|
-| `record_project_progress(p_project_id)` | Registra progreso actual | `p_project_id: UUID` |
-| `get_project_sparkline_data(p_project_id, p_days?)` | Datos para sparkline | `p_project_id: UUID, p_days?: int (default 30)` |
+| Funcion                                             | Descripcion              | Parametros                                      |
+| --------------------------------------------------- | ------------------------ | ----------------------------------------------- |
+| `record_project_progress(p_project_id)`             | Registra progreso actual | `p_project_id: UUID`                            |
+| `get_project_sparkline_data(p_project_id, p_days?)` | Datos para sparkline     | `p_project_id: UUID, p_days?: int (default 30)` |
 
 ### Vistas
 
-| Vista | Descripcion |
-|-------|-------------|
+| Vista                | Descripcion                  |
+| -------------------- | ---------------------------- |
 | `v_projects_summary` | Proyectos con info calculada |
 
 ---
@@ -1216,41 +1453,41 @@ const APP_CONFIG = {
 
 ### Tablas
 
-| Tabla | Descripcion |
-|-------|-------------|
-| `task_statuses` | Estados de tareas por equipo |
-| `task_priorities` | Prioridades globales |
-| `task_labels` | Etiquetas por equipo |
-| `task_cycles` | Ciclos/Sprints |
-| `task_issues` | Tareas principales |
-| `task_issue_labels` | Relacion Issue-Label |
-| `task_issue_subscribers` | Suscriptores/Watchers |
-| `task_issue_comments` | Comentarios |
-| `task_issue_attachments` | Archivos adjuntos |
-| `task_issue_history` | Historial de cambios |
-| `task_issue_relations` | Relaciones entre tareas |
-| `task_saved_views` | Vistas guardadas |
+| Tabla                    | Descripcion                  |
+| ------------------------ | ---------------------------- |
+| `task_statuses`          | Estados de tareas por equipo |
+| `task_priorities`        | Prioridades globales         |
+| `task_labels`            | Etiquetas por equipo         |
+| `task_cycles`            | Ciclos/Sprints               |
+| `task_issues`            | Tareas principales           |
+| `task_issue_labels`      | Relacion Issue-Label         |
+| `task_issue_subscribers` | Suscriptores/Watchers        |
+| `task_issue_comments`    | Comentarios                  |
+| `task_issue_attachments` | Archivos adjuntos            |
+| `task_issue_history`     | Historial de cambios         |
+| `task_issue_relations`   | Relaciones entre tareas      |
+| `task_saved_views`       | Vistas guardadas             |
 
 ### Funciones SQL
 
-| Funcion | Descripcion |
-|---------|-------------|
-| `generate_issue_number()` | Auto-incrementa numero de issue por equipo |
-| `update_issue_completion()` | Actualiza completed_at cuando status cambia a done |
-| `create_default_task_statuses()` | Crea estados por defecto al crear equipo |
+| Funcion                          | Descripcion                                        |
+| -------------------------------- | -------------------------------------------------- |
+| `generate_issue_number()`        | Auto-incrementa numero de issue por equipo         |
+| `update_issue_completion()`      | Actualiza completed_at cuando status cambia a done |
+| `create_default_task_statuses()` | Crea estados por defecto al crear equipo           |
 
 ### Triggers
 
-| Trigger | Tabla | Descripcion |
-|---------|-------|-------------|
-| `trg_issue_number` | task_issues | Auto-genera issue_number |
-| `trg_issue_completion` | task_issues | Actualiza completed_at |
-| `trg_team_default_statuses` | teams | Crea estados por defecto |
+| Trigger                     | Tabla       | Descripcion              |
+| --------------------------- | ----------- | ------------------------ |
+| `trg_issue_number`          | task_issues | Auto-genera issue_number |
+| `trg_issue_completion`      | task_issues | Actualiza completed_at   |
+| `trg_team_default_statuses` | teams       | Crea estados por defecto |
 
 ### Vistas
 
-| Vista | Descripcion |
-|-------|-------------|
+| Vista                | Descripcion                         |
+| -------------------- | ----------------------------------- |
 | `v_task_issues_full` | Issues con toda la info relacionada |
 
 ---
@@ -1259,20 +1496,20 @@ const APP_CONFIG = {
 
 ### Tablas
 
-| Tabla | Descripcion |
-|-------|-------------|
+| Tabla           | Descripcion                |
+| --------------- | -------------------------- |
 | `notifications` | Notificaciones de usuarios |
 
 ### Funciones SQL
 
-| Funcion | Descripcion |
-|---------|-------------|
+| Funcion                         | Descripcion                       |
+| ------------------------------- | --------------------------------- |
 | `update_notification_read_at()` | Actualiza read_at automaticamente |
 
 ### Triggers
 
-| Trigger | Descripcion |
-|---------|-------------|
+| Trigger                    | Descripcion                         |
+| -------------------------- | ----------------------------------- |
 | `trg_notification_read_at` | Auto-update read_at al marcar leida |
 
 ---
@@ -1281,9 +1518,9 @@ const APP_CONFIG = {
 
 ### Tablas
 
-| Tabla | Descripcion |
-|-------|-------------|
-| `workspaces` | Workspaces (vinculados a orgs SOFIA via `sofia_org_id`). Unique on `sofia_org_id` |
+| Tabla               | Descripcion                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------ |
+| `workspaces`        | Workspaces (vinculados a orgs SOFIA via `sofia_org_id`). Unique on `sofia_org_id`                |
 | `workspace_members` | Membresias usuario-workspace con `sofia_role` e `iris_role`. Unique on `(workspace_id, user_id)` |
 
 ### Columnas clave
@@ -1293,6 +1530,7 @@ const APP_CONFIG = {
 **workspace_members:** `member_id`, `workspace_id`, `user_id`, `sofia_role`, `iris_role` (owner/admin/manager/leader/member), `is_active`, `joined_at`
 
 ### Notas
+
 - `teams` y `pm_projects` tienen columna `workspace_id` para filtrar por workspace
 - `iris_role` es editable independientemente de `sofia_role` (permite roles diferentes en Project Hub vs SOFIA)
 - `syncAllOrgMembers` solo inserta nuevos miembros, nunca sobreescribe `iris_role` existente
@@ -1301,14 +1539,14 @@ const APP_CONFIG = {
 
 ## 6. Otras Migraciones
 
-| Archivo | Descripcion |
-|---------|-------------|
-| `002_seed_test_user.sql` | Usuario de prueba |
-| `004_storage_user_avatars.sql` | Bucket de avatares |
-| `009_faq_system.sql` | Sistema de FAQs |
-| `010_global_search.sql` | Configuracion de busqueda global |
-| `011_focus_mode_system.sql` | Sistema de modo enfoque |
-| `add_cycles_table.sql` | Tabla de ciclos adicional |
+| Archivo                        | Descripcion                      |
+| ------------------------------ | -------------------------------- |
+| `002_seed_test_user.sql`       | Usuario de prueba                |
+| `004_storage_user_avatars.sql` | Bucket de avatares               |
+| `009_faq_system.sql`           | Sistema de FAQs                  |
+| `010_global_search.sql`        | Configuracion de busqueda global |
+| `011_focus_mode_system.sql`    | Sistema de modo enfoque          |
+| `add_cycles_table.sql`         | Tabla de ciclos adicional        |
 
 ---
 
@@ -1329,6 +1567,7 @@ const APP_CONFIG = {
 # TECNOLOGIAS PRINCIPALES
 
 ## Frontend
+
 - Next.js 15.0.0 (App Router)
 - TypeScript 5.9.3
 - React 18
@@ -1338,24 +1577,30 @@ const APP_CONFIG = {
 - React Hook Form 7.65.0
 - Zod 3.25.76
 - Google Generative AI SDK (Gemini 2.0 Flash)
-- Supabase (SSR + JS client)
+- Supabase (SSR + JS client) — Multi-instancia
 - Recharts 3.6.0
 - Mermaid 11.12.2
+- Google Drive/Sheets/Docs API (REST + OAuth2)
+- @react-pdf/renderer (generacion PDFs)
 
 ## Backend
+
 - Express 4.18.2
 - TypeScript 5.3.3
 - Helmet 7.1.0
 - Morgan 1.10.0
 - Bcrypt 5.1.1
 - Zod 3.25.76
+- @modelcontextprotocol/sdk 1.25+
 
 ## Base de Datos
-- PostgreSQL (via Supabase)
+
+- PostgreSQL (via Supabase) — 4 instancias: SOFIA, Project Hub, ContentGen, LIA
 - UUID extension
 - pgcrypto extension
 
 ## Requisitos
+
 - Node.js >= 22.0.0
 - npm >= 10.5.1
 
@@ -1363,8 +1608,13 @@ const APP_CONFIG = {
 
 # VARIABLES DE ENTORNO
 
-## Frontend (.env.local)
+## Frontend (.env o .env.local)
+
 ```
+# API
+NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
+NEXT_PUBLIC_APP_NAME=Project Hub
+
 # Project Hub Supabase (BD principal)
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
@@ -1374,17 +1624,29 @@ SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_SOFIA_SUPABASE_URL=
 NEXT_PUBLIC_SOFIA_SUPABASE_ANON_KEY=
 
+# LIA Extension Supabase (conversaciones, meetings)
+NEXT_PUBLIC_LIA_SUPABASE_URL=
+NEXT_PUBLIC_LIA_SUPABASE_ANON_KEY=
+
+# Content Generator Supabase (contenido IA)
+NEXT_PUBLIC_CONTENT_GEN_SUPABASE_URL=
+NEXT_PUBLIC_CONTENT_GEN_SUPABASE_ANON_KEY=
+
 # AI
-GOOGLE_API_KEY=
-GEMINI_MODEL=gemini-2.0-flash
-GEMINI_MAX_TOKENS=8192
-GEMINI_TEMPERATURE=0.7
+NEXT_PUBLIC_GOOGLE_AI_KEY=
 
 # Auth
 JWT_SECRET=
+
+# Google OAuth & Drive (Opcional)
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+NEXT_PUBLIC_GOOGLE_API_KEY=
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/callback/google
 ```
 
 ## Backend (.env)
+
 ```
 PORT=4000
 API_VERSION=v1
@@ -1395,4 +1657,4 @@ JWT_SECRET=
 
 ---
 
-*Documentacion generada automaticamente - Project Hub v2.0*
+_Documentacion generada automaticamente - Project Hub v3.0_

@@ -146,7 +146,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
           transition={{ duration: 0.2 }}
           className="relative w-full max-w-4xl overflow-hidden rounded-2xl shadow-2xl border flex flex-col md:flex-row min-h-[500px]"
           style={{ 
-            backgroundColor: isDark ? '#161920' : '#FFFFFF',
+            backgroundColor: isDark ? '#1E2329' : '#FFFFFF',
             borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'
           }}
           onClick={(e) => e.stopPropagation()}
@@ -156,7 +156,9 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
           <div 
             className="hidden md:flex flex-col w-80 p-8 border-r relative overflow-hidden"
             style={{ 
-              background: `linear-gradient(135deg, ${primaryColor}15, ${accentColor}10)`,
+              background: isDark 
+                ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08))'
+                : 'linear-gradient(135deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.05))',
               borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
             }}
           >

@@ -54,12 +54,22 @@ export async function GET(
     const statusId = searchParams.get('statusId'); // Filter by specific status
     const assignee = searchParams.get('assignee');
     const priority = searchParams.get('priority');
-    const projectId = searchParams.get('projectId');
+    let projectId = searchParams.get('projectId');
     const cycleId = searchParams.get('cycleId');
     const search = searchParams.get('search');
     const groupBy = searchParams.get('groupBy') || 'status';
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
+
+    // RESOLUCIÓN DE PROJECT ID (si es un slug o key en los params)
+    if (projectId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) {
+       const { data: projData } = await supabaseAdmin
+         .from('pm_projects')
+         .select('project_id')
+         .or(`project_key.eq.${projectId},project_name.eq.${projectId}`)
+         .single();
+       if (projData) projectId = projData.project_id;
+    }
 
     // Build query
     let query = supabaseAdmin
@@ -195,7 +205,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { 
+    let { 
       title, 
       description, 
       status_id, 
@@ -212,6 +222,33 @@ export async function POST(
     if (!title?.trim()) {
       return NextResponse.json({ error: 'El título es requerido' }, { status: 400 });
     }
+
+    // RESOLUCIÓN DE PROJECT ID (si es un slug o key)
+    if (project_id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(project_id)) {
+      const { data: projData } = await supabaseAdmin
+        .from('pm_projects')
+        .select('project_id')
+        .or(`project_key.eq.${project_id},project_name.eq.${project_id}`)
+        .single();
+      
+      if (projData) {
+        project_id = projData.project_id;
+      } else {
+        // Si no se encuentra, tal vez es un ID inválido o slug inexistente
+        project_id = null;
+      }
+    }
+
+    // Get the next issue number for this team
+    const { data: lastIssue } = await supabaseAdmin
+      .from('task_issues')
+      .select('issue_number')
+      .eq('team_id', teamId)
+      .order('issue_number', { ascending: false })
+      .limit(1)
+      .single();
+
+    const nextIssueNumber = (lastIssue?.issue_number || 0) + 1;
 
     // Get default status if not provided
     let finalStatusId = status_id;
@@ -242,24 +279,37 @@ export async function POST(
       return NextResponse.json({ error: 'No hay estados configurados para este equipo' }, { status: 400 });
     }
 
+    // Validate UUIDs for optional foreign keys - strip invalid values
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validPriorityId = priority_id && uuidRegex.test(priority_id) ? priority_id : null;
+    const validAssigneeId = assignee_id && uuidRegex.test(assignee_id) ? assignee_id : null;
+    const validProjectId = project_id && uuidRegex.test(project_id) ? project_id : null;
+    const validCycleId = cycle_id && uuidRegex.test(cycle_id) ? cycle_id : null;
+    const validParentIssueId = parent_issue_id && uuidRegex.test(parent_issue_id) ? parent_issue_id : null;
+
     // Create issue
+    const insertData = {
+      team_id: teamId,
+      issue_number: nextIssueNumber,
+      title: title.trim(),
+      description: description || null,
+      status_id: finalStatusId,
+      priority_id: validPriorityId,
+      assignee_id: validAssigneeId,
+      project_id: validProjectId,
+      cycle_id: validCycleId,
+      parent_issue_id: validParentIssueId,
+      due_date: due_date || null,
+      estimate_points: estimate_points || null,
+      creator_id: payload.sub,
+      sort_order: 0
+    };
+
+    console.log('[POST issues] Inserting issue:', JSON.stringify(insertData, null, 2));
+
     const { data: issue, error } = await supabaseAdmin
       .from('task_issues')
-      .insert({
-        team_id: teamId,
-        title: title.trim(),
-        description,
-        status_id: finalStatusId,
-        priority_id,
-        assignee_id,
-        project_id,
-        cycle_id,
-        parent_issue_id,
-        due_date,
-        estimate_points,
-        creator_id: payload.sub,
-        sort_order: 0 // Will be updated when reordering
-      })
+      .insert(insertData)
       .select(`
         *,
         status:task_statuses(*),
@@ -270,7 +320,7 @@ export async function POST(
       .single();
 
     if (error) {
-      console.error('Error creating issue:', error);
+      console.error('Error creating issue:', JSON.stringify(error, null, 2));
       return NextResponse.json({ error: 'Error al crear la tarea' }, { status: 500 });
     }
 

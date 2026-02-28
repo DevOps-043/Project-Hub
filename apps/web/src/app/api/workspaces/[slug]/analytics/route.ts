@@ -30,13 +30,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .eq('workspace_id', workspace.workspace_id);
     const teamIds = (wsTeams || []).map(t => t.team_id);
 
-    // Tasks scoped to workspace teams
+    // Get workspace project IDs
+    const { data: wsProjects } = await supabase
+      .from('pm_projects')
+      .select('project_id, project_status')
+      .eq('workspace_id', workspace.workspace_id);
+    const projectIds = (wsProjects || []).map(p => p.project_id);
+
+    // Tasks scoped to workspace teams OR projects
     let tasks: any[] = [];
-    if (teamIds.length > 0) {
+    const orFilters: string[] = [];
+    if (teamIds.length > 0) orFilters.push(`team_id.in.(${teamIds.join(',')})`);
+    if (projectIds.length > 0) orFilters.push(`project_id.in.(${projectIds.join(',')})`);
+
+    if (orFilters.length > 0) {
       const { data } = await supabase
         .from('task_issues')
         .select('status_id, completed_at, assignee_id, issue_id, created_at')
-        .in('team_id', teamIds);
+        .or(orFilters.join(','));
       tasks = data || [];
     }
 
@@ -44,13 +55,38 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: statuses } = await supabase.from('task_statuses').select('status_id, status_type, name, color');
     const statusMap = (statuses || []).reduce((acc: any, s) => { acc[s.status_id] = s; return acc; }, {});
 
-    // Projects scoped to workspace
-    const { data: projects } = await supabase
-      .from('pm_projects')
-      .select('project_status, project_id')
+    // Members of the workspace (to filter AI usage)
+    const allMembersQuery = supabase
+      .from('workspace_members')
+      .select('user_id')
       .eq('workspace_id', workspace.workspace_id);
+    
+    const { data: members } = await allMembersQuery;
+    const memberIds = Array.from(new Set((members || []).map(m => m.user_id)));
 
-    const hasRealData = tasks.length > 0 || (projects && projects.length > 0);
+    // AI Usage scoped to members
+    let ariaUsage: any[] = [];
+    if (memberIds.length > 0) {
+      const { data: usageLogs } = await supabase
+        .from('aria_usage_logs')
+        .select('tokens_total, created_at')
+        .in('user_id', memberIds)
+        .order('created_at', { ascending: true });
+      
+      if (usageLogs && usageLogs.length > 0) {
+        const usageByDay: Record<string, number> = {};
+        usageLogs.forEach(log => {
+          const day = new Date(log.created_at).toISOString().split('T')[0];
+          usageByDay[day] = (usageByDay[day] || 0) + (log.tokens_total || 0);
+        });
+        ariaUsage = Object.entries(usageByDay).map(([date, tokens]) => ({ date, tokens }));
+      }
+    }
+
+    // Projects scoped to workspace
+    const projects = wsProjects || [];
+
+    const hasRealData = tasks.length > 0 || projects.length > 0 || ariaUsage.length > 0;
 
     if (!hasRealData) {
       const today = new Date();
@@ -74,14 +110,63 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       });
     }
 
-    // Process real data
-    const typeLabelMap: Record<string, string> = { done: 'Completadas', in_progress: 'En Progreso', todo: 'Por Hacer', backlog: 'Backlog', cancelled: 'Canceladas', in_review: 'En Revision' };
-    const taskStatusCounts = tasks.reduce((acc: any, t) => { const type = statusMap[t.status_id]?.status_type || 'backlog'; acc[type] = (acc[type] || 0) + 1; return acc; }, {});
-    const distribution = Object.entries(taskStatusCounts).map(([type, count]) => ({
-      name: typeLabelMap[type] || type, value: count,
-      color: type === 'done' ? '#10B981' : type === 'in_progress' ? '#3B82F6' : type === 'todo' ? '#F59E0B' : type === 'cancelled' ? '#EF4444' : '#6B7280',
-    }));
+    // --- PROCESAMIENTO REAL ---
+    
+    // 1. Salud de Proyectos
+    const projectHealth = projects.reduce((acc: any, p) => {
+      const health = p.health_status || 'none';
+      acc[health] = (acc[health] || 0) + 1;
+      return acc;
+    }, { on_track: 0, at_risk: 0, off_track: 0, none: 0 });
 
+    // 2. Velocidad (Puntos por Ciclo - Últimos 5 ciclos)
+    const { data: cycles } = await supabase
+      .from('task_cycles')
+      .select('cycle_id, name, start_date, number')
+      .eq('team_id', teamIds[0]) // Simplificado al primer equipo para el demo/contexto
+      .order('start_date', { ascending: false })
+      .limit(5);
+
+    const velocityData = (cycles || []).reverse().map(cycle => {
+      const cycleTasks = tasks.filter(t => t.cycle_id === cycle.cycle_id && (statusMap[t.status_id]?.status_type === 'done'));
+      const points = cycleTasks.reduce((sum, t) => sum + (t.estimate_points || 0), 0);
+      return { name: cycle.name, points };
+    });
+
+    // 3. Cycle Time Promedio (Días)
+    const completedTasks = tasks.filter(t => t.completed_at && t.started_at);
+    const totalCycleTime = completedTasks.reduce((sum, t) => {
+      const start = new Date(t.started_at).getTime();
+      const end = new Date(t.completed_at!).getTime();
+      return sum + (end - start);
+    }, 0);
+    const avgCycleTimeDays = completedTasks.length > 0 
+      ? Math.round((totalCycleTime / completedTasks.length) / (1000 * 60 * 60 * 24) * 10) / 10 
+      : 0;
+
+    // 4. Workload distribution (Tareas activas por usuario)
+    const workloadMap: Record<string, { tasks: number, points: number }> = {};
+    tasks.forEach(t => {
+      if (t.assignee_id && statusMap[t.status_id]?.status_type !== 'done' && statusMap[t.status_id]?.status_type !== 'cancelled') {
+        if (!workloadMap[t.assignee_id]) workloadMap[t.assignee_id] = { tasks: 0, points: 0 };
+        workloadMap[t.assignee_id].tasks += 1;
+        workloadMap[t.assignee_id].points += (t.estimate_points || 0);
+      }
+    });
+
+    // Resolve user info for workload
+    const workloadUserIds = Object.keys(workloadMap);
+    let workloadData: any[] = [];
+    if (workloadUserIds.length > 0) {
+      const { data: users } = await supabase.from('account_users').select('user_id, first_name, display_name').in('user_id', workloadUserIds);
+      workloadData = (users || []).map(u => ({
+        name: u.display_name || u.first_name,
+        tasks: workloadMap[u.user_id].tasks,
+        points: workloadMap[u.user_id].points
+      }));
+    }
+
+    // Process heatmap (already implemented, just keeping it)
     const heatmapData: Record<string, number> = {};
     tasks.forEach(t => {
       const type = statusMap[t.status_id]?.status_type;
@@ -91,33 +176,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     });
 
-    const userTaskCounts: Record<string, number> = {};
-    tasks.forEach(t => {
-      const type = statusMap[t.status_id]?.status_type;
-      if ((type === 'done') && t.assignee_id) userTaskCounts[t.assignee_id] = (userTaskCounts[t.assignee_id] || 0) + 1;
-    });
-
-    const userIds = Object.keys(userTaskCounts);
-    let usersMap: Record<string, any> = {};
-    if (userIds.length > 0) {
-      const { data: accUsers } = await supabase.from('account_users').select('user_id, first_name, last_name_paternal, email, avatar_url').in('user_id', userIds);
-      if (accUsers) accUsers.forEach(u => usersMap[u.user_id] = { full_name: `${u.first_name} ${u.last_name_paternal}`, email: u.email, avatar_url: u.avatar_url });
-    }
-
-    const leaderboard = Object.entries(userTaskCounts)
-      .map(([id, count]) => ({ user: usersMap[id] || { full_name: 'Usuario', email: 'N/A' }, count }))
-      .sort((a, b) => (b.count as number) - (a.count as number)).slice(0, 5);
+    // Task Distribution
+    const typeLabelMap: Record<string, string> = { done: 'Completadas', in_progress: 'En Progreso', todo: 'Por Hacer', backlog: 'Backlog', cancelled: 'Canceladas', in_review: 'En Revision' };
+    const taskStatusCounts = tasks.reduce((acc: any, t) => { const type = statusMap[t.status_id]?.status_type || 'backlog'; acc[type] = (acc[type] || 0) + 1; return acc; }, {});
+    const distribution = Object.entries(taskStatusCounts).map(([type, count]) => ({
+      name: typeLabelMap[type] || type, value: count,
+      color: type === 'done' ? '#10B981' : type === 'in_progress' ? '#3B82F6' : type === 'todo' ? '#F59E0B' : type === 'cancelled' ? '#EF4444' : '#6B7280',
+    }));
 
     return NextResponse.json({
+      summary: {
+        totalTasks: tasks.length,
+        avgCycleTime: avgCycleTimeDays,
+        projectHealth,
+        compilationRate: tasks.length > 0 ? Math.round((taskStatusCounts['done'] || 0) / tasks.length * 100) : 0
+      },
       tasks: { total: tasks.length, distribution },
       projects: {
-        total: projects ? projects.length : 0,
-        completed: projects ? projects.filter(p => p.project_status === 'completed').length : 0,
-        active: projects ? projects.filter(p => ['active', 'in_progress'].includes(p.project_status)).length : 0,
+        total: projects.length,
+        completed: projects.filter(p => p.project_status === 'completed' || p.project_status === 'closed').length,
+        active: projects.filter(p => ['active', 'in_progress', 'planning', 'on_hold'].includes(p.project_status)).length,
       },
+      velocity: velocityData,
+      workload: workloadData,
       heatmap: Object.entries(heatmapData).map(([date, count]) => ({ date, count })),
-      leaderboard,
-      ariaUsage: [],
     });
   } catch (error: any) {
     console.error('Workspace analytics error:', error);

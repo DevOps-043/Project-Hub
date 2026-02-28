@@ -168,6 +168,130 @@ const formatActivityDescription = (item: ActivityItem, colors: any) => {
   );
 };
 
+// Custom Calendar Picker - SOFIA Design System
+const CalendarPicker = ({ selectedDate, onSelect, accentColor, colors, isDark }: {
+  selectedDate: Date | null;
+  onSelect: (date: Date | null) => void;
+  accentColor: string;
+  colors: any;
+  isDark: boolean;
+}) => {
+  const [viewDate, setViewDate] = useState(() => {
+    if (selectedDate) return new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+    return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  });
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const dayNames = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'];
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  
+  // Get first day of month (Mon=0 ... Sun=6)
+  const firstDay = new Date(year, month, 1);
+  let startDay = firstDay.getDay() - 1;
+  if (startDay < 0) startDay = 6;
+  
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+  const cells: { day: number; currentMonth: boolean; date: Date }[] = [];
+  
+  // Previous month days
+  for (let i = startDay - 1; i >= 0; i--) {
+    const d = daysInPrevMonth - i;
+    cells.push({ day: d, currentMonth: false, date: new Date(year, month - 1, d) });
+  }
+  // Current month days
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ day: d, currentMonth: true, date: new Date(year, month, d) });
+  }
+  // Next month days
+  const remaining = 42 - cells.length;
+  for (let d = 1; d <= remaining; d++) {
+    cells.push({ day: d, currentMonth: false, date: new Date(year, month + 1, d) });
+  }
+
+  const isSameDay = (a: Date, b: Date) => 
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={prevMonth} className="p-1 rounded-lg hover:bg-white/10 transition-colors" style={{ color: colors.textMuted }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <span className="text-sm font-semibold" style={{ color: colors.textPrimary }}>
+          {monthNames[month]} {year}
+        </span>
+        <button onClick={nextMonth} className="p-1 rounded-lg hover:bg-white/10 transition-colors" style={{ color: colors.textMuted }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+
+      {/* Day names */}
+      <div className="grid grid-cols-7 gap-0 mb-1">
+        {dayNames.map(d => (
+          <div key={d} className="text-center text-[10px] font-medium py-1" style={{ color: colors.textMuted }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Days grid */}
+      <div className="grid grid-cols-7 gap-0">
+        {cells.map((cell, i) => {
+          const isToday = isSameDay(cell.date, today);
+          const isSelected = selectedDate && isSameDay(cell.date, selectedDate);
+          
+          return (
+            <button
+              key={i}
+              onClick={() => onSelect(cell.date)}
+              className="flex items-center justify-center text-xs rounded-lg transition-all"
+              style={{
+                width: '36px',
+                height: '32px',
+                color: isSelected ? '#fff' : isToday ? accentColor : cell.currentMonth ? colors.textPrimary : colors.textMuted + '60',
+                backgroundColor: isSelected ? '#0A2540' : isToday ? `${accentColor}15` : 'transparent',
+                fontWeight: isToday || isSelected ? 600 : 400,
+                border: isToday && !isSelected ? `1px solid ${accentColor}40` : '1px solid transparent',
+              }}
+            >
+              {cell.day}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between mt-3 pt-2 border-t" style={{ borderColor: colors.border }}>
+        <button
+          onClick={() => onSelect(today)}
+          className="text-xs font-medium px-2 py-1 rounded-lg transition-colors hover:bg-white/10"
+          style={{ color: accentColor }}
+        >
+          Hoy
+        </button>
+        {selectedDate && (
+          <button
+            onClick={() => onSelect(null)}
+            className="text-xs font-medium px-2 py-1 rounded-lg transition-colors hover:bg-white/10"
+            style={{ color: colors.textMuted }}
+          >
+            Limpiar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function IssueDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -194,13 +318,22 @@ export default function IssueDetailPage() {
   const [priorities, setPriorities] = useState<Priority[]>([]);
   const [members, setMembers] = useState<User[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
+  const [teamProjects, setTeamProjects] = useState<any[]>([]);
 
   // Dropdown states
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
+  // Inline editing states
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [descriptionDraft, setDescriptionDraft] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const descriptionInputRef = useRef<HTMLTextAreaElement>(null);
+
   // Fetch issue
-  const fetchIssue = useCallback(async () => {
-    setLoading(true);
+  const fetchIssue = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
       const headers = { 'Authorization': `Bearer ${token}` };
@@ -211,36 +344,42 @@ export default function IssueDetailPage() {
         setIssue(data.issue);
         setActivity(data.activity);
         setTeam(data.team);
+        if (data.teamProjects) setTeamProjects(data.teamProjects);
       }
 
-      // Fetch options for editing
-      const [statusRes, priorityRes, memberRes, labelRes] = await Promise.all([
-        fetch(`/api/admin/teams/${teamId}/statuses`, { headers }),
-        fetch(`/api/admin/priorities`, { headers }),
-        fetch(`/api/admin/teams/${teamId}/members`, { headers }),
-        fetch(`/api/admin/teams/${teamId}/labels`, { headers })
-      ]);
+      // Fetch options for editing (only on initial load)
+      if (!silent) {
+        const [statusRes, priorityRes, memberRes, labelRes] = await Promise.all([
+          fetch(`/api/admin/teams/${teamId}/statuses`, { headers }),
+          fetch(`/api/admin/priorities`, { headers }),
+          fetch(`/api/admin/teams/${teamId}/members`, { headers }),
+          fetch(`/api/admin/teams/${teamId}/labels`, { headers })
+        ]);
 
-      if (statusRes.ok) {
-        const data = await statusRes.json();
-        setStatuses(data.statuses || []);
-      }
-      if (priorityRes.ok) {
-        const data = await priorityRes.json();
-        setPriorities(data.priorities || []);
-      }
-      if (memberRes.ok) {
-        const data = await memberRes.json();
-        setMembers(data.members || []);
-      }
-      if (labelRes.ok) {
-        const data = await labelRes.json();
-        setLabels(data.labels || []);
+        if (statusRes.ok) {
+          const data = await statusRes.json();
+          setStatuses(data.statuses || []);
+        }
+        if (priorityRes.ok) {
+          const data = await priorityRes.json();
+          console.log('Priorities API response:', data);
+          setPriorities(data.priorities || []);
+        } else {
+          console.error('Priorities API failed:', priorityRes.status, await priorityRes.text());
+        }
+        if (memberRes.ok) {
+          const data = await memberRes.json();
+          setMembers(data.members || []);
+        }
+        if (labelRes.ok) {
+          const data = await labelRes.json();
+          setLabels(data.labels || []);
+        }
       }
     } catch (error) {
       console.error('Error fetching issue:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [teamId, issueId]);
 
@@ -248,10 +387,54 @@ export default function IssueDetailPage() {
     fetchIssue();
   }, [fetchIssue]);
 
-  // Update issue field
+  // Update issue field - optimistic update
   const updateField = async (field: string, value: any) => {
     if (!issue) return;
+    setActiveDropdown(null);
     
+    // Optimistic update: immediately update local state
+    setIssue(prev => {
+      if (!prev) return prev;
+      const updated: any = { ...prev, updated_at: new Date().toISOString() };
+      
+      if (field === 'status_id') {
+        const newStatus = statuses.find(s => s.status_id === value);
+        if (newStatus) {
+          updated.status_id = value;
+          updated.status = newStatus;
+        }
+      } else if (field === 'priority_id') {
+        const newPriority = priorities.find(p => p.priority_id === value);
+        updated.priority_id = value;
+        updated.priority = newPriority || null;
+      } else if (field === 'assignee_id') {
+        if (value === null) {
+          updated.assignee_id = null;
+          updated.assignee = null;
+        } else {
+          const newAssignee = members.find(m => m.user_id === value);
+          if (newAssignee) {
+            updated.assignee_id = value;
+            updated.assignee = newAssignee;
+          }
+        }
+      } else if (field === 'project_id') {
+        if (value === null) {
+          updated.project_id = null;
+          updated.project = null;
+        } else {
+          const newProject = teamProjects.find(p => p.project_id === value);
+          updated.project_id = value;
+          updated.project = newProject || null;
+        }
+      } else {
+        updated[field] = value;
+      }
+      
+      return updated;
+    });
+
+    // Send update to server
     try {
       const token = localStorage.getItem('accessToken');
       const res = await fetch(`/api/admin/teams/${teamId}/issues/${issueId}`, {
@@ -264,12 +447,17 @@ export default function IssueDetailPage() {
       });
 
       if (res.ok) {
-        fetchIssue(); // Refresh data
+        // Silently refresh to sync activity feed
+        fetchIssue(true);
+      } else {
+        // Revert on error - full refresh
+        console.error('Error updating, reverting...');
+        fetchIssue(true);
       }
     } catch (error) {
       console.error('Error updating issue:', error);
+      fetchIssue(true);
     }
-    setActiveDropdown(null);
   };
 
   // Submit comment
@@ -290,7 +478,7 @@ export default function IssueDetailPage() {
 
       if (res.ok) {
         setComment('');
-        fetchIssue(); // Refresh activity
+        fetchIssue(true); // Refresh activity silently
       }
     } catch (error) {
       console.error('Error submitting comment:', error);
@@ -378,24 +566,116 @@ export default function IssueDetailPage() {
         <div className="flex gap-8">
           {/* Left Panel - Issue Content */}
           <div className="flex-1 min-w-0">
-            {/* Title */}
-            <h1 className="text-2xl font-bold mb-6" style={{ color: colors.textPrimary }}>
-              {issue.title}
-            </h1>
+            {/* Title - Editable */}
+            {editingTitle ? (
+              <input
+                ref={titleInputRef}
+                type="text"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={() => {
+                  if (titleDraft.trim() && titleDraft.trim() !== issue.title) {
+                    updateField('title', titleDraft.trim());
+                  }
+                  setEditingTitle(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.currentTarget.blur();
+                  }
+                  if (e.key === 'Escape') {
+                    setTitleDraft(issue.title);
+                    setEditingTitle(false);
+                  }
+                }}
+                className="text-2xl font-bold mb-6 w-full bg-transparent py-1 focus:ring-0 focus:outline-none focus:border-0 ring-0"
+                style={{ 
+                  color: colors.textPrimary,
+                  border: 'none',
+                  borderBottom: `2px solid ${accentColor}`,
+                  borderRadius: 0,
+                  outline: 'none',
+                  boxShadow: 'none',
+                  WebkitAppearance: 'none',
+                }}
+                autoFocus
+              />
+            ) : (
+              <h1 
+                className="text-2xl font-bold mb-6 cursor-text rounded-lg px-1 -mx-1 transition-colors hover:bg-white/5"
+                style={{ color: colors.textPrimary }}
+                onClick={() => {
+                  setTitleDraft(issue.title);
+                  setEditingTitle(true);
+                  setTimeout(() => titleInputRef.current?.focus(), 0);
+                }}
+                title="Clic para editar el título"
+              >
+                {issue.title}
+              </h1>
+            )}
 
-            {/* Description */}
+            {/* Description - Editable */}
             <div className="mb-8">
-              {issue.description ? (
-                <div 
-                  className="prose prose-invert max-w-none text-sm leading-relaxed"
-                  style={{ color: colors.textSecondary }}
-                >
-                  {issue.description}
-                </div>
+              {editingDescription ? (
+                <textarea
+                  ref={descriptionInputRef}
+                  value={descriptionDraft}
+                  onChange={(e) => setDescriptionDraft(e.target.value)}
+                  onBlur={() => {
+                    const newDesc = descriptionDraft.trim();
+                    if (newDesc !== (issue.description || '')) {
+                      updateField('description', newDesc || null);
+                    }
+                    setEditingDescription(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setDescriptionDraft(issue.description || '');
+                      setEditingDescription(false);
+                    }
+                    // Ctrl/Cmd + Enter to save
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  rows={5}
+                  className="w-full bg-transparent p-4 text-sm leading-relaxed resize-y focus:ring-0 focus:outline-none focus:border-0 ring-0"
+                  style={{ 
+                    color: colors.textSecondary,
+                    border: 'none',
+                    borderBottom: `2px solid ${accentColor}`,
+                    borderRadius: 0,
+                    outline: 'none',
+                    boxShadow: 'none',
+                    WebkitAppearance: 'none',
+                  }}
+                  placeholder="Agrega una descripción..."
+                  autoFocus
+                />
               ) : (
-                <p className="text-sm italic" style={{ color: colors.textMuted }}>
-                  Sin descripción
-                </p>
+                <div 
+                  className="cursor-text rounded-xl px-4 py-3 -mx-4 transition-colors hover:bg-white/5 min-h-[60px]"
+                  onClick={() => {
+                    setDescriptionDraft(issue.description || '');
+                    setEditingDescription(true);
+                    setTimeout(() => descriptionInputRef.current?.focus(), 0);
+                  }}
+                  title="Clic para editar la descripción"
+                >
+                  {issue.description ? (
+                    <div 
+                      className="prose prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap"
+                      style={{ color: colors.textSecondary }}
+                    >
+                      {issue.description}
+                    </div>
+                  ) : (
+                    <p className="text-sm italic" style={{ color: colors.textMuted }}>
+                      Clic para agregar descripción...
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -572,19 +852,25 @@ export default function IssueDetailPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0 }}
                         className="absolute top-full left-0 right-0 mt-1 py-1 rounded-xl border shadow-xl z-50"
-                        style={{ backgroundColor: isDark ? '#1E2329' : '#fff', borderColor: colors.border }}
+                        style={{ backgroundColor: isDark ? '#1E2329' : '#fff', borderColor: colors.border, minHeight: '40px' }}
                       >
-                        {priorities.map(p => (
-                          <button
-                            key={p.priority_id}
-                            onClick={() => updateField('priority_id', p.priority_id)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 text-left"
-                            style={{ color: colors.textPrimary }}
-                          >
-                            <PriorityIcon level={p.level} color={p.color} />
-                            <span>{p.name}</span>
-                          </button>
-                        ))}
+                        {priorities.length === 0 ? (
+                          <div className="px-3 py-2 text-sm" style={{ color: colors.textMuted }}>
+                            Cargando prioridades...
+                          </div>
+                        ) : (
+                          priorities.map(p => (
+                            <button
+                              key={p.priority_id}
+                              onClick={() => updateField('priority_id', p.priority_id)}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 text-left"
+                              style={{ color: colors.textPrimary }}
+                            >
+                              <PriorityIcon level={p.level} color={p.color} />
+                              <span>{p.name}</span>
+                            </button>
+                          ))
+                        )}
                       </motion.div>
                     </>
                   )}
@@ -644,6 +930,24 @@ export default function IssueDetailPage() {
                 </AnimatePresence>
               </div>
 
+              {/* Project (read-only) */}
+              <div>
+                <label className="block text-xs mb-1" style={{ color: colors.textMuted }}>Proyecto</label>
+                <div className="flex items-center gap-2 px-3 py-2 text-sm">
+                  {issue.project ? (
+                    <>
+                      <span 
+                        className="w-3 h-3 rounded-sm flex-shrink-0" 
+                        style={{ backgroundColor: issue.project.icon_color || '#3B82F6' }} 
+                      />
+                      <span style={{ color: colors.textPrimary }}>{issue.project.project_name}</span>
+                    </>
+                  ) : (
+                    <span style={{ color: colors.textMuted }}>Sin proyecto</span>
+                  )}
+                </div>
+              </div>
+
               {/* Labels */}
               <div>
                 <label className="block text-xs mb-1" style={{ color: colors.textMuted }}>Etiquetas</label>
@@ -670,19 +974,112 @@ export default function IssueDetailPage() {
               </div>
 
               {/* Estimate */}
-              <div>
+              <div className="relative">
                 <label className="block text-xs mb-1" style={{ color: colors.textMuted }}>Estimación</label>
-                <span className="text-sm" style={{ color: issue.estimate_points ? colors.textPrimary : colors.textMuted }}>
+                <button
+                  onClick={() => setActiveDropdown(activeDropdown === 'estimate' ? null : 'estimate')}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors hover:bg-white/5"
+                  style={{ color: issue.estimate_points !== null ? colors.textPrimary : colors.textMuted }}
+                >
                   {issue.estimate_points !== null ? `${issue.estimate_points} puntos` : 'Sin estimación'}
-                </span>
+                </button>
+
+                <AnimatePresence>
+                  {activeDropdown === 'estimate' && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute bottom-full left-0 right-0 mb-1 py-2 rounded-xl border shadow-xl z-50"
+                        style={{ backgroundColor: isDark ? '#1E2329' : '#fff', borderColor: colors.border }}
+                      >
+                        <div className="px-3 pb-2 mb-1 border-b text-xs font-medium" style={{ color: colors.textMuted, borderColor: colors.border }}>
+                          Seleccionar puntos
+                        </div>
+                        <button
+                          onClick={() => updateField('estimate_points', null)}
+                          className="w-full px-3 py-1.5 text-xs hover:bg-white/5 text-left"
+                          style={{ color: colors.textMuted }}
+                        >
+                          Sin estimación
+                        </button>
+                        <div className="grid grid-cols-5 gap-1 px-2 pt-1">
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(pts => (
+                            <button
+                              key={pts}
+                              onClick={() => updateField('estimate_points', pts)}
+                              className="flex items-center justify-center py-1.5 rounded-lg text-sm font-medium transition-all"
+                              style={{ 
+                                color: issue.estimate_points === pts ? '#fff' : colors.textPrimary,
+                                backgroundColor: issue.estimate_points === pts ? '#00D4B3' : 'transparent',
+                                border: `1px solid ${issue.estimate_points === pts ? '#00D4B3' : colors.border}`,
+                              }}
+                            >
+                              {pts}
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {/* Due Date */}
-              <div>
+              {/* Due Date - Custom Calendar */}
+              <div className="relative">
                 <label className="block text-xs mb-1" style={{ color: colors.textMuted }}>Fecha límite</label>
-                <span className="text-sm" style={{ color: issue.due_date ? colors.textPrimary : colors.textMuted }}>
-                  {issue.due_date ? format(new Date(issue.due_date), 'dd MMM yyyy', { locale: es }) : 'Sin fecha'}
-                </span>
+                <button
+                  onClick={() => setActiveDropdown(activeDropdown === 'duedate' ? null : 'duedate')}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors hover:bg-white/5"
+                  style={{ color: issue.due_date ? colors.textPrimary : colors.textMuted }}
+                >
+                  <span>{issue.due_date ? format(new Date(issue.due_date + 'T12:00:00'), 'dd MMM yyyy', { locale: es }) : 'Sin fecha'}</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: colors.textMuted }}>
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                </button>
+
+                <AnimatePresence>
+                  {activeDropdown === 'duedate' && (() => {
+                    const today = new Date();
+                    const selectedDate = issue.due_date ? new Date(issue.due_date + 'T12:00:00') : null;
+                    const viewMonth = selectedDate ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1) : new Date(today.getFullYear(), today.getMonth(), 1);
+                    
+                    return (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                        <motion.div
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0 }}
+                          className="absolute bottom-full left-0 mb-1 p-3 rounded-xl border shadow-xl z-50"
+                          style={{ backgroundColor: isDark ? '#1E2329' : '#fff', borderColor: colors.border, width: '280px', right: 0 }}
+                        >
+                          {/* Calendar Component */}
+                          <CalendarPicker
+                            selectedDate={selectedDate}
+                            onSelect={(date) => {
+                              if (date) {
+                                const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                                updateField('due_date', dateStr);
+                              } else {
+                                updateField('due_date', null);
+                              }
+                              setActiveDropdown(null);
+                            }}
+                            accentColor="#00D4B3"
+                            colors={colors}
+                            isDark={isDark}
+                          />
+                        </motion.div>
+                      </>
+                    );
+                  })()}
+                </AnimatePresence>
               </div>
 
               {/* Dates */}

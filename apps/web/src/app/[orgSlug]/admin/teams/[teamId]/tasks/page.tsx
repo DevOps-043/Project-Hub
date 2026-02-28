@@ -308,9 +308,12 @@ export default function TeamTasksPage() {
             return (
               <div key={status.status_id}>
                 {/* Status Header */}
-                <button
+                <div
                   onClick={() => toggleStatus(status.status_id)}
-                  className="w-full flex items-center gap-3 px-4 py-2 rounded-lg transition-colors hover:bg-white/5"
+                  className="w-full flex items-center gap-3 px-4 py-2 rounded-lg transition-colors hover:bg-white/5 cursor-pointer group"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleStatus(status.status_id); }}
                 >
                   <svg 
                     width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -346,7 +349,7 @@ export default function TeamTasksPage() {
                       <line x1="5" y1="12" x2="19" y2="12"/>
                     </svg>
                   </button>
-                </button>
+                </div>
 
                 {/* Issues List */}
                 <AnimatePresence>

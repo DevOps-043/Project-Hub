@@ -57,6 +57,13 @@ export default function WorkspaceProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createModalStatus, setCreateModalStatus] = useState<string | undefined>(undefined);
+
+  // Display Settings State
+  const [grouping, setGrouping] = useState<'none' | 'status' | 'priority'>('none');
+  const [ordering, setOrdering] = useState<'manual' | 'alphabetical' | 'newest'>('newest');
+  const [showClosed, setShowClosed] = useState<'all' | 'active' | 'closed'>('all');
+  const [showCycles, setShowCycles] = useState(false);
 
   const displayTriggerRef = useRef<HTMLButtonElement>(null);
 
@@ -143,6 +150,54 @@ export default function WorkspaceProjectsPage() {
     }
   }, [searchQuery, workspace.slug]);
 
+  // Client-side processing (Filtering and Sorting)
+  const processedProjects = React.useMemo(() => {
+    let result = [...projects];
+
+    // 1. Search Query Filter (Client-side for instant feel)
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(p => 
+        p.project_name.toLowerCase().includes(query) || 
+        p.project_key.toLowerCase().includes(query) ||
+        p.team_name?.toLowerCase().includes(query)
+      );
+    }
+
+    // 2. Tab Filter: 'projects' typically means active/working projects
+    if (activeTab === 'projects') {
+      result = result.filter(p => 
+        p.project_status !== 'completed' && 
+        p.project_status !== 'cancelled' && 
+        p.project_status !== 'archived'
+      );
+    }
+
+    // 3. Display Settings: Project Status Visibility (Combined with Tab)
+    if (showClosed === 'active') {
+      result = result.filter(p => 
+        p.project_status !== 'completed' && 
+        p.project_status !== 'cancelled' && 
+        p.project_status !== 'archived'
+      );
+    } else if (showClosed === 'closed') {
+      result = result.filter(p => 
+        p.project_status === 'completed' || 
+        p.project_status === 'cancelled' || 
+        p.project_status === 'archived'
+      );
+    }
+
+    // 4. Sorting (ordering)
+    if (ordering === 'alphabetical') {
+      result.sort((a, b) => a.project_name.localeCompare(b.project_name));
+    } else if (ordering === 'newest') {
+      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+
+    return result;
+  }, [projects, searchQuery, activeTab, showClosed, ordering]);
+
   useEffect(() => {
     const timeoutId = setTimeout(fetchProjects, 300);
     return () => clearTimeout(timeoutId);
@@ -168,7 +223,11 @@ export default function WorkspaceProjectsPage() {
                 <ChevronRight size={18} />
               </button>
             </div>
-            <button onClick={() => fetchProjects()} className="p-1.5 rounded-lg hover:bg-white/5 transition-colors text-gray-400">
+            <button 
+              onClick={() => fetchProjects()} 
+              className={`p-1.5 rounded-lg hover:bg-white/5 transition-colors text-gray-400 ${loading ? 'animate-spin' : ''}`}
+              disabled={loading}
+            >
                 <RefreshCw size={16} />
             </button>
           </div>
@@ -202,7 +261,10 @@ export default function WorkspaceProjectsPage() {
 
           <div className="flex items-center gap-2 relative">
              <button
-               onClick={() => setShowCreateModal(true)}
+               onClick={() => {
+                 setCreateModalStatus(undefined);
+                 setShowCreateModal(true);
+               }}
                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:brightness-110 shadow-sm"
                style={{ backgroundColor: '#00D4B3', color: '#0A0D12' }}
              >
@@ -234,15 +296,34 @@ export default function WorkspaceProjectsPage() {
                         setCurrentView(view);
                     }}
                     triggerRef={displayTriggerRef}
+                    grouping={grouping}
+                    onGroupingChange={setGrouping}
+                    ordering={ordering}
+                    onOrderingChange={setOrdering}
+                    showClosed={showClosed}
+                    onShowClosedChange={setShowClosed}
+                    showCycles={showCycles}
+                    onShowCyclesChange={setShowCycles}
                 />
              </div>
           </div>
         </div>
 
         <div className="flex items-center gap-3 px-6 pb-3 border-t border-white/5 pt-3">
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">
+          <button 
+            onClick={() => {
+              setSearchQuery('');
+              setActiveTab('all');
+              setShowClosed('all');
+            }}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              searchQuery || activeTab !== 'all' || showClosed !== 'all'
+                ? 'bg-[#00D4B3]/10 text-[#00D4B3] border border-[#00D4B3]/20' 
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
              <Filter size={14} />
-             Filter
+             {searchQuery || activeTab !== 'all' || showClosed !== 'all' ? 'Clear filters' : 'Filter'}
           </button>
 
           <div className="relative flex-1 max-w-xs">
@@ -264,30 +345,44 @@ export default function WorkspaceProjectsPage() {
       >
          {currentView === 'list' && (
              <ProjectListView
-                projects={projects}
+                projects={processedProjects}
                 loading={loading}
                 error={error}
                 onRefresh={fetchProjects}
                 basePath={`/${workspace.slug}/admin`}
+                grouping={grouping}
+                showCycles={showCycles}
              />
          )}
 
          {currentView === 'board' && (
-             <ProjectBoardView projects={projects as any[]} basePath={`/${workspace.slug}/admin`} />
+             <ProjectBoardView 
+                projects={processedProjects as any[]} 
+                basePath={`/${workspace.slug}/admin`}
+                onAddProject={(status) => {
+                  setCreateModalStatus(status);
+                  setShowCreateModal(true);
+                }}
+             />
          )}
 
          {currentView === 'timeline' && (
-             <ProjectTimelineView projects={projects as any[]} basePath={`/${workspace.slug}/admin`} />
+             <ProjectTimelineView projects={processedProjects as any[]} basePath={`/${workspace.slug}/admin`} />
          )}
       </div>
 
       <CreateProjectModal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => {
+          setShowCreateModal(false);
+          setCreateModalStatus(undefined);
+        }}
         onSuccess={() => {
           fetchProjects();
           setShowCreateModal(false);
+          setCreateModalStatus(undefined);
         }}
+        initialStatus={createModalStatus}
         workspaceSlug={workspace.slug}
       />
     </div>

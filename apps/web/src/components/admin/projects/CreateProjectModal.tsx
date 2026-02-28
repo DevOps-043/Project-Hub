@@ -34,6 +34,7 @@ interface CreateProjectModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   initialTeamId?: string;
+  initialStatus?: string;
   workspaceSlug?: string;
 }
 
@@ -259,7 +260,7 @@ function CustomDatePicker({ label, value, onChange, icon, isDark, colors }: Cust
   );
 }
 
-export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, workspaceSlug }: CreateProjectModalProps) {
+export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, initialStatus, workspaceSlug }: CreateProjectModalProps) {
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
   
@@ -270,7 +271,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
   const [selectedIcon, setSelectedIcon] = useState('folder');
   const [selectedColor, setSelectedColor] = useState('#3B82F6');
   const [priority, setPriority] = useState('none');
-  const [status, setStatus] = useState('planning');
+  const [status, setStatus] = useState(initialStatus || 'planning');
   const [leadId, setLeadId] = useState<string | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [startDate, setStartDate] = useState('');
@@ -290,6 +291,13 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
       setTeamId(initialTeamId);
     }
   }, [isOpen, initialTeamId]);
+
+  // Initialize status if provided
+  useEffect(() => {
+    if (isOpen && initialStatus) {
+      setStatus(initialStatus);
+    }
+  }, [isOpen, initialStatus]);
   
   // Data state
   const [teams, setTeams] = useState<Team[]>([]);

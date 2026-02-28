@@ -150,21 +150,48 @@ export async function GET(
       .eq('team_id', teamId)
       .is('archived_at', null);
 
+    // Get project info if exists
+    let project = null;
+    if (issue.project_id) {
+      const { data: projectData } = await supabaseAdmin
+        .from('pm_projects')
+        .select('project_id, project_name, project_key, icon_name, icon_color')
+        .eq('project_id', issue.project_id)
+        .single();
+      project = projectData;
+    }
+
+    // Get team projects for dropdown
+    const { data: teamProjects } = await supabaseAdmin
+      .from('pm_projects')
+      .select('project_id, project_name, project_key, icon_name, icon_color')
+      .eq('team_id', teamId)
+      .is('archived_at', null)
+      .order('project_name');
+
     const teamPrefix = team?.slug ? team.slug.toUpperCase() : 'TASK';
+    const projectPrefix = project?.project_key ? project.project_key.toUpperCase() : null;
+    const identifier = projectPrefix 
+      ? `${teamPrefix}-${projectPrefix}-${issue.issue_number}`
+      : `${teamPrefix}-${issue.issue_number}`;
     
     return NextResponse.json({
       issue: {
         ...issue,
-        identifier: `${teamPrefix}-${issue.issue_number}`,
+        identifier,
         labels: issue.labels?.map((l: any) => l.label) || [],
-        parent: parentIssue
+        parent: parentIssue,
+        project
       },
       activity,
       subIssues: (subIssues || []).map(si => ({
         ...si,
-        identifier: `${teamPrefix}-${si.issue_number}`
+        identifier: projectPrefix
+          ? `${teamPrefix}-${projectPrefix}-${si.issue_number}`
+          : `${teamPrefix}-${si.issue_number}`
       })),
-      team
+      team,
+      teamProjects: teamProjects || []
     });
 
   } catch (error) {

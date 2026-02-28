@@ -28,7 +28,7 @@ import {
 
 interface Cycle {
   cycle_id: string;
-  cycle_number: number;
+  number: number;
   name: string;
   description: string | null;
   status: "upcoming" | "active" | "completed" | "cancelled";

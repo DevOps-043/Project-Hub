@@ -366,12 +366,12 @@ function TeamFormModal({ team, workspaceSlug, currentUserId, canManage, onClose,
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 backdrop-blur-sm" style={{ backgroundColor: isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.4)' }} onClick={onClose} />
       <div className="relative rounded-2xl shadow-2xl overflow-hidden"
-        style={{ backgroundColor: isDark ? '#1a1f2e' : colors.bgCard, border: `1px solid ${colors.border}`, maxWidth: '800px', width: '100%' }}>
+        style={{ backgroundColor: colors.bgCard, border: `1px solid ${colors.border}`, maxWidth: '800px', width: '100%' }}>
         <div className="flex min-h-[520px]">
 
           {/* Left Panel - Preview */}
           <div className="w-72 p-8 flex-col items-center hidden md:flex"
-            style={{ background: isDark ? 'linear-gradient(135deg, rgba(0, 212, 179, 0.08), rgba(10, 37, 64, 0.15))' : 'linear-gradient(135deg, rgba(0, 212, 179, 0.1), rgba(248, 250, 252, 1))', borderRight: `1px solid ${colors.border}` }}>
+            style={{ background: isDark ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08))' : 'linear-gradient(135deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.05))', borderRight: `1px solid ${colors.border}` }}>
             <div className="relative mb-6 mt-4">
               <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white text-2xl font-bold"
                 style={{ backgroundColor: form.color, boxShadow: `0 8px 24px ${form.color}40` }}>
@@ -423,13 +423,13 @@ function TeamFormModal({ team, workspaceSlug, currentUserId, canManage, onClose,
                     <label className="block text-xs mb-1.5" style={{ color: colors.textMuted }}>Nombre del equipo</label>
                     <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Marketing Digital" required
                       className="w-full py-2.5 px-3 rounded-xl border text-sm focus:outline-none transition-colors"
-                      style={{ backgroundColor: isDark ? '#0F1419' : colors.bgSecondary, borderColor: colors.border, color: colors.textPrimary }} />
+                      style={{ backgroundColor: isDark ? '#1E2329' : colors.bgSecondary, borderColor: colors.border, color: colors.textPrimary }} />
                   </div>
                   <div>
                     <label className="block text-xs mb-1.5" style={{ color: colors.textMuted }}>Descripcion</label>
                     <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe el proposito del equipo..." rows={2}
                       className="w-full py-2.5 px-3 rounded-xl border text-sm focus:outline-none transition-colors resize-none"
-                      style={{ backgroundColor: isDark ? '#0F1419' : colors.bgSecondary, borderColor: colors.border, color: colors.textPrimary }} />
+                      style={{ backgroundColor: isDark ? '#1E2329' : colors.bgSecondary, borderColor: colors.border, color: colors.textPrimary }} />
                   </div>
                 </div>
 
@@ -440,7 +440,7 @@ function TeamFormModal({ team, workspaceSlug, currentUserId, canManage, onClose,
                     <div className="flex gap-2 flex-wrap">
                       {colorOptions.map(color => (
                         <button key={color} type="button" onClick={() => setForm(f => ({ ...f, color }))} className="w-8 h-8 rounded-lg transition-all"
-                          style={{ backgroundColor: color, transform: form.color === color ? 'scale(1.1)' : 'scale(1)', boxShadow: form.color === color ? `0 0 0 2px ${isDark ? '#1a1f2e' : colors.bgCard}, 0 0 0 4px ${color}` : 'none' }} />
+                          style={{ backgroundColor: color, transform: form.color === color ? 'scale(1.1)' : 'scale(1)', boxShadow: form.color === color ? `0 0 0 2px ${colors.bgCard}, 0 0 0 4px ${color}` : 'none' }} />
                       ))}
                     </div>
                   </div>
@@ -454,11 +454,11 @@ function TeamFormModal({ team, workspaceSlug, currentUserId, canManage, onClose,
                       {visibilityOptions.map(opt => (
                         <button key={opt.value} type="button" onClick={() => setForm(f => ({ ...f, visibility: opt.value as typeof form.visibility }))}
                           className="py-2.5 px-3 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-2"
-                          style={{
-                            backgroundColor: form.visibility === opt.value ? 'rgba(0, 212, 179, 0.1)' : (isDark ? '#0F1419' : colors.bgSecondary),
-                            borderColor: form.visibility === opt.value ? '#00D4B3' : colors.border,
-                            color: form.visibility === opt.value ? '#00D4B3' : colors.textSecondary,
-                          }}>
+                            style={{
+                              backgroundColor: form.visibility === opt.value ? 'rgba(0, 212, 179, 0.1)' : (isDark ? '#1E2329' : colors.bgSecondary),
+                              borderColor: form.visibility === opt.value ? '#00D4B3' : colors.border,
+                              color: form.visibility === opt.value ? '#00D4B3' : colors.textSecondary,
+                            }}>
                           {opt.icon} {opt.label}
                         </button>
                       ))}
@@ -474,7 +474,10 @@ function TeamFormModal({ team, workspaceSlug, currentUserId, canManage, onClose,
                 </button>
                 <button type="submit" disabled={loading || (!canManage && isEditing)}
                   className="flex-1 py-2.5 rounded-xl font-semibold text-white transition-all disabled:opacity-50"
-                  style={{ backgroundColor: '#0A2540', boxShadow: '0 4px 15px rgba(10, 37, 64, 0.4)' }}>
+                  style={{ 
+                    backgroundColor: isDark ? '#10B981' : '#0A2540', 
+                    boxShadow: isDark ? '0 4px 15px rgba(16, 185, 129, 0.4)' : '0 4px 15px rgba(10, 37, 64, 0.4)' 
+                  }}>
                   {loading ? 'Guardando...' : isEditing ? 'Guardar cambios' : 'Crear equipo'}
                 </button>
               </div>

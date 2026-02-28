@@ -32,6 +32,8 @@ interface ProjectListViewProps {
   error: string | null;
   onRefresh: () => void;
   basePath?: string;
+  grouping?: 'none' | 'status' | 'priority';
+  showCycles?: boolean;
 }
 
 // Sub-components helpers
@@ -96,7 +98,15 @@ const TableSkeleton = ({ isDark }: { isDark: boolean }) => (
     </div>
 );
 
-export function ProjectListView({ projects, loading, error, onRefresh, basePath = '/admin' }: ProjectListViewProps) {
+export function ProjectListView({ 
+  projects, 
+  loading, 
+  error, 
+  onRefresh, 
+  basePath = '/admin',
+  grouping = 'none',
+  showCycles = false
+}: ProjectListViewProps) {
   const router = useRouter();
   const { isDark } = useTheme();
   
@@ -124,6 +134,33 @@ export function ProjectListView({ projects, loading, error, onRefresh, basePath 
      )
   }
 
+  // Logic for grouping
+  const getGroups = () => {
+    if (grouping === 'none') return [{ id: 'all', label: '', projects }];
+    
+    const groups: Record<string, { label: string, projects: Project[] }> = {};
+    
+    projects.forEach(p => {
+      let key = '';
+      let label = '';
+      
+      if (grouping === 'status') {
+        key = p.project_status || 'planning';
+        label = key.charAt(0).toUpperCase() + key.slice(1);
+      } else if (grouping === 'priority') {
+        key = p.priority_level || 'none';
+        label = key.charAt(0).toUpperCase() + key.slice(1) + ' Priority';
+      }
+      
+      if (!groups[key]) groups[key] = { label, projects: [] };
+      groups[key].projects.push(p);
+    });
+    
+    return Object.entries(groups).map(([id, data]) => ({ id, ...data }));
+  };
+
+  const projectGroups = getGroups();
+
   return (
     <div className={`rounded-xl overflow-hidden ${isDark ? '' : 'bg-white shadow-sm border border-gray-100'}`}>
       <table className="w-full border-collapse">
@@ -133,40 +170,51 @@ export function ProjectListView({ projects, loading, error, onRefresh, basePath 
             <th className="text-center py-3 px-2 w-16">Health</th>
             <th className="text-center py-3 px-2 w-16">Priority</th>
             <th className="text-center py-3 px-2 w-16">Lead</th>
+            {showCycles && <th className="text-center py-3 px-2 w-24">Cycles</th>}
             <th className="text-left py-3 px-4 w-24">Target date</th>
             <th className="text-left py-3 px-4 w-32">Status</th>
           </tr>
         </thead>
         <tbody>
-          {projects.map((project) => (
-            <tr 
-              key={project.project_id}
-              onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}
-              className={`border-b ${borderColor} transition-colors ${hoverBg} cursor-pointer group last:border-0`}
-            >
-              {/* Name */}
-              <td className="py-3 px-4">
-                <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${project.icon_color}20`, color: project.icon_color }}>
-                    {ProjectIcons[project.icon_name] || ProjectIcons['folder']}
-                  </span>
-                  <div>
-                    <div className={`text-sm font-medium transition-colors ${textColor} group-hover:text-[#00D4B3]`}>{project.project_name}</div>
-                    {project.project_description && <div className="text-xs text-gray-400 truncate max-w-[300px]">{project.project_description}</div>}
-                  </div>
-                </div>
-              </td>
-              {/* Health */}
-              <td className="py-3 px-2 text-center"><div className="flex justify-center"><HealthIndicator health={project.health_status} /></div></td>
-              {/* Priority */}
-              <td className="py-3 px-2 text-center"><div className="flex justify-center"><PriorityIcon priority={project.priority_level} /></div></td>
-              {/* Lead */}
-              <td className="py-3 px-2 text-center"><div className="flex justify-center"><Avatar user={project.lead} /></div></td>
-              {/* Target Date */}
-              <td className="py-3 px-4"><span className={`text-sm ${subTextColor}`}>{project.target_date || '—'}</span></td>
-              {/* Status */}
-              <td className="py-3 px-4"><StatusBadge status={project.completion_percentage} progressData={project.progress_history} /></td>
-            </tr>
+          {projectGroups.map((group) => (
+            <React.Fragment key={group.id}>
+              {group.label && (
+                <tr className={isDark ? 'bg-white/5' : 'bg-gray-50'}>
+                  <td colSpan={showCycles ? 7 : 6} className="py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                    {group.label} ({group.projects.length})
+                  </td>
+                </tr>
+              )}
+              {group.projects.map((project) => (
+                <tr 
+                  key={project.project_id}
+                  onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}
+                  className={`border-b ${borderColor} transition-colors ${hoverBg} cursor-pointer group last:border-0`}
+                >
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${project.icon_color}20`, color: project.icon_color }}>
+                        {ProjectIcons[project.icon_name] || ProjectIcons['folder']}
+                      </span>
+                      <div>
+                        <div className={`text-sm font-medium transition-colors ${textColor} group-hover:text-[#00D4B3]`}>{project.project_name}</div>
+                        {project.project_description && <div className="text-xs text-gray-400 truncate max-w-[300px]">{project.project_description}</div>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-3 px-2 text-center"><div className="flex justify-center"><HealthIndicator health={project.health_status} /></div></td>
+                  <td className="py-3 px-2 text-center"><div className="flex justify-center"><PriorityIcon priority={project.priority_level} /></div></td>
+                  <td className="py-3 px-2 text-center"><div className="flex justify-center"><Avatar user={project.lead} /></div></td>
+                  {showCycles && (
+                    <td className="py-3 px-2 text-center">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-medium">Cycle 12</span>
+                    </td>
+                  )}
+                  <td className="py-3 px-4"><span className={`text-sm ${subTextColor}`}>{project.target_date || '—'}</span></td>
+                  <td className="py-3 px-4"><StatusBadge status={project.completion_percentage} progressData={project.progress_history} /></td>
+                </tr>
+              ))}
+            </React.Fragment>
           ))}
         </tbody>
       </table>

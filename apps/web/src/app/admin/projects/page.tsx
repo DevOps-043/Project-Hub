@@ -65,6 +65,12 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
+  // Display Settings State
+  const [grouping, setGrouping] = useState<'none' | 'status' | 'priority'>('none');
+  const [ordering, setOrdering] = useState<'manual' | 'alphabetical' | 'newest'>('newest');
+  const [showClosed, setShowClosed] = useState<'all' | 'active' | 'closed'>('all');
+  const [showCycles, setShowCycles] = useState(false);
+
   const displayTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Detectar parámetro ?create=true para abrir el modal automáticamente
@@ -93,7 +99,6 @@ export default function ProjectsPage() {
   };
 
   const generateFallbackSparkline = (progress: number) => {
-    // ... logic same as before ...
     const points: { value: number }[] = [];
     let current = 0;
     for (let i = 0; i < 12; i++) {
@@ -152,10 +157,52 @@ export default function ProjectsPage() {
     }
   }, [searchQuery]);
 
+  // Client-side processing (Filtering and Sorting)
+  const processedProjects = React.useMemo(() => {
+    let result = [...projects];
+
+    if (showClosed === 'active') {
+      result = result.filter(p => p.project_status !== 'completed' && p.project_status !== 'cancelled' && p.project_status !== 'archived');
+    } else if (showClosed === 'closed') {
+      result = result.filter(p => p.project_status === 'completed' || p.project_status === 'cancelled' || p.project_status === 'archived');
+    }
+
+    if (ordering === 'alphabetical') {
+      result.sort((a, b) => a.project_name.localeCompare(b.project_name));
+    } else if (ordering === 'newest') {
+      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+
+    return result;
+  }, [projects, showClosed, ordering]);
+
   useEffect(() => {
     const timeoutId = setTimeout(fetchProjects, 300);
     return () => clearTimeout(timeoutId);
   }, [fetchProjects]);
+
+  // Render Area
+  const renderActiveView = () => {
+    switch(currentView) {
+      case 'list':
+        return (
+          <ProjectListView 
+            projects={processedProjects} 
+            loading={loading} 
+            error={error} 
+            onRefresh={fetchProjects} 
+            grouping={grouping}
+            showCycles={showCycles}
+          />
+        );
+      case 'board':
+        return <ProjectBoardView projects={processedProjects as any[]} />;
+      case 'timeline':
+        return <ProjectTimelineView projects={processedProjects as any[]} />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="-m-6 flex flex-col h-screen" style={{ backgroundColor: 'transparent' }}>
@@ -250,9 +297,16 @@ export default function ProjectsPage() {
                     currentView={currentView}
                     onViewChange={(view) => {
                         setCurrentView(view);
-                        // setIsDisplaySettingsOpen(false); // Optional: close on selection
                     }}
                     triggerRef={displayTriggerRef}
+                    grouping={grouping}
+                    onGroupingChange={setGrouping}
+                    ordering={ordering}
+                    onOrderingChange={setOrdering}
+                    showClosed={showClosed}
+                    onShowClosedChange={setShowClosed}
+                    showCycles={showCycles}
+                    onShowCyclesChange={setShowCycles}
                 />
              </div>
           </div>
@@ -283,23 +337,7 @@ export default function ProjectsPage() {
         className="flex-1 overflow-auto p-6 transition-colors"
         style={{ backgroundColor: isDark ? '#0F1419' : '#F3F4F6' }} // Dark: Dark blue/gray, Light: Gray-100
       >
-         {/* Render Active View */}
-         {currentView === 'list' && (
-             <ProjectListView 
-                projects={projects} 
-                loading={loading} 
-                error={error} 
-                onRefresh={fetchProjects} 
-             />
-         )}
-
-         {currentView === 'board' && (
-             <ProjectBoardView projects={projects as any[]} />
-         )}
-
-         {currentView === 'timeline' && (
-             <ProjectTimelineView projects={projects as any[]} />
-         )}
+         {renderActiveView()}
       </div>
 
       {/* Modal */}
