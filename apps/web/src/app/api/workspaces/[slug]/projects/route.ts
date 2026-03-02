@@ -3,6 +3,77 @@ import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
 import { verifyToken } from '@/lib/auth/jwt';
 
+async function enrichProjectsWithIssueProgress(supabase: any, rawProjects: any[]) {
+  if (rawProjects.length === 0) return [];
+
+  const projectIds = rawProjects.map((p: any) => p.project_id);
+
+  // Batch query: get all issues for these projects with their status info
+  const { data: allIssues } = await supabase
+    .from('task_issues')
+    .select('project_id, status_id, task_statuses!inner(status_type)')
+    .in('project_id', projectIds);
+
+  // Group by project_id and calculate completion
+  const issuesByProject: Record<string, any[]> = {};
+  for (const issue of (allIssues || [])) {
+    const pid = issue.project_id;
+    if (!issuesByProject[pid]) issuesByProject[pid] = [];
+    issuesByProject[pid].push(issue);
+  }
+
+  // Build enriched projects and batch-update completion_percentage
+  const updates: { id: string; pct: number }[] = [];
+
+  const projects = rawProjects.map((p: any) => {
+    const issues = issuesByProject[p.project_id] || [];
+    const total = issues.length;
+    const done = issues.filter((i: any) => i.task_statuses?.status_type === 'done').length;
+    const cancelled = issues.filter((i: any) => i.task_statuses?.status_type === 'cancelled').length;
+    const effectiveTotal = total - cancelled;
+    const pct = effectiveTotal > 0 ? Math.round((done / effectiveTotal) * 100) : (p.completion_percentage || 0);
+
+    if (total > 0 && p.completion_percentage !== pct) {
+      updates.push({ id: p.project_id, pct });
+    }
+
+    return {
+      project_id: p.project_id,
+      project_key: p.project_key,
+      project_name: p.project_name,
+      project_description: p.project_description,
+      icon_name: p.icon_name,
+      icon_color: p.icon_color,
+      project_status: p.project_status,
+      health_status: p.health_status,
+      priority_level: p.priority_level,
+      completion_percentage: total > 0 ? pct : (p.completion_percentage || 0),
+      start_date: p.start_date,
+      target_date: p.target_date,
+      created_at: p.created_at,
+      lead_user_id: p.lead_user_id,
+      lead_first_name: p.lead?.first_name || null,
+      lead_last_name: p.lead?.last_name_paternal || null,
+      lead_display_name: p.lead?.display_name || null,
+      lead_avatar_url: p.lead?.avatar_url || null,
+      team_name: p.team?.name || null,
+      team_color: p.team?.color || null,
+      progress_history: [],
+    };
+  });
+
+  // Batch update completion_percentage in DB (fire and forget)
+  for (const u of updates) {
+    supabase
+      .from('pm_projects')
+      .update({ completion_percentage: u.pct })
+      .eq('project_id', u.id)
+      .then(() => {});
+  }
+
+  return projects;
+}
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
@@ -25,9 +96,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
+    // Auto-fix: asignar workspace_id a proyectos huérfanos cuyo equipo pertenece a este workspace
+    const { data: workspaceTeams } = await supabase
+      .from('teams')
+      .select('team_id')
+      .eq('workspace_id', workspace.workspace_id);
+    const wsTeamIds = (workspaceTeams || []).map((t: any) => t.team_id);
+
+    if (wsTeamIds.length > 0) {
+      await supabase
+        .from('pm_projects')
+        .update({ workspace_id: workspace.workspace_id })
+        .is('workspace_id', null)
+        .in('team_id', wsTeamIds);
+    }
+
     const isAdmin = ['owner', 'admin'].includes(member.iris_role);
 
-    // For non-admin roles, filter by user's team membership + direct project membership
+    // For non-admin roles, filter by user's team membership + direct project membership + lead/creator
     if (!isAdmin) {
       // Get user's team IDs
       const { data: userTeams } = await supabase
@@ -44,14 +130,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .eq('user_id', payload.sub);
       const userProjectIds = (userProjects || []).map((p: any) => p.project_id);
 
-      if (userTeamIds.length === 0 && userProjectIds.length === 0) {
-        return NextResponse.json({ projects: [], total: 0, limit, offset });
-      }
-
-      // Build OR filter: projects in my teams OR projects I'm a direct member of
+      // Build OR filter: projects in my teams OR direct member OR lead OR creator
       const orFilters: string[] = [];
       if (userTeamIds.length > 0) orFilters.push(`team_id.in.(${userTeamIds.join(',')})`);
       if (userProjectIds.length > 0) orFilters.push(`project_id.in.(${userProjectIds.join(',')})`);
+      // Siempre incluir proyectos donde el usuario es líder o creador
+      orFilters.push(`lead_user_id.eq.${payload.sub}`);
+      orFilters.push(`created_by_user_id.eq.${payload.sub}`);
 
       let filteredQuery = supabase
         .from('pm_projects')
@@ -73,30 +158,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const { data, error } = await filteredQuery;
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-      const projects = (data || []).map((p: any) => ({
-        project_id: p.project_id,
-        project_key: p.project_key,
-        project_name: p.project_name,
-        project_description: p.project_description,
-        icon_name: p.icon_name,
-        icon_color: p.icon_color,
-        project_status: p.project_status,
-        health_status: p.health_status,
-        priority_level: p.priority_level,
-        completion_percentage: p.completion_percentage,
-        start_date: p.start_date,
-        target_date: p.target_date,
-        created_at: p.created_at,
-        lead_user_id: p.lead_user_id,
-        lead_first_name: p.lead?.first_name || null,
-        lead_last_name: p.lead?.last_name_paternal || null,
-        lead_display_name: p.lead?.display_name || null,
-        lead_avatar_url: p.lead?.avatar_url || null,
-        team_name: p.team?.name || null,
-        team_color: p.team?.color || null,
-        progress_history: [],
-      }));
-
+      const projects = await enrichProjectsWithIssueProgress(supabase, data || []);
       return NextResponse.json({ projects, total: projects.length, limit, offset });
     }
 
@@ -120,30 +182,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const projects = (data || []).map((p: any) => ({
-      project_id: p.project_id,
-      project_key: p.project_key,
-      project_name: p.project_name,
-      project_description: p.project_description,
-      icon_name: p.icon_name,
-      icon_color: p.icon_color,
-      project_status: p.project_status,
-      health_status: p.health_status,
-      priority_level: p.priority_level,
-      completion_percentage: p.completion_percentage,
-      start_date: p.start_date,
-      target_date: p.target_date,
-      created_at: p.created_at,
-      lead_user_id: p.lead_user_id,
-      lead_first_name: p.lead?.first_name || null,
-      lead_last_name: p.lead?.last_name_paternal || null,
-      lead_display_name: p.lead?.display_name || null,
-      lead_avatar_url: p.lead?.avatar_url || null,
-      team_name: p.team?.name || null,
-      team_color: p.team?.color || null,
-      progress_history: [],
-    }));
-
+    const projects = await enrichProjectsWithIssueProgress(supabase, data || []);
     return NextResponse.json({ projects, total: projects.length, limit, offset });
   } catch (error) {
     console.error('Workspace projects API error:', error);

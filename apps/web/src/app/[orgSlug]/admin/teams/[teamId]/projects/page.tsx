@@ -367,18 +367,19 @@ export default function TeamProjectsPage() {
               >
                 <Link
                   href={`/${orgSlug}/admin/projects/${project.project_id}`}
-                  className="block p-5 rounded-xl border transition-all hover:border-white/20 hover:shadow-lg group"
+                  className="flex flex-col p-5 rounded-xl border transition-all hover:border-white/20 hover:shadow-lg group h-full"
                   style={{ 
                     backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#fff',
-                    borderColor: colors.border
+                    borderColor: project.health_status === 'on_track' ? '#10B981' : colors.border,
+                    borderWidth: project.health_status === 'on_track' ? '1.5px' : '1px'
                   }}
                 >
                   {/* Header */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <ProjectIcon name={project.icon_name} color={project.icon_color} size={44} />
-                      <div>
-                        <h3 className="font-semibold group-hover:text-[#00D4B3] transition-colors" style={{ color: colors.textPrimary }}>
+                      <div className="min-h-[42px] flex flex-col justify-center">
+                        <h3 className="font-semibold group-hover:text-[#00D4B3] transition-colors line-clamp-2" style={{ color: colors.textPrimary }}>
                           {project.project_name}
                         </h3>
                         <span className="text-xs font-mono" style={{ color: colors.textMuted }}>
@@ -398,11 +399,15 @@ export default function TeamProjectsPage() {
                   </div>
 
                   {/* Description */}
-                  {project.project_description && (
-                    <p className="text-sm mb-4 line-clamp-2" style={{ color: colors.textSecondary }}>
-                      {project.project_description}
-                    </p>
-                  )}
+                  <div className="flex-1">
+                    {project.project_description ? (
+                      <p className="text-sm mb-4 line-clamp-3" style={{ color: colors.textSecondary }}>
+                        {project.project_description}
+                      </p>
+                    ) : (
+                      <div className="mb-4 h-5" /> // Spacer to maintain some consistency if no description
+                    )}
+                  </div>
 
                   {/* Progress */}
                   <div className="mb-4">
@@ -529,7 +534,7 @@ export default function TeamProjectsPage() {
         )}
       </main>
 
-      <CreateProjectModal 
+      <CreateProjectModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onSuccess={() => {
@@ -537,6 +542,7 @@ export default function TeamProjectsPage() {
           setShowCreateModal(false);
         }}
         initialTeamId={teamId}
+        workspaceSlug={orgSlug}
       />
     </div>
   );

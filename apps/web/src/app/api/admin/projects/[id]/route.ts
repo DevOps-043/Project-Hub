@@ -64,18 +64,44 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    // 2. Calcular progreso basado en Milestones reales
+    // 2. Calcular progreso basado en Issues del proyecto
+    const { data: issuesWithStatus } = await supabaseAdmin
+      .from('task_issues')
+      .select('issue_id, status_id, task_statuses!inner(status_type)')
+      .eq('project_id', project.project_id);
+
+    const allIssues = issuesWithStatus || [];
+    const totalIssues = allIssues.length;
+    const doneIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'done').length;
+    const inProgressIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'in_progress').length;
+    const cancelledIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'cancelled').length;
+    const effectiveTotal = totalIssues - cancelledIssues;
+    const issuePercentage = effectiveTotal > 0
+      ? Math.round((doneIssues / effectiveTotal) * 100)
+      : 0;
+
+    // Fallback a milestones si no hay issues
     const milestones = project.milestones || [];
     const totalMilestones = milestones.length;
     const completedMilestones = milestones.filter((m: any) => m.milestone_status === 'completed').length;
     const inProgressMilestones = milestones.filter((m: any) => m.milestone_status === 'in_progress').length;
-    
-    // Si no hay milestones, el progreso es 0 o basado en el campo manual completion_percentage
-    const percentage = totalMilestones > 0 
-      ? Math.round((completedMilestones / totalMilestones) * 100)
-      : (project.completion_percentage || 0);
 
-    // Obtener historial de progreso real si existe (opcional)
+    const useIssues = totalIssues > 0;
+    const percentage = useIssues
+      ? issuePercentage
+      : (totalMilestones > 0
+        ? Math.round((completedMilestones / totalMilestones) * 100)
+        : (project.completion_percentage || 0));
+
+    // Actualizar completion_percentage en la BD
+    if (useIssues && project.completion_percentage !== issuePercentage) {
+      await supabaseAdmin
+        .from('pm_projects')
+        .update({ completion_percentage: issuePercentage })
+        .eq('project_id', project.project_id);
+    }
+
+    // Obtener historial de progreso real si existe
     const { data: historyData } = await supabaseAdmin
       .from('pm_project_progress_history')
       .select('recorded_at, completion_percentage')
@@ -84,9 +110,9 @@ export async function GET(
       .limit(10);
 
     const progress = {
-      scope: totalMilestones,
-      started: inProgressMilestones,
-      completed: completedMilestones,
+      scope: useIssues ? totalIssues : totalMilestones,
+      started: useIssues ? inProgressIssues : inProgressMilestones,
+      completed: useIssues ? doneIssues : completedMilestones,
       percentage,
       history: historyData?.map(h => ({
         date: h.recorded_at,

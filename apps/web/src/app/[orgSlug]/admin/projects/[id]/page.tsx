@@ -130,9 +130,11 @@ export default function WorkspaceAdminProjectDetailPage() {
   useEffect(() => {
     const fetchOptions = async () => {
       try {
+        const token = localStorage.getItem('accessToken');
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const [usersRes, teamsRes] = await Promise.all([
-          fetch(`/api/admin/users?limit=100`),
-          fetch(`/api/admin/teams?limit=50`)
+          fetch(`/api/workspaces/${orgSlug}/members?limit=100`, { headers }),
+          fetch(`/api/workspaces/${orgSlug}/teams?limit=50`, { headers })
         ]);
         if (usersRes.ok) {
           const data = await usersRes.json();
@@ -146,17 +148,21 @@ export default function WorkspaceAdminProjectDetailPage() {
         console.error('Error fetching options:', e);
       }
     };
-    fetchOptions();
-  }, []);
+    if (orgSlug) fetchOptions();
+  }, [orgSlug]);
 
   const updateProject = async (field: string, value: any) => {
     if (!project) return;
     
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/projects/${projectId}`, {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`/api/workspaces/${orgSlug}/projects/${project.project_id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ [field]: value })
       });
 

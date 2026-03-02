@@ -251,6 +251,7 @@ export async function POST(request: NextRequest) {
       team_id,
       lead_user_id,
       created_by_user_id,
+      workspace_id: explicit_workspace_id,
       tags = []
     } = body;
 
@@ -262,12 +263,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolver workspace_id: usar el explícito, o derivar del team si existe
+    let resolved_workspace_id = explicit_workspace_id || null;
+    if (!resolved_workspace_id && team_id) {
+      const { data: teamData } = await supabase
+        .from('teams')
+        .select('workspace_id')
+        .eq('team_id', team_id)
+        .single();
+      if (teamData?.workspace_id) {
+        resolved_workspace_id = teamData.workspace_id;
+      }
+    }
+
     // Generar project_key único
     const prefix = project_name.substring(0, 4).toUpperCase().replace(/[^A-Z]/g, 'X');
     const { count } = await supabase
       .from('pm_projects')
       .select('*', { count: 'exact', head: true });
-    
+
     const projectKey = `${prefix}-${String((count || 0) + 1).padStart(3, '0')}`;
 
     // Insertar proyecto
@@ -285,6 +299,7 @@ export async function POST(request: NextRequest) {
         team_id,
         lead_user_id,
         created_by_user_id,
+        workspace_id: resolved_workspace_id,
         tags
       })
       .select()

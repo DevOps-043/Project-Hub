@@ -89,8 +89,11 @@ export function ProjectIssuesView({ projectId, teamId, workspaceSlug }: { projec
         i.issue_number.toString().includes(search)
     );
 
-    // Build the URL for an issue - now points to project-scoped issue page
+    // Build the URL for an issue - use workspace-scoped route when available
     const getIssueUrl = (issue: Issue) => {
+        if (workspaceSlug && issue.team?.team_id) {
+            return `/${workspaceSlug}/admin/teams/${issue.team.team_id}/tasks/${issue.issue_id}`;
+        }
         return `/admin/projects/${projectId}/issues/${issue.issue_id}`;
     };
 
