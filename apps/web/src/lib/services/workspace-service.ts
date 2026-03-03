@@ -113,29 +113,56 @@ export async function syncWorkspacesFromSofia(
         continue;
       }
 
-      // 2. Upsert membership
-      const irisRole = mapSofiaRoleToIris(orgUser.role || 'member');
-
-      const { error: memberError } = await supabase
+      // 2. Check if membership already exists (to preserve manually-edited iris_role)
+      const { data: existingMember } = await supabase
         .from('workspace_members')
-        .upsert(
-          {
+        .select('iris_role')
+        .eq('workspace_id', workspace.workspace_id)
+        .eq('user_id', irisUserId)
+        .maybeSingle();
+
+      let actualIrisRole: string;
+
+      if (existingMember) {
+        // Member exists: only update sofia_role, NEVER overwrite iris_role
+        const { error: updateError } = await supabase
+          .from('workspace_members')
+          .update({
+            sofia_role: orgUser.role || 'member',
+            is_active: true,
+          })
+          .eq('workspace_id', workspace.workspace_id)
+          .eq('user_id', irisUserId);
+
+        if (updateError) {
+          console.error(`[WORKSPACE SERVICE] Error updating member:`, updateError.message);
+        }
+
+        actualIrisRole = existingMember.iris_role;
+      } else {
+        // New member: insert with mapped iris_role
+        const irisRole = mapSofiaRoleToIris(orgUser.role || 'member');
+
+        const { error: insertError } = await supabase
+          .from('workspace_members')
+          .insert({
             workspace_id: workspace.workspace_id,
             user_id: irisUserId,
             sofia_role: orgUser.role || 'member',
             iris_role: irisRole,
             is_active: true,
-          },
-          { onConflict: 'workspace_id,user_id' }
-        );
+          });
 
-      if (memberError) {
-        console.error(`[WORKSPACE SERVICE] Error upserting member:`, memberError.message);
+        if (insertError) {
+          console.error(`[WORKSPACE SERVICE] Error inserting member:`, insertError.message);
+        }
+
+        actualIrisRole = irisRole;
       }
 
       results.push({
         ...workspace,
-        iris_role: irisRole,
+        iris_role: actualIrisRole,
         sofia_role: orgUser.role || 'member',
       });
     } catch (err) {

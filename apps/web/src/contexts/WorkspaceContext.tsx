@@ -11,14 +11,16 @@ export interface WorkspacePermissions {
   manageProjects: boolean;
   manageTeams: boolean;
   viewAnalytics: boolean;
+  viewReports: boolean;
+  viewAllMembers: boolean;
 }
 
 const ROLE_PERMISSIONS: Record<IrisRole, WorkspacePermissions> = {
-  owner:   { manageWorkspace: true,  manageMembers: true,  manageRoles: true,  manageProjects: true,  manageTeams: true,  viewAnalytics: true  },
-  admin:   { manageWorkspace: false, manageMembers: true,  manageRoles: true,  manageProjects: true,  manageTeams: true,  viewAnalytics: true  },
-  manager: { manageWorkspace: false, manageMembers: true,  manageRoles: false, manageProjects: true,  manageTeams: true,  viewAnalytics: true  },
-  leader:  { manageWorkspace: false, manageMembers: false, manageRoles: false, manageProjects: true,  manageTeams: false, viewAnalytics: false },
-  member:  { manageWorkspace: false, manageMembers: false, manageRoles: false, manageProjects: false, manageTeams: false, viewAnalytics: false },
+  owner:   { manageWorkspace: true,  manageMembers: true,  manageRoles: true,  manageProjects: true,  manageTeams: true,  viewAnalytics: true,  viewReports: true,  viewAllMembers: true  },
+  admin:   { manageWorkspace: false, manageMembers: true,  manageRoles: true,  manageProjects: true,  manageTeams: true,  viewAnalytics: true,  viewReports: true,  viewAllMembers: true  },
+  manager: { manageWorkspace: false, manageMembers: false, manageRoles: false, manageProjects: true,  manageTeams: true,  viewAnalytics: false, viewReports: false, viewAllMembers: false },
+  leader:  { manageWorkspace: false, manageMembers: false, manageRoles: false, manageProjects: true,  manageTeams: false, viewAnalytics: false, viewReports: false, viewAllMembers: false },
+  member:  { manageWorkspace: false, manageMembers: false, manageRoles: false, manageProjects: false, manageTeams: false, viewAnalytics: false, viewReports: false, viewAllMembers: false },
 };
 
 export interface WorkspaceData {
@@ -37,6 +39,8 @@ export interface WorkspaceContextType {
   permissions: WorkspacePermissions;
   isOwner: boolean;
   isAdmin: boolean;
+  isManager: boolean;
+  isLeader: boolean;
   canManageMembers: boolean;
   canManageSettings: boolean;
 }
@@ -58,6 +62,8 @@ export function WorkspaceProvider({ children, workspace, userRole }: WorkspacePr
     permissions,
     isOwner: userRole === 'owner',
     isAdmin: userRole === 'owner' || userRole === 'admin',
+    isManager: userRole === 'manager',
+    isLeader: userRole === 'leader',
     canManageMembers: permissions.manageMembers,
     canManageSettings: permissions.manageWorkspace,
   };
@@ -79,4 +85,17 @@ export function useWorkspace(): WorkspaceContextType {
 
 export function getPermissionsForRole(role: IrisRole): WorkspacePermissions {
   return ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.member;
+}
+
+/**
+ * Returns the base panel path for a given role within a workspace.
+ */
+export function getPanelPathForRole(orgSlug: string, role: IrisRole): string {
+  switch (role) {
+    case 'owner':
+    case 'admin':   return `/${orgSlug}/admin`;
+    case 'manager': return `/${orgSlug}/manager`;
+    case 'leader':  return `/${orgSlug}/leader`;
+    default:        return `/${orgSlug}`;
+  }
 }

@@ -92,8 +92,8 @@ const profileIcon = (
   </svg>
 );
 
-// Full admin menu
-const adminMenuItems: MenuItem[] = [
+// Menu items per role
+const ownerMenuItems: MenuItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
   { id: 'users', label: 'Usuarios', icon: 'users', path: '/members' },
   { id: 'teams', label: 'Equipos', icon: 'teams', path: '/teams' },
@@ -104,13 +104,58 @@ const adminMenuItems: MenuItem[] = [
   { id: 'settings', label: 'Configuración', icon: 'settings', path: '/settings' },
 ];
 
-// Simplified member menu
+const adminMenuItems: MenuItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
+  { id: 'users', label: 'Usuarios', icon: 'users', path: '/members' },
+  { id: 'teams', label: 'Equipos', icon: 'teams', path: '/teams' },
+  { id: 'projects', label: 'Proyectos', icon: 'projects', path: '/projects' },
+  { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },
+  { id: 'analytics', label: 'Analytics', icon: 'analytics', path: '/analytics' },
+  { id: 'reports', label: 'Reportes', icon: 'reports', path: '/reports' },
+];
+
+const managerMenuItems: MenuItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
+  { id: 'teams', label: 'Equipos', icon: 'teams', path: '/teams' },
+  { id: 'projects', label: 'Proyectos', icon: 'projects', path: '/projects' },
+  { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },
+];
+
+const leaderMenuItems: MenuItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
+  { id: 'teams', label: 'Mis Equipos', icon: 'teams', path: '/teams' },
+  { id: 'projects', label: 'Mis Proyectos', icon: 'projects', path: '/projects' },
+  { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },
+];
+
 const memberMenuItems: MenuItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
   { id: 'teams', label: 'Mis Equipos', icon: 'teams', path: '/teams' },
   { id: 'projects', label: 'Mis Proyectos', icon: 'projects', path: '/projects' },
   { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },
 ];
+
+function getMenuForRole(role: string | undefined, isOrgContext: boolean): MenuItem[] {
+  if (!isOrgContext) return ownerMenuItems;
+  switch (role) {
+    case 'owner': return ownerMenuItems;
+    case 'admin': return adminMenuItems;
+    case 'manager': return managerMenuItems;
+    case 'leader': return leaderMenuItems;
+    default: return memberMenuItems;
+  }
+}
+
+function getBasePath(orgSlug: string | undefined, role: string | undefined): string {
+  if (!orgSlug) return '/admin';
+  switch (role) {
+    case 'owner':
+    case 'admin': return `/${orgSlug}/admin`;
+    case 'manager': return `/${orgSlug}/manager`;
+    case 'leader': return `/${orgSlug}/leader`;
+    default: return `/${orgSlug}`;
+  }
+}
 
 // Teams Dropdown Component - Similar to Linear
 interface Team {
