@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import mermaid from 'mermaid';
 
 // --- ICONS ---
 const Icons = {
@@ -12,9 +11,6 @@ const Icons = {
     ),
     Compass: () => (
         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-    ),
-    Architecture: () => (
-        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
     ),
     Cards: () => (<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>),
     Chart: () => (<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>)
@@ -221,134 +217,10 @@ const AgileAdvisor = () => {
     );
 };
 
-// --- 3. DIAGRAM ARCHITECT ---
-const DiagramArchitect = () => {
-    const [prompt, setPrompt] = useState('');
-    const [diagramType, setDiagramType] = useState('flowchart');
-    const [code, setCode] = useState('');
-    const [loading, setLoading] = useState(false);
-    const previewRef = useRef<HTMLDivElement>(null);
-    const { isDark } = useTheme();
-
-    // Initialize Mermaid
-    useEffect(() => {
-        mermaid.initialize({ 
-            startOnLoad: true, 
-            theme: isDark ? 'dark' : 'default',
-            securityLevel: 'loose',
-            fontFamily: 'Inter'
-        });
-    }, [isDark]);
-
-    const generateDiagram = async () => {
-        if (!prompt.trim()) return;
-        setLoading(true);
-        setCode('');
-        
-        try {
-            const res = await fetch('/api/ai/diagram-generator', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt, type: diagramType })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                setCode(data.code);
-            } else {
-                alert('Error generando diagrama');
-            }
-        } catch (e) { console.error(e); } finally { setLoading(false); }
-    };
-
-    // Render Mermaid Code
-    useEffect(() => {
-        if (code && previewRef.current) {
-            previewRef.current.innerHTML = ''; // Clear previous
-            // Unique ID for each render to avoid conflicts
-            const id = `mermaid-${Date.now()}`;
-            mermaid.render(id, code)
-                .then(({ svg }) => {
-                    if (previewRef.current) {
-                        previewRef.current.innerHTML = svg;
-                    }
-                })
-                .catch((e) => {
-                    console.error('Mermaid Render Error', e);
-                    if (previewRef.current) previewRef.current.innerHTML = `<div class="text-red-400 text-xs p-4 border border-red-500/20 rounded">Error renderizando: ${e.message}</div>`;
-                });
-        }
-    }, [code]);
-
-    return (
-        <div className="h-full flex flex-col gap-4">
-            {!code ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-4 max-w-lg mx-auto w-full">
-                    <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-                        <Icons.Architecture /> Generador de Diagramas
-                    </h3>
-                    
-                    <div className="grid grid-cols-3 gap-2 w-full mb-4">
-                        {['flowchart', 'sequence', 'class', 'er', 'state', 'gantt'].map(t => (
-                            <button 
-                                key={t} 
-                                onClick={() => setDiagramType(t)}
-                                className={`p-2 text-xs font-bold rounded-lg capitalize border ${diagramType === t ? 'bg-[#00D4B3]/10 border-[#00D4B3] text-[#00D4B3]' : 'border-transparent bg-gray-100 dark:bg-white/5 opacity-60'}`}
-                            >
-                                {t}
-                            </button>
-                        ))}
-                    </div>
-
-                    <textarea 
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder={`Describe tu diagrama ${diagramType}... \nEj: "Usuario hace login, sistema valida, si ok entra, si no muestra error"`}
-                        className="w-full h-32 p-4 rounded-xl bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-white/10 focus:border-[#00D4B3] outline-none text-sm resize-none mb-4"
-                    />
-
-                    <button 
-                        onClick={generateDiagram}
-                        disabled={loading || !prompt}
-                        className="w-full py-3 rounded-xl bg-[#00D4B3] text-black font-bold shadow-lg hover:shadow-[#00D4B3]/40 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        {loading ? 'Generando...' : 'Crear Diagrama'}
-                    </button>
-                </div>
-            ) : (
-                <div className="flex-1 flex flex-col h-full overflow-hidden">
-                    <div className="flex justify-between items-center mb-4 px-4 pt-2">
-                        <h4 className="font-bold text-sm opacity-60">Vista Previa</h4>
-                        <div className="flex gap-2">
-                            <button onClick={() => setCode('')} className="text-xs px-3 py-1 bg-gray-100 dark:bg-white/5 rounded hover:bg-red-500/10 hover:text-red-500">Nuevo</button>
-                            <button 
-                                onClick={() => navigator.clipboard.writeText(code)}
-                                className="text-xs px-3 py-1 bg-gray-100 dark:bg-white/5 rounded hover:bg-[#00D4B3]/10 hover:text-[#00D4B3]"
-                            >
-                                Copiar Código
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div className="flex-1 bg-white dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-white/5 overflow-auto p-4 flex items-center justify-center relative">
-                        <div ref={previewRef} className="w-full h-full flex items-center justify-center" />
-                    </div>
-                    
-                    {/* Code Toggle (Optional, maybe hidden by default) */}
-                    <details className="mt-2 text-xs opacity-50">
-                        <summary className="cursor-pointer">Ver código Mermaid</summary>
-                        <pre className="p-2 bg-black/10 mt-2 rounded overflow-x-auto font-mono">{code}</pre>
-                    </details>
-                </div>
-            )}
-        </div>
-    );
-};
-
 // --- DATA ---
 const toolsReal = [
   { id: 'focus', name: 'Focus Flow', desc: 'Temporizador de productividad avanzado.', icon: <Icons.Timer />, component: FocusTimer },
   { id: 'advisor', name: 'Agile Advisor', desc: 'Selector de metodologías ágiles con IA.', icon: <Icons.Compass />, component: AgileAdvisor },
-  { id: 'architect', name: 'AI Architect', desc: 'Generador de diagramas (UML, BD, Procesos).', icon: <Icons.Architecture />, component: DiagramArchitect },
 ];
 
 export default function ToolsPage() {
@@ -362,7 +234,7 @@ export default function ToolsPage() {
       <div className="mb-10 flex items-end justify-between">
         <div><h1 className="text-3xl font-bold mb-2 flex items-center gap-3" style={{ color: colors.textPrimary }}>Centro de Utilidades</h1><p style={{ color: colors.textSecondary }}>Herramientas profesionales para gestión eficiente.</p></div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {toolsReal.map((tool) => (
           <motion.div key={tool.id} layoutId={`card-${tool.id}`} onClick={() => setActiveTool(tool.id)} className="group relative cursor-pointer overflow-hidden rounded-2xl border p-6 transition-all hover:border-[#00D4B3]" style={{ background: isDark ? 'rgba(255,255,255,0.02)' : '#fff', borderColor: colors.border }}>
             <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gray-100 dark:bg-white/5 mb-4 text-gray-700 dark:text-gray-300 group-hover:bg-[#00D4B3] group-hover:text-black transition-colors">{tool.icon}</div>

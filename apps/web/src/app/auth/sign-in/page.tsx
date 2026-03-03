@@ -121,6 +121,7 @@ export default function SignInPage() {
   };
 
   const handleLogoHover = () => {
+    if (isLoading) return;
     const newRotation = rotation + 720; // Suma 2 vueltas cada vez
     setRotation(newRotation);
     logoControls.start({
@@ -131,6 +132,21 @@ export default function SignInPage() {
       },
     });
   };
+
+  useEffect(() => {
+    if (isLoading) {
+      logoControls.start({
+        rotate: rotation + 360,
+        transition: {
+          duration: 1,
+          ease: "linear",
+          repeat: Infinity,
+        },
+      });
+    } else {
+      logoControls.stop();
+    }
+  }, [isLoading, logoControls, rotation]);
 
   return (
     <div className="w-full min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-12 relative z-10">
@@ -162,7 +178,13 @@ export default function SignInPage() {
               y: { duration: 5, repeat: Infinity, ease: "easeInOut" },
             }}
           >
-            <motion.div animate={logoControls} onMouseEnter={handleLogoHover}>
+            <motion.div 
+              animate={logoControls} 
+              onMouseEnter={handleLogoHover}
+              drag
+              dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+              onDragStart={handleLogoHover}
+            >
               <Image
                 src="/Logo.png"
                 alt="Project Hub Logo"

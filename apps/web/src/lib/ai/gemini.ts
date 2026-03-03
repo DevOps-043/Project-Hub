@@ -8,7 +8,7 @@ import { GoogleGenerativeAI, GenerativeModel, GenerationConfig } from '@google/g
 // Configuración por defecto
 const GEMINI_CONFIG = {
   apiKey: process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_AI_KEY || process.env.GOOGLE_AI_KEY || '',
-  model: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
+  model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
   maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '8192'),
   temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
   thinkingLevel: process.env.GEMINI_THINKING_LEVEL || 'medium',

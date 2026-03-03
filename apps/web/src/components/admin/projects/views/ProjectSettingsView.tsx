@@ -6,6 +6,7 @@ import {
     ChevronLeft, ChevronRight, X
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
+import DiagramGeneratorInline from '@/components/diagrams/DiagramGeneratorInline';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
     format, addMonths, subMonths, startOfMonth, endOfMonth, 
@@ -397,13 +398,29 @@ export function ProjectSettingsView({ project, onUpdate, users, teams, saving }:
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-xs font-medium opacity-50">Description</label>
-                            <textarea 
+                            <textarea
                                 value={localProject.project_description}
                                 onChange={(e) => handleChange('project_description', e.target.value)}
                                 onBlur={() => handleSave('project_description')}
                                 className="w-full h-32 bg-black/10 dark:bg-white/5 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 ring-blue-500/20 transition-all resize-none"
                                 style={{ color: colors.text }}
                             />
+                            <div className="flex justify-end mt-1">
+                                <DiagramGeneratorInline
+                                    context={{
+                                        type: 'project',
+                                        title: localProject.project_name,
+                                        description: localProject.project_description,
+                                        priority: localProject.priority_level,
+                                        teamName: teams.find((t: any) => t.team_id === localProject.team_id)?.name,
+                                    }}
+                                    onInsert={(code) => {
+                                        const fence = `\n\`\`\`mermaid\n${code}\n\`\`\``;
+                                        handleChange('project_description', (localProject.project_description || '') + fence);
+                                        setTimeout(() => handleSave('project_description'), 0);
+                                    }}
+                                />
+                            </div>
                         </div>
                     </div>
                 </Section>

@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
+import DescriptionRenderer from '@/components/diagrams/DescriptionRenderer';
+import DiagramGeneratorInline from '@/components/diagrams/DiagramGeneratorInline';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 
@@ -322,7 +324,8 @@ export default function ProjectIssueDetailPage() {
                       color: colors.textPrimary
                     }}
                   />
-                  <div className="flex gap-2 mt-2">
+                  <div className="flex gap-2 mt-2 items-center">
+                    <div className="flex-1" />
                     <button
                       onClick={saveDesc}
                       className="px-3 py-1.5 rounded-lg text-sm font-medium text-white"
@@ -340,17 +343,16 @@ export default function ProjectIssueDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div 
+                <div
                   className="cursor-pointer hover:opacity-80 transition-opacity"
                   onClick={() => setEditingDesc(true)}
                 >
                   {issue.description ? (
-                    <div 
-                      className="prose prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap"
-                      style={{ color: colors.textSecondary }}
-                    >
-                      {issue.description}
-                    </div>
+                    <DescriptionRenderer
+                      description={issue.description}
+                      textClassName="text-sm leading-relaxed"
+                      className="prose prose-invert max-w-none"
+                    />
                   ) : (
                     <p className="text-sm italic" style={{ color: colors.textMuted }}>
                       Haz clic para añadir una descripción...
@@ -358,6 +360,28 @@ export default function ProjectIssueDetailPage() {
                   )}
                 </div>
               )}
+
+              {/* Diagram generator - always visible */}
+              <div className="mt-3">
+                <DiagramGeneratorInline
+                  context={{
+                    type: 'issue',
+                    title: issue.title,
+                    description: issue.description,
+                    projectName: project?.project_name,
+                    status: issue.status?.name,
+                    priority: issue.priority?.name,
+                    labels: issue.labels?.map((l: Label) => l.name),
+                    dueDate: issue.due_date,
+                    estimatePoints: issue.estimate_points,
+                  }}
+                  onInsert={(code) => {
+                    const fence = `\n\`\`\`mermaid\n${code}\n\`\`\``;
+                    const newDesc = (issue.description || '') + fence;
+                    updateField('description', newDesc);
+                  }}
+                />
+              </div>
             </div>
 
             {/* Activity Section */}

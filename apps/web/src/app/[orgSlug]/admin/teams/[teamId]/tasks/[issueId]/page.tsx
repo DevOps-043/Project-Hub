@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
+import DescriptionRenderer from '@/components/diagrams/DescriptionRenderer';
+import DiagramGeneratorInline from '@/components/diagrams/DiagramGeneratorInline';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -634,14 +636,13 @@ export default function IssueDetailPage() {
                       setDescriptionDraft(issue.description || '');
                       setEditingDescription(false);
                     }
-                    // Ctrl/Cmd + Enter to save
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.currentTarget.blur();
                     }
                   }}
                   rows={5}
                   className="w-full bg-transparent p-4 text-sm leading-relaxed resize-y focus:ring-0 focus:outline-none focus:border-0 ring-0"
-                  style={{ 
+                  style={{
                     color: colors.textSecondary,
                     border: 'none',
                     borderBottom: `2px solid ${accentColor}`,
@@ -654,7 +655,7 @@ export default function IssueDetailPage() {
                   autoFocus
                 />
               ) : (
-                <div 
+                <div
                   className="cursor-text rounded-xl px-4 py-3 -mx-4 transition-colors hover:bg-white/5 min-h-[60px]"
                   onClick={() => {
                     setDescriptionDraft(issue.description || '');
@@ -664,12 +665,11 @@ export default function IssueDetailPage() {
                   title="Clic para editar la descripción"
                 >
                   {issue.description ? (
-                    <div 
-                      className="prose prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap"
-                      style={{ color: colors.textSecondary }}
-                    >
-                      {issue.description}
-                    </div>
+                    <DescriptionRenderer
+                      description={issue.description}
+                      textClassName="text-sm leading-relaxed"
+                      className="prose prose-invert max-w-none"
+                    />
                   ) : (
                     <p className="text-sm italic" style={{ color: colors.textMuted }}>
                       Clic para agregar descripción...
@@ -677,6 +677,29 @@ export default function IssueDetailPage() {
                   )}
                 </div>
               )}
+
+              {/* Diagram generator - always visible */}
+              <div className="mt-3">
+                <DiagramGeneratorInline
+                  context={{
+                    type: 'issue',
+                    title: issue.title,
+                    description: issue.description,
+                    projectName: (issue as any).project?.project_name,
+                    status: issue.status?.name,
+                    priority: issue.priority?.name,
+                    labels: issue.labels?.map((l: Label) => l.name),
+                    teamName: team?.name,
+                    dueDate: issue.due_date,
+                    estimatePoints: issue.estimate_points,
+                  }}
+                  onInsert={(code) => {
+                    const fence = `\n\`\`\`mermaid\n${code}\n\`\`\``;
+                    const newDesc = (issue.description || '') + fence;
+                    updateField('description', newDesc);
+                  }}
+                />
+              </div>
             </div>
 
             {/* Activity Section */}

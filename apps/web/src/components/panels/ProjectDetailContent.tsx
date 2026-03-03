@@ -11,6 +11,7 @@ import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useWorkspace, getPanelPathForRole } from '@/contexts/WorkspaceContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import DescriptionRenderer from '@/components/diagrams/DescriptionRenderer';
 import { ProjectUpdatesView } from '@/components/admin/projects/views/ProjectUpdatesView';
 import { ProjectIssuesView } from '@/components/admin/projects/views/ProjectIssuesView';
 import { ProjectDocumentsView } from '@/components/admin/projects/views/ProjectDocumentsView';
@@ -319,9 +320,10 @@ export function ProjectDetailContent() {
                 {project.project_description && (
                   <div className={`rounded-xl border p-6 ${bgCard} ${borderMain}`}>
                     <h3 className={`text-sm font-semibold mb-3 ${textMain}`}>Acerca del proyecto</h3>
-                    <p className={`text-sm whitespace-pre-line leading-relaxed ${textSub}`}>
-                      {project.project_description}
-                    </p>
+                    <DescriptionRenderer
+                      description={project.project_description}
+                      textClassName={`text-sm leading-relaxed ${textSub}`}
+                    />
                   </div>
                 )}
 
