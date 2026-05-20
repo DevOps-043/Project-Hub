@@ -7,6 +7,9 @@ import { AdminNavbar } from '@/components/admin/AdminNavbar';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { WorkspaceProvider, WorkspaceData, IrisRole } from '@/contexts/WorkspaceContext';
+import { ARIAProvider } from '@/contexts/ARIAContext';
+import { ARIAFloatingButton } from '@/features/lia';
+import { useAuthStore } from '@/core/stores/authStore';
 import { Loader2 } from 'lucide-react';
 
 const MOBILE_BREAKPOINT = 1024;
@@ -30,6 +33,7 @@ function WorkspaceLayoutContent({ children }: WorkspaceLayoutProps) {
   const [userRole, setUserRole] = useState<IrisRole>('member');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const user = useAuthStore((state) => state.user);
 
   // Fetch workspace data
   useEffect(() => {
@@ -149,41 +153,49 @@ function WorkspaceLayoutContent({ children }: WorkspaceLayoutProps) {
 
   return (
     <WorkspaceProvider workspace={workspace} userRole={userRole}>
-      <div
-        className="min-h-screen transition-colors duration-300"
-        style={{
-          background: isDark
-            ? 'linear-gradient(135deg, #0F1419 0%, #0A0D12 50%, #0F1419 100%)'
-            : `linear-gradient(135deg, ${colors.bgSecondary} 0%, ${colors.bgPrimary} 50%, ${colors.bgSecondary} 100%)`,
-        }}
-      >
-        <AdminSidebar
-          isCollapsed={isMobile ? false : sidebarCollapsed}
-          onToggle={toggleSidebar}
-          isMobile={isMobile}
-          isMobileOpen={isMobileOpen}
-          onMobileClose={closeMobileSidebar}
-          orgSlug={orgSlug}
-          userRole={userRole}
-        />
-
-        <AdminNavbar
-          sidebarCollapsed={sidebarCollapsed}
-          onMenuClick={toggleSidebar}
-          isMobile={isMobile}
-          workspaceLogo={workspace.logoUrl || null}
-          workspaceName={workspace.name}
-        />
-
-        <main
-          className="pt-16 min-h-screen transition-all duration-300 ease-in-out"
+      <ARIAProvider>
+        <div
+          className="min-h-screen transition-colors duration-300"
           style={{
-            paddingLeft: isMobile ? '0px' : sidebarCollapsed ? '72px' : '260px',
+            background: isDark
+              ? 'linear-gradient(135deg, #0F1419 0%, #0A0D12 50%, #0F1419 100%)'
+              : `linear-gradient(135deg, ${colors.bgSecondary} 0%, ${colors.bgPrimary} 50%, ${colors.bgSecondary} 100%)`,
           }}
         >
-          <div className="p-6">{children}</div>
-        </main>
-      </div>
+          <AdminSidebar
+            isCollapsed={isMobile ? false : sidebarCollapsed}
+            onToggle={toggleSidebar}
+            isMobile={isMobile}
+            isMobileOpen={isMobileOpen}
+            onMobileClose={closeMobileSidebar}
+            orgSlug={orgSlug}
+            userRole={userRole}
+          />
+
+          <AdminNavbar
+            sidebarCollapsed={sidebarCollapsed}
+            onMenuClick={toggleSidebar}
+            isMobile={isMobile}
+            workspaceLogo={workspace.logoUrl || null}
+            workspaceName={workspace.name}
+          />
+
+          <main
+            className="pt-16 min-h-screen transition-all duration-300 ease-in-out"
+            style={{
+              paddingLeft: isMobile ? '0px' : sidebarCollapsed ? '72px' : '260px',
+            }}
+          >
+            <div className="p-6">{children}</div>
+          </main>
+
+          <ARIAFloatingButton
+            userName={user?.name || user?.firstName}
+            userRole={userRole}
+            userId={user?.id}
+          />
+        </div>
+      </ARIAProvider>
     </WorkspaceProvider>
   );
 }

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
+import { ensureDefaultTaskStatuses, resolveTaskStatusId, resolveTeamId } from '@/lib/services/task-status-service';
 
 export const runtime = 'nodejs';
 
@@ -47,6 +48,13 @@ export async function GET(
        }
        teamId = teamData.team_id;
     }
+
+    const resolvedTeamId = await resolveTeamId(supabaseAdmin, teamId);
+    if (!resolvedTeamId) {
+      console.error(`Team not found for identifier: ${teamId}`);
+      return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
+    }
+    teamId = resolvedTeamId;
 
     // Query params
     const { searchParams } = new URL(request.url);
@@ -121,6 +129,8 @@ export async function GET(
       .select('slug, name')
       .eq('team_id', teamId)
       .single();
+
+    await ensureDefaultTaskStatuses(supabaseAdmin, teamId);
 
     // Get statuses for grouping
     const { data: statuses } = await supabaseAdmin
@@ -204,6 +214,12 @@ export async function POST(
        if (teamData) teamId = teamData.team_id;
     }
 
+    const resolvedTeamId = await resolveTeamId(supabaseAdmin, teamId);
+    if (!resolvedTeamId) {
+      return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
+    }
+    teamId = resolvedTeamId;
+
     const body = await request.json();
     let { 
       title, 
@@ -250,30 +266,7 @@ export async function POST(
 
     const nextIssueNumber = (lastIssue?.issue_number || 0) + 1;
 
-    // Get default status if not provided
-    let finalStatusId = status_id;
-    if (!finalStatusId) {
-      const { data: defaultStatus } = await supabaseAdmin
-        .from('task_statuses')
-        .select('status_id')
-        .eq('team_id', teamId)
-        .eq('is_default', true)
-        .single();
-      
-      finalStatusId = defaultStatus?.status_id;
-      
-      if (!finalStatusId) {
-        // Get first status
-        const { data: firstStatus } = await supabaseAdmin
-          .from('task_statuses')
-          .select('status_id')
-          .eq('team_id', teamId)
-          .order('position')
-          .limit(1)
-          .single();
-        finalStatusId = firstStatus?.status_id;
-      }
-    }
+    const finalStatusId = await resolveTaskStatusId(supabaseAdmin, teamId, status_id, body.status_type);
 
     if (!finalStatusId) {
       return NextResponse.json({ error: 'No hay estados configurados para este equipo' }, { status: 400 });

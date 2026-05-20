@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
         };
 
         // 2. Ask Gemini for prediction
-        const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview' });
         
         const prompt = `
             Actúa como un Consultor Senior de Eficiencia y Gestión de Proyectos.

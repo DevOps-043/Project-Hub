@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
+import { ensureDefaultTaskStatuses, resolveTeamId } from '@/lib/services/task-status-service';
 
 export const runtime = 'nodejs';
 
@@ -16,7 +17,7 @@ export async function GET(
 ) {
   try {
     let { teamId } = await params;
-    
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -24,32 +25,17 @@ export async function GET(
     const token = authHeader.substring(7);
     const payload = await verifyToken(token);
     if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+      return NextResponse.json({ error: 'Token invalido' }, { status: 401 });
     }
 
-    // RESOLUCIÓN DE TEAM ID (UUID o Slug)
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
-    if (!isUUID) {
-       const { data: teamData } = await supabaseAdmin
-         .from('teams')
-         .select('team_id')
-         .or(`slug.eq.${teamId},name.eq.${teamId}`)
-         .single();
-       if (teamData) teamId = teamData.team_id;
+    const resolvedTeamId = await resolveTeamId(supabaseAdmin, teamId);
+    if (!resolvedTeamId) {
+      return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
     }
+    teamId = resolvedTeamId;
 
-    const { data: statuses, error } = await supabaseAdmin
-      .from('task_statuses')
-      .select('*')
-      .eq('team_id', teamId)
-      .order('position', { ascending: true });
-
-    if (error) {
-      return NextResponse.json({ error: 'Error al obtener estados' }, { status: 500 });
-    }
-
+    const statuses = await ensureDefaultTaskStatuses(supabaseAdmin, teamId);
     return NextResponse.json({ statuses });
-
   } catch (error) {
     console.error('Error in GET statuses:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
@@ -62,7 +48,7 @@ export async function POST(
 ) {
   try {
     let { teamId } = await params;
-    
+
     const authHeader = request.headers.get('authorization');
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -70,19 +56,14 @@ export async function POST(
     const token = authHeader.substring(7);
     const payload = await verifyToken(token);
     if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+      return NextResponse.json({ error: 'Token invalido' }, { status: 401 });
     }
 
-    // RESOLUCIÓN DE TEAM ID
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
-    if (!isUUID) {
-       const { data: teamData } = await supabaseAdmin
-         .from('teams')
-         .select('team_id')
-         .or(`slug.eq.${teamId},name.eq.${teamId}`)
-         .single();
-       if (teamData) teamId = teamData.team_id;
+    const resolvedTeamId = await resolveTeamId(supabaseAdmin, teamId);
+    if (!resolvedTeamId) {
+      return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
     }
+    teamId = resolvedTeamId;
 
     const body = await request.json();
     const { name, status_type, color, icon, is_closed } = body;
@@ -91,14 +72,13 @@ export async function POST(
       return NextResponse.json({ error: 'Nombre y tipo son requeridos' }, { status: 400 });
     }
 
-    // Get max position
     const { data: maxPos } = await supabaseAdmin
       .from('task_statuses')
       .select('position')
       .eq('team_id', teamId)
       .order('position', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     const { data: status, error } = await supabaseAdmin
       .from('task_statuses')
@@ -109,7 +89,7 @@ export async function POST(
         color: color || '#6B7280',
         icon,
         is_closed: is_closed || false,
-        position: (maxPos?.position || 0) + 1
+        position: (maxPos?.position ?? -1) + 1
       })
       .select()
       .single();
@@ -119,7 +99,6 @@ export async function POST(
     }
 
     return NextResponse.json({ status }, { status: 201 });
-
   } catch (error) {
     console.error('Error in POST status:', error);
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });

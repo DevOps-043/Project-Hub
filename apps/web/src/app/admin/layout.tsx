@@ -5,6 +5,9 @@ import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminNavbar } from "@/components/admin/AdminNavbar";
 import { useTheme, themeColors } from "@/contexts/ThemeContext";
 import { AuthGuard } from "@/components/auth/AuthGuard";
+import { ARIAProvider } from "@/contexts/ARIAContext";
+import { ARIAFloatingButton } from "@/features/lia";
+import { useAuthStore } from "@/core/stores/authStore";
 
 const MOBILE_BREAKPOINT = 1024;
 
@@ -18,6 +21,7 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
+  const user = useAuthStore((state) => state.user);
 
   // Detect mobile breakpoint
   useEffect(() => {
@@ -53,40 +57,48 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
   }, []);
 
   return (
-    <div
-      className="min-h-screen transition-colors duration-300"
-      style={{
-        background: isDark
-          ? "linear-gradient(135deg, #0F1419 0%, #0A0D12 50%, #0F1419 100%)"
-          : `linear-gradient(135deg, ${colors.bgSecondary} 0%, ${colors.bgPrimary} 50%, ${colors.bgSecondary} 100%)`,
-      }}
-    >
-      {/* Sidebar - Fijo a la izquierda */}
-      <AdminSidebar
-        isCollapsed={isMobile ? false : sidebarCollapsed}
-        onToggle={toggleSidebar}
-        isMobile={isMobile}
-        isMobileOpen={isMobileOpen}
-        onMobileClose={closeMobileSidebar}
-      />
-
-      {/* Navbar - Fijo arriba, se ajusta horizontalmente */}
-      <AdminNavbar
-        sidebarCollapsed={sidebarCollapsed}
-        onMenuClick={toggleSidebar}
-        isMobile={isMobile}
-      />
-
-      {/* Main Content */}
-      <main
-        className="pt-16 min-h-screen transition-all duration-300 ease-in-out"
+    <ARIAProvider>
+      <div
+        className="min-h-screen transition-colors duration-300"
         style={{
-          paddingLeft: isMobile ? "0px" : sidebarCollapsed ? "72px" : "260px",
+          background: isDark
+            ? "linear-gradient(135deg, #0F1419 0%, #0A0D12 50%, #0F1419 100%)"
+            : `linear-gradient(135deg, ${colors.bgSecondary} 0%, ${colors.bgPrimary} 50%, ${colors.bgSecondary} 100%)`,
         }}
       >
-        <div className="p-6">{children}</div>
-      </main>
-    </div>
+        {/* Sidebar - Fijo a la izquierda */}
+        <AdminSidebar
+          isCollapsed={isMobile ? false : sidebarCollapsed}
+          onToggle={toggleSidebar}
+          isMobile={isMobile}
+          isMobileOpen={isMobileOpen}
+          onMobileClose={closeMobileSidebar}
+        />
+
+        {/* Navbar - Fijo arriba, se ajusta horizontalmente */}
+        <AdminNavbar
+          sidebarCollapsed={sidebarCollapsed}
+          onMenuClick={toggleSidebar}
+          isMobile={isMobile}
+        />
+
+        {/* Main Content */}
+        <main
+          className="pt-16 min-h-screen transition-all duration-300 ease-in-out"
+          style={{
+            paddingLeft: isMobile ? "0px" : sidebarCollapsed ? "72px" : "260px",
+          }}
+        >
+          <div className="p-6">{children}</div>
+        </main>
+
+        <ARIAFloatingButton
+          userName={user?.name || user?.firstName}
+          userRole={user?.permissionLevel || user?.role}
+          userId={user?.id}
+        />
+      </div>
+    </ARIAProvider>
   );
 }
 
