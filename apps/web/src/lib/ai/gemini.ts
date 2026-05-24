@@ -25,6 +25,7 @@ const GEMINI_CONFIG = {
     process.env.GOOGLE_AI_API_KEY ||
     process.env.GOOGLE_AI_KEY ||
     process.env.GEMINI_API_KEY ||
+    process.env.NEXT_GOOGLE_API_KEY ||
     process.env.NEXT_PUBLIC_GOOGLE_AI_KEY ||
     '',
   model: normalizeGeminiModel(process.env.GEMINI_MODEL),
@@ -39,7 +40,7 @@ let _model: GenerativeModel | null = null;
 
 export function getGeminiClient(): GoogleGenerativeAI {
   if (!GEMINI_CONFIG.apiKey) {
-    throw new Error('No hay API key de Gemini configurada. Define GOOGLE_API_KEY, GOOGLE_AI_API_KEY, GEMINI_API_KEY o NEXT_PUBLIC_GOOGLE_AI_KEY.');
+    throw new Error('No hay API key de Gemini configurada. Define GOOGLE_API_KEY, GOOGLE_AI_API_KEY, GEMINI_API_KEY, NEXT_GOOGLE_API_KEY o NEXT_PUBLIC_GOOGLE_AI_KEY.');
   }
 
   if (!_genAI) {
