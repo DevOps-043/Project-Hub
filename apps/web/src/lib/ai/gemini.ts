@@ -18,16 +18,31 @@ function normalizeGeminiModel(model?: string): string {
   return aliases[value] || value;
 }
 
+/**
+ * Filtra valores que NO tienen formato de Google API key (deben empezar con "AIzaSy").
+ * Defensa contra variables de entorno mal configuradas (p. ej. un JWT de Supabase
+ * pegado por error en GEMINI_API_KEY) que de otro modo tumbarían el sistema entero.
+ */
+function pickValidGoogleApiKey(...candidates: (string | undefined)[]): string {
+  for (const value of candidates) {
+    const trimmed = value?.trim();
+    if (trimmed && trimmed.startsWith('AIzaSy')) {
+      return trimmed;
+    }
+  }
+  return '';
+}
+
 // Configuración por defecto
 const GEMINI_CONFIG = {
-  apiKey:
-    process.env.GOOGLE_API_KEY ||
-    process.env.GOOGLE_AI_API_KEY ||
-    process.env.GOOGLE_AI_KEY ||
-    process.env.GEMINI_API_KEY ||
-    process.env.NEXT_GOOGLE_API_KEY ||
-    process.env.NEXT_PUBLIC_GOOGLE_AI_KEY ||
-    '',
+  apiKey: pickValidGoogleApiKey(
+    process.env.GOOGLE_API_KEY,
+    process.env.GOOGLE_AI_API_KEY,
+    process.env.GOOGLE_AI_KEY,
+    process.env.GEMINI_API_KEY,
+    process.env.NEXT_GOOGLE_API_KEY,
+    process.env.NEXT_PUBLIC_GOOGLE_AI_KEY,
+  ),
   model: normalizeGeminiModel(process.env.GEMINI_MODEL),
   maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '8192'),
   temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
