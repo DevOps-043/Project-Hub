@@ -321,7 +321,10 @@ export default function ReportsPage() {
     const fetchReportData = async () => {
         setLoadingData(true);
         try {
-            const res = await fetch('/api/admin/reports/executive-summary');
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/admin/reports/executive-summary', {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
             if (res.ok) {
                 const data = await res.json();
                 setReportData(data);
@@ -335,12 +338,17 @@ export default function ReportsPage() {
 
     const fetchTasksForExport = async () => {
         try {
-            const res = await fetch('/api/admin/teams?limit=1');
+            const token = localStorage.getItem('accessToken');
+            const res = await fetch('/api/admin/teams?limit=1', {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
             if (res.ok) {
                 const teamsData = await res.json();
                 if (teamsData.teams?.length > 0) {
-                    const teamId = teamsData.teams[0].team_id;
-                    const tasksRes = await fetch(`/api/admin/teams/${teamId}/issues?limit=500`);
+                    const teamId = teamsData.teams[0].team_id || teamsData.teams[0].id;
+                    const tasksRes = await fetch(`/api/admin/teams/${teamId}/issues?limit=500`, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    });
                     if (tasksRes.ok) {
                         const data = await tasksRes.json();
                         setTasksData(data.issues?.map((i: any) => ({

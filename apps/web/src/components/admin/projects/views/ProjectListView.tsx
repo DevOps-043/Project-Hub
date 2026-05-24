@@ -9,6 +9,7 @@ interface Project {
   project_key: string;
   project_name: string;
   project_description: string | null;
+  project_status?: string;
   icon_name: string;
   icon_color: string;
   health_status: 'on_track' | 'at_risk' | 'off_track' | 'none';

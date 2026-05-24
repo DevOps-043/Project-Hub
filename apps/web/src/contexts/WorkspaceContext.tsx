@@ -94,8 +94,8 @@ export function getPanelPathForRole(orgSlug: string, role: IrisRole): string {
   switch (role) {
     case 'owner':
     case 'admin':   return `/${orgSlug}/admin`;
-    case 'manager': return `/${orgSlug}/manager`;
-    case 'leader':  return `/${orgSlug}/leader`;
+    case 'manager':
+    case 'leader':  return `/${orgSlug}`;
     default:        return `/${orgSlug}`;
   }
 }

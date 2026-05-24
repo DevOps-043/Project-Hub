@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
+import { getGeminiModel } from '@/lib/ai/gemini';
 
 // Setup Supabase & Gemini
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,7 +28,7 @@ export async function POST(request: NextRequest) {
         };
 
         // 2. Ask Gemini for prediction
-        const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview' });
+        const model = getGeminiModel();
         
         const prompt = `
             Actúa como un Consultor Senior de Eficiencia y Gestión de Proyectos.

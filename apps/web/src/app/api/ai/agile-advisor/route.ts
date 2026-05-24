@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getGeminiModel } from '@/lib/ai/gemini';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
 
 export async function POST(request: NextRequest) {
     try {
@@ -14,7 +12,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Contenido o archivo requerido' }, { status: 400 });
         }
 
-        const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview' });
+        const model = getGeminiModel();
 
         const parts: any[] = [];
 

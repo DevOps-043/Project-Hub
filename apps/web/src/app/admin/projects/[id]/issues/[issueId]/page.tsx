@@ -748,8 +748,8 @@ export default function ProjectIssueDetailPage() {
                               style={{
                                 backgroundColor: issue.estimate_points === points ? `${accentColor}20` : isDark ? '#0F1419' : '#F9FAFB',
                                 color: issue.estimate_points === points ? accentColor : colors.textPrimary,
-                                ringColor: accentColor
-                              }}
+                                '--tw-ring-color': accentColor,
+                              } as React.CSSProperties}
                             >
                               {points !== null ? points : '—'}
                             </button>

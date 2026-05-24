@@ -194,8 +194,10 @@ export default function WorkspaceReportsPage() {
             if (res.ok) {
                 const teamsData = await res.json();
                 if (teamsData.teams?.length > 0) {
-                    const teamId = teamsData.teams[0].team_id;
-                    const tasksRes = await fetch(`/api/admin/teams/${teamId}/issues?limit=500`);
+                    const teamId = teamsData.teams[0].team_id || teamsData.teams[0].id;
+                    const tasksRes = await fetch(`/api/admin/teams/${teamId}/issues?limit=500`, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    });
                     if (tasksRes.ok) {
                         const data = await tasksRes.json();
                         setTasksData(data.issues?.map((i: any) => ({

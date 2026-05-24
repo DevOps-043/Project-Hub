@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Get workspace project IDs
     const { data: wsProjects } = await supabase
       .from('pm_projects')
-      .select('project_id, project_status')
+      .select('project_id, project_status, health_status')
       .eq('workspace_id', workspace.workspace_id);
     const projectIds = (wsProjects || []).map(p => p.project_id);
 

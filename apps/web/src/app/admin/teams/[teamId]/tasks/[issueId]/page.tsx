@@ -53,6 +53,12 @@ interface Issue {
   creator: User;
   due_date: string | null;
   estimate_points: number | null;
+  project_id?: string | null;
+  project?: {
+    project_id: string;
+    project_name: string;
+    icon_color?: string | null;
+  } | null;
   labels: Label[];
   created_at: string;
   updated_at: string;

@@ -30,7 +30,7 @@ import type { SofiaUser } from '../supabase/sofia-client';
  */
 function getSofiaServerClient() {
   const sofiaUrl = isValidUrl(SOFIA_SUPABASE.URL) ? SOFIA_SUPABASE.URL : '';
-  const sofiaKey = SOFIA_SUPABASE.ANON_KEY || '';
+  const sofiaKey = SOFIA_SUPABASE.SERVICE_ROLE_KEY || SOFIA_SUPABASE.ANON_KEY || '';
 
   if (!sofiaUrl || !sofiaKey) return null;
 
@@ -101,7 +101,7 @@ export async function findSofiaUser(emailOrUsername: string): Promise<SofiaUser 
       is_email_verified: data.is_email_verified ?? true,
       email_verified_at: data.email_verified_at || null,
       avatar_url: resolvedAvatar,
-      phone_number: data.phone_number || null,
+      phone_number: data.phone_number || data.phone || null,
       timezone: data.timezone || 'America/Mexico_City',
       locale: data.locale || 'es-MX',
       last_login_at: data.last_login_at || null,

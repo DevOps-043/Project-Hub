@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import DiagramGeneratorTool from '@/components/tools/DiagramGeneratorTool';
 
 // --- ICONS ---
 const Icons = {
@@ -11,6 +12,9 @@ const Icons = {
     ),
     Compass: () => (
         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+    ),
+    Diagram: () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="8.5" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4"/><path d="M6.5 10v2a2 2 0 0 0 2 2h3.5"/><path d="M17.5 10v2a2 2 0 0 1-2 2H12"/></svg>
     ),
     Cards: () => (<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>),
     Chart: () => (<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>)
@@ -220,6 +224,7 @@ const AgileAdvisor = () => {
 // --- DATA ---
 const toolsReal = [
   { id: 'focus', name: 'Focus Flow', desc: 'Temporizador de productividad avanzado.', icon: <Icons.Timer />, component: FocusTimer },
+  { id: 'diagram', name: 'Diagram Generator', desc: 'Generador de diagramas Mermaid con IA.', icon: <Icons.Diagram />, component: DiagramGeneratorTool },
   { id: 'advisor', name: 'Agile Advisor', desc: 'Selector de metodologías ágiles con IA.', icon: <Icons.Compass />, component: AgileAdvisor },
 ];
 

@@ -207,7 +207,7 @@ export default function WorkspaceAnalyticsPage() {
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))
                                     ) : (
-                                        <Cell fill="#374151" value={1} />
+                                        <Cell fill="#374151" />
                                     )}
                                 </Pie>
                                 <Tooltip />

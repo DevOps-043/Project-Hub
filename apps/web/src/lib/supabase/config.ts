@@ -15,6 +15,7 @@ export const IRIS_SUPABASE = {
 export const SOFIA_SUPABASE = {
   URL: process.env.NEXT_PUBLIC_SOFIA_SUPABASE_URL || '',
   ANON_KEY: process.env.NEXT_PUBLIC_SOFIA_SUPABASE_ANON_KEY || '',
+  SERVICE_ROLE_KEY: process.env.SOFIA_SUPABASE_SERVICE_ROLE_KEY || process.env.SOFIA_SERVICE_ROLE_KEY || '',
 };
 
 // ── Content Generator / CourseGen (Contenido generado) ──

@@ -4,7 +4,7 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 import { useTheme } from '@/contexts/ThemeContext';
 
-let mermaidInitialized: 'light' | 'dark' | null = null;
+let mermaidInitialized: 'default' | 'dark' | null = null;
 
 function initMermaid(isDark: boolean) {
   const theme = isDark ? 'dark' : 'default';

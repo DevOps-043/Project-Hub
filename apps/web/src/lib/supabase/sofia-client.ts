@@ -99,7 +99,7 @@ export function getSofiaAdmin(): SupabaseClient | null {
   if (_sofiaAdmin) return _sofiaAdmin;
 
   const sofiaUrl = isValidUrl(SOFIA_SUPABASE.URL) ? SOFIA_SUPABASE.URL : '';
-  const sofiaKey = SOFIA_SUPABASE.ANON_KEY || '';
+  const sofiaKey = SOFIA_SUPABASE.SERVICE_ROLE_KEY || SOFIA_SUPABASE.ANON_KEY || '';
 
   if (!sofiaUrl || !sofiaKey) return null;
 

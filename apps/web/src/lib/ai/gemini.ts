@@ -5,10 +5,29 @@
 
 import { GoogleGenerativeAI, GenerativeModel, GenerationConfig } from '@google/generative-ai';
 
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+
+function normalizeGeminiModel(model?: string): string {
+  const value = model?.trim();
+  if (!value) return DEFAULT_GEMINI_MODEL;
+
+  const aliases: Record<string, string> = {
+    '3.5-flash': DEFAULT_GEMINI_MODEL,
+  };
+
+  return aliases[value] || value;
+}
+
 // Configuración por defecto
 const GEMINI_CONFIG = {
-  apiKey: process.env.GOOGLE_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_AI_KEY || process.env.GOOGLE_AI_KEY || '',
-  model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
+  apiKey:
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_AI_API_KEY ||
+    process.env.GOOGLE_AI_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.NEXT_PUBLIC_GOOGLE_AI_KEY ||
+    '',
+  model: normalizeGeminiModel(process.env.GEMINI_MODEL),
   maxTokens: parseInt(process.env.GEMINI_MAX_TOKENS || '8192'),
   temperature: parseFloat(process.env.GEMINI_TEMPERATURE || '0.7'),
   thinkingLevel: process.env.GEMINI_THINKING_LEVEL || 'medium',
@@ -20,7 +39,7 @@ let _model: GenerativeModel | null = null;
 
 export function getGeminiClient(): GoogleGenerativeAI {
   if (!GEMINI_CONFIG.apiKey) {
-    throw new Error('GOOGLE_API_KEY no está configurada. Por favor, añádela a tu archivo .env.local');
+    throw new Error('No hay API key de Gemini configurada. Define GOOGLE_API_KEY, GOOGLE_AI_API_KEY, GEMINI_API_KEY o NEXT_PUBLIC_GOOGLE_AI_KEY.');
   }
 
   if (!_genAI) {

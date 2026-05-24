@@ -46,11 +46,20 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 /**
+ * Genera un hash bcrypt compatible con la tabla users de SofLIA Learning.
+ */
+export async function hashBcryptPassword(password: string): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const bcrypt = require('bcryptjs');
+  return bcrypt.hash(password, 12);
+}
+
+/**
  * Verifica una contraseña contra su hash
  */
 export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
   // Soporte para bcrypt hashes (legacy)
-  if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$')) {
+  if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
     // Para producción, necesitarías una librería bcrypt compatible con Edge
     // Por ahora, comparamos directamente para desarrollo
     return await verifyBcryptPassword(password, storedHash);

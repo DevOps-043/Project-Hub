@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     if (!geminiConfig.apiKey) {
       return NextResponse.json(
-        { error: 'GOOGLE_API_KEY no esta configurada en el entorno.' },
+        { error: 'No hay API key de Gemini configurada en el entorno.' },
         { status: 500 }
       );
     }

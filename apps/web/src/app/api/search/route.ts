@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
                 type: 'team',
                 title: t.name,
                 subtitle: 'Equipo',
-                url: `/admin/teams/${t.team_id}/dashboard`,
+                url: `/admin/teams/${t.team_id}/tasks`,
                 icon: 'users'
             })));
         }

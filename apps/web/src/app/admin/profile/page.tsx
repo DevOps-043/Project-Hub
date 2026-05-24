@@ -100,6 +100,25 @@ export default function ProfilePage() {
     setPasswordData(prev => ({ ...prev, [name]: value }));
   };
 
+  const getPasswordValidationError = () => {
+    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      return 'Completa todos los campos de contrasena.';
+    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      return 'La confirmacion no coincide con la nueva contrasena.';
+    }
+    if (passwordData.newPassword.length < 8) {
+      return 'La nueva contrasena debe tener al menos 8 caracteres.';
+    }
+    if (!/[A-Z]/.test(passwordData.newPassword) || !/[a-z]/.test(passwordData.newPassword) || !/[0-9]/.test(passwordData.newPassword)) {
+      return 'La nueva contrasena debe incluir mayusculas, minusculas y numeros.';
+    }
+    if (passwordData.currentPassword === passwordData.newPassword) {
+      return 'La nueva contrasena debe ser diferente a la actual.';
+    }
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -140,9 +159,14 @@ export default function ProfilePage() {
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setChangingPassword(true);
     setSuccessMessage(null);
     setErrorMessage(null);
+    const validationError = getPasswordValidationError();
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+    setChangingPassword(true);
 
     try {
       const token = localStorage.getItem('accessToken');

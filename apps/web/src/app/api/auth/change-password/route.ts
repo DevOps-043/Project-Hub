@@ -1,70 +1,61 @@
 /**
  * API Route: POST /api/auth/change-password
- * Permite al usuario cambiar su contraseña
+ * Cambia la contrasena del usuario autenticado.
+ *
+ * SOFIA es la fuente primaria del perfil y credenciales. Project Hub conserva
+ * el hash local solo como espejo para mantener compatible el login actual.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
-import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { hashBcryptPassword, hashPassword, verifyPassword } from '@/lib/auth/password';
+import { findSofiaUser } from '@/lib/auth/sofia-auth';
+import { getSofiaAdmin, isSofiaConfigured } from '@/lib/supabase/sofia-client';
 
 export const runtime = 'nodejs';
 
+function isStrongPassword(password: string): boolean {
+  return /[A-Z]/.test(password) && /[a-z]/.test(password) && /[0-9]/.test(password);
+}
+
 export async function POST(request: NextRequest) {
   try {
-    // 1. Verificar autenticación
     const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Token no proporcionado' }, { status: 401 });
     }
 
     const token = authHeader.substring(7);
     const payload = await verifyToken(token);
-
     if (!payload || payload.type !== 'access') {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+      return NextResponse.json({ error: 'Token invalido' }, { status: 401 });
     }
 
-    // 2. Leer body
     const body = await request.json();
     const { currentPassword, newPassword, confirmPassword } = body;
 
-    // 3. Validar campos requeridos
     if (!currentPassword || !newPassword || !confirmPassword) {
-      return NextResponse.json({ 
-        error: 'Todos los campos son requeridos' 
-      }, { status: 400 });
+      return NextResponse.json({ error: 'Todos los campos son requeridos' }, { status: 400 });
     }
 
-    // 4. Validar que las contraseñas coincidan
     if (newPassword !== confirmPassword) {
-      return NextResponse.json({ 
-        error: 'Las contraseñas nuevas no coinciden' 
-      }, { status: 400 });
+      return NextResponse.json({ error: 'Las contrasenas nuevas no coinciden' }, { status: 400 });
     }
 
-    // 5. Validar longitud mínima
     if (newPassword.length < 8) {
-      return NextResponse.json({ 
-        error: 'La contraseña debe tener al menos 8 caracteres' 
+      return NextResponse.json({ error: 'La contrasena debe tener al menos 8 caracteres' }, { status: 400 });
+    }
+
+    if (!isStrongPassword(newPassword)) {
+      return NextResponse.json({
+        error: 'La contrasena debe contener al menos una mayuscula, una minuscula y un numero',
       }, { status: 400 });
     }
 
-    // 6. Validar complejidad básica
-    const hasUpperCase = /[A-Z]/.test(newPassword);
-    const hasLowerCase = /[a-z]/.test(newPassword);
-    const hasNumber = /[0-9]/.test(newPassword);
-    
-    if (!hasUpperCase || !hasLowerCase || !hasNumber) {
-      return NextResponse.json({ 
-        error: 'La contraseña debe contener al menos una mayúscula, una minúscula y un número' 
-      }, { status: 400 });
-    }
-
-    // 7. Obtener usuario actual
     const { data: user, error: userError } = await supabaseAdmin
       .from('account_users')
-      .select('user_id, password_hash')
+      .select('user_id, email, username, password_hash')
       .eq('user_id', payload.sub)
       .single();
 
@@ -72,48 +63,94 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
     }
 
-    // 8. Verificar contraseña actual
-    const isCurrentPasswordValid = await verifyPassword(currentPassword, user.password_hash);
-    
-    if (!isCurrentPasswordValid) {
-      return NextResponse.json({ 
-        error: 'La contraseña actual es incorrecta' 
-      }, { status: 400 });
+    let passwordHashForLocalMirror: string | null = null;
+    let changedInSofia = false;
+
+    if (isSofiaConfigured()) {
+      const sofiaUser = await findSofiaUser(user.email || user.username);
+
+      if (!sofiaUser?.password_hash) {
+        return NextResponse.json({
+          error: 'No se encontro el usuario en SOFIA para cambiar la contrasena',
+        }, { status: 404 });
+      }
+
+      const isCurrentPasswordValid = await verifyPassword(currentPassword, sofiaUser.password_hash);
+      if (!isCurrentPasswordValid) {
+        return NextResponse.json({ error: 'La contrasena actual es incorrecta' }, { status: 400 });
+      }
+
+      const isSamePassword = await verifyPassword(newPassword, sofiaUser.password_hash);
+      if (isSamePassword) {
+        return NextResponse.json({ error: 'La nueva contrasena debe ser diferente a la actual' }, { status: 400 });
+      }
+
+      const sofia = getSofiaAdmin();
+      if (!sofia) {
+        return NextResponse.json({
+          error: 'SOFIA Supabase no esta configurado para actualizar contrasenas',
+        }, { status: 500 });
+      }
+
+      const newSofiaPasswordHash = await hashBcryptPassword(newPassword);
+      const { error: sofiaUpdateError } = await sofia
+        .from('users')
+        .update({
+          password_hash: newSofiaPasswordHash,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sofiaUser.user_id);
+
+      if (sofiaUpdateError) {
+        console.error('Error actualizando contrasena en SOFIA:', sofiaUpdateError);
+        return NextResponse.json({
+          error: 'SOFIA no permitio actualizar la contrasena. Revisa la RLS de users o configura SOFIA_SUPABASE_SERVICE_ROLE_KEY.',
+          details: sofiaUpdateError.message,
+        }, { status: 500 });
+      }
+
+      passwordHashForLocalMirror = newSofiaPasswordHash;
+      changedInSofia = true;
     }
 
-    // 9. Verificar que la nueva contraseña sea diferente
-    const isSamePassword = await verifyPassword(newPassword, user.password_hash);
-    if (isSamePassword) {
-      return NextResponse.json({ 
-        error: 'La nueva contraseña debe ser diferente a la actual' 
-      }, { status: 400 });
+    if (!changedInSofia) {
+      const isCurrentPasswordValid = await verifyPassword(currentPassword, user.password_hash);
+      if (!isCurrentPasswordValid) {
+        return NextResponse.json({ error: 'La contrasena actual es incorrecta' }, { status: 400 });
+      }
+
+      const isSamePassword = await verifyPassword(newPassword, user.password_hash);
+      if (isSamePassword) {
+        return NextResponse.json({ error: 'La nueva contrasena debe ser diferente a la actual' }, { status: 400 });
+      }
+
+      passwordHashForLocalMirror = await hashPassword(newPassword);
     }
 
-    // 10. Hash de la nueva contraseña
-    const newPasswordHash = await hashPassword(newPassword);
-
-    // 11. Actualizar en la base de datos
     const { error: updateError } = await supabaseAdmin
       .from('account_users')
-      .update({ 
-        password_hash: newPasswordHash,
-        updated_at: new Date().toISOString()
+      .update({
+        password_hash: passwordHashForLocalMirror,
+        updated_at: new Date().toISOString(),
       })
       .eq('user_id', payload.sub);
 
     if (updateError) {
-      console.error('Error actualizando contraseña:', updateError);
-      return NextResponse.json({ 
-        error: 'Error al actualizar la contraseña' 
+      console.error('Error actualizando contrasena local:', updateError);
+      return NextResponse.json({
+        error: changedInSofia
+          ? 'La contrasena se actualizo en SOFIA, pero no se pudo sincronizar Project Hub'
+          : 'Error al actualizar la contrasena',
       }, { status: 500 });
     }
 
-    // 12. Retornar éxito
     return NextResponse.json({
       success: true,
-      message: 'Contraseña actualizada correctamente'
+      source: changedInSofia ? 'sofia' : 'local',
+      message: changedInSofia
+        ? 'Contrasena actualizada correctamente en SOFIA'
+        : 'Contrasena actualizada correctamente',
     });
-
   } catch (error) {
     console.error('Error en POST /api/auth/change-password:', error);
     return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });

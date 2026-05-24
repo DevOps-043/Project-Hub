@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
-import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useAuthStore } from '@/core/stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
+import DiagramGeneratorTool from '@/components/tools/DiagramGeneratorTool';
 
 // --- ICONS ---
 const Icons = {
@@ -13,6 +12,9 @@ const Icons = {
     ),
     Compass: () => (
         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+    ),
+    Diagram: () => (
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="8.5" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4"/><path d="M6.5 10v2a2 2 0 0 0 2 2h3.5"/><path d="M17.5 10v2a2 2 0 0 1-2 2H12"/></svg>
     ),
 };
 
@@ -192,12 +194,12 @@ const AgileAdvisor = () => {
 const toolsReal = [
   { id: 'focus', name: 'Focus Flow', desc: 'Temporizador de productividad avanzado.', icon: <Icons.Timer />, component: FocusTimer },
   { id: 'advisor', name: 'Agile Advisor', desc: 'Selector de metodologias agiles con IA.', icon: <Icons.Compass />, component: AgileAdvisor },
+  { id: 'diagram', name: 'Diagram Generator', desc: 'Generador de diagramas Mermaid con IA.', icon: <Icons.Diagram />, component: DiagramGeneratorTool },
 ];
 
 export default function WorkspaceToolsPage() {
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
-  const { user } = useAuthStore();
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const ActiveComponent = toolsReal.find(t => t.id === activeTool)?.component;
 

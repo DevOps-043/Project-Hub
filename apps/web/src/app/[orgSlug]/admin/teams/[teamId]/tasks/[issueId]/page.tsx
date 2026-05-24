@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
+import { getPanelPathForRole, useWorkspace } from '@/contexts/WorkspaceContext';
 import DescriptionRenderer from '@/components/diagrams/DescriptionRenderer';
 import DiagramGeneratorInline from '@/components/diagrams/DiagramGeneratorInline';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -52,6 +53,12 @@ interface Issue {
   creator: User;
   due_date: string | null;
   estimate_points: number | null;
+  project_id?: string | null;
+  project?: {
+    project_id: string;
+    project_name: string;
+    icon_color?: string | null;
+  } | null;
   labels: Label[];
   created_at: string;
   updated_at: string;
@@ -300,6 +307,8 @@ export default function IssueDetailPage() {
   const teamId = params.teamId as string;
   const issueId = params.issueId as string;
   const orgSlug = params.orgSlug as string;
+  const { userRole } = useWorkspace();
+  const panelBase = getPanelPathForRole(orgSlug, userRole);
   
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
@@ -506,7 +515,7 @@ export default function IssueDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4" style={{ backgroundColor: colors.bgPrimary }}>
         <p style={{ color: colors.textSecondary }}>Tarea no encontrada</p>
-        <Link href={`/${orgSlug}/admin/teams/${teamId}/tasks`} className="text-sm hover:underline" style={{ color: accentColor }}>
+        <Link href={`${panelBase}/teams/${teamId}/tasks`} className="text-sm hover:underline" style={{ color: accentColor }}>
           Volver a tareas
         </Link>
       </div>
@@ -523,7 +532,7 @@ export default function IssueDetailPage() {
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link 
-              href={`/${orgSlug}/admin/teams/${teamId}/tasks`}
+              href={`${panelBase}/teams/${teamId}/tasks`}
               className="p-2 rounded-lg transition-colors hover:bg-white/5"
               style={{ color: colors.textMuted }}
             >
@@ -533,7 +542,7 @@ export default function IssueDetailPage() {
             </Link>
             
             <div className="flex items-center gap-2">
-              <Link href={`/${orgSlug}/admin/teams/${teamId}/tasks`} className="text-sm hover:underline" style={{ color: accentColor }}>
+              <Link href={`${panelBase}/teams/${teamId}/tasks`} className="text-sm hover:underline" style={{ color: accentColor }}>
                 {team?.name || 'Equipo'}
               </Link>
               <span style={{ color: colors.textMuted }}>/</span>
