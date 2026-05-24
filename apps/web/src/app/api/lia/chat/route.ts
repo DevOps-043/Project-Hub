@@ -51,6 +51,19 @@ async function enrichContext(context?: ARIAContext): Promise<ARIAContext | undef
       if (projects) {
         enriched.projects = projects;
       }
+    } else if (context.userId) {
+      // Sin teamId: cargar las tareas asignadas al usuario en cualquier equipo,
+      // para que ARIA pueda responder "mis pendientes" desde el dashboard global.
+      const { data: tasks } = await supabase
+        .from('task_issues')
+        .select('title, issue_number, due_date, status:task_statuses(name, status_type), priority:task_priorities(name)')
+        .eq('assignee_id', context.userId)
+        .order('updated_at', { ascending: false })
+        .limit(20);
+
+      if (tasks) {
+        enriched.tasks = tasks;
+      }
     }
 
     return enriched;

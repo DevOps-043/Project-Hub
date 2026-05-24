@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
+import { MarkdownMessage } from './MarkdownMessage';
 
 interface Attachment {
   name: string;
@@ -45,12 +46,6 @@ const QUICK_ACTIONS = [
   { label: 'Estado del proyecto', message: 'Ayudame a resumir el estado del proyecto.' },
   { label: 'Crear tarea', message: 'Quiero crear una nueva tarea.' },
 ];
-
-function renderMessage(content: string) {
-  return content.split('**').map((part, index) => (
-    index % 2 === 1 ? <strong key={index}>{part}</strong> : part
-  ));
-}
 
 export function LIAChatWidget({
   isOpen,
@@ -413,7 +408,20 @@ export function LIAChatWidget({
                       ))}
                     </div>
                   )}
-                  <div className="whitespace-pre-wrap">{renderMessage(message.content)}</div>
+                  {message.role === 'assistant' ? (
+                    <MarkdownMessage
+                      content={message.content}
+                      colors={{
+                        text: panelColors.text,
+                        muted: panelColors.muted,
+                        accent: panelColors.accent,
+                        bgMuted: panelColors.bgMuted,
+                        border: panelColors.border,
+                      }}
+                    />
+                  ) : (
+                    <div className="whitespace-pre-wrap">{message.content}</div>
+                  )}
                   <div
                     className="mt-2 text-[11px]"
                     style={{ color: message.role === 'user' ? 'rgba(255,255,255,0.75)' : panelColors.muted }}
