@@ -6,7 +6,6 @@ import {
   Bot,
   FileText,
   Image as ImageIcon,
-  Loader2,
   Mic,
   Paperclip,
   Send,
@@ -305,63 +304,77 @@ export function LIAChatWidget({
     <AnimatePresence>
       {isOpen && (
         <motion.aside
-          initial={{ x: '100%' }}
-          animate={{ x: 0 }}
-          exit={{ x: '100%' }}
-          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-          className="fixed right-0 top-16 z-50 flex w-[420px] max-w-[95vw] flex-col"
+          initial={{ x: '100%', opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: '100%', opacity: 0 }}
+          transition={{ type: 'spring', damping: 32, stiffness: 280 }}
+          className="fixed right-0 top-16 z-50 flex w-[400px] max-w-[95vw] flex-col"
           style={{
             height: 'calc(100vh - 64px)',
             backgroundColor: panelColors.bg,
             borderLeft: `1px solid ${panelColors.border}`,
-            boxShadow: isDark ? '-8px 0 30px rgba(0,0,0,0.35)' : '-8px 0 30px rgba(15,23,42,0.12)',
+            boxShadow: isDark
+              ? '-12px 0 40px rgba(0,0,0,0.5)'
+              : '-12px 0 40px rgba(15,23,42,0.1)',
           }}
           aria-label="ARIA Chat"
         >
+          {/* ── Header ── */}
           <header
-            className="m-3 flex items-center justify-between rounded-xl border px-4 py-3"
+            className="flex items-center justify-between px-4 py-3"
             style={{
+              borderBottom: `1px solid ${panelColors.border}`,
               background: isDark
-                ? 'linear-gradient(135deg, rgba(0,212,179,0.15), rgba(10,37,64,0.25))'
-                : 'linear-gradient(135deg, rgba(0,212,179,0.12), #FFFFFF)',
-              borderColor: panelColors.border,
+                ? 'linear-gradient(180deg, rgba(0,212,179,0.06) 0%, transparent 100%)'
+                : 'linear-gradient(180deg, rgba(0,212,179,0.04) 0%, transparent 100%)',
             }}
           >
-            <div className="flex min-w-0 items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              {/* Avatar */}
               <div
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-white"
-                style={{ background: `linear-gradient(135deg, ${panelColors.accent}, ${panelColors.primary})` }}
+                className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-white"
+                style={{
+                  background: 'radial-gradient(circle at 30% 25%, #2BE9C6 0%, #00D4B3 45%, #0A2540 100%)',
+                  boxShadow: '0 4px 12px rgba(0,212,179,0.35)',
+                }}
               >
-                <Bot className="h-5 w-5" />
+                <Bot className="h-4 w-4" strokeWidth={1.8} />
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 bg-emerald-400"
+                  style={{ borderColor: panelColors.bg }} />
               </div>
-              <div className="min-w-0">
-                <h2 className="truncate text-base font-semibold" style={{ color: panelColors.text }}>
-                  ARIA Chat
-                </h2>
-                <p className="truncate text-xs" style={{ color: panelColors.accent }}>
-                  Asistente IA en linea
+
+              <div>
+                <p className="text-sm font-semibold leading-none" style={{ color: panelColors.text }}>
+                  ARIA
+                </p>
+                <p className="mt-0.5 text-[11px] leading-none" style={{ color: panelColors.accent }}>
+                  Asistente IA · en linea
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               {messages.length > 1 && (
                 <button
                   type="button"
                   onClick={clearConversation}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
                   style={{ color: panelColors.muted }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   aria-label="Limpiar conversacion"
                   title="Limpiar conversacion"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
                 style={{ color: panelColors.muted }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                 aria-label="Cerrar ARIA Chat"
                 title="Cerrar"
               >
@@ -370,98 +383,167 @@ export function LIAChatWidget({
             </div>
           </header>
 
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-2">
-            {messages.map((message) => (
-              <motion.div
-                key={message.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className="max-w-[86%] rounded-xl px-4 py-3 text-sm leading-relaxed"
-                  style={message.role === 'user'
-                    ? {
-                      background: `linear-gradient(135deg, ${panelColors.accent}, ${panelColors.primary})`,
-                      color: '#FFFFFF',
-                    }
-                    : {
-                      backgroundColor: panelColors.bgMuted,
-                      border: `1px solid ${panelColors.border}`,
-                      color: panelColors.text,
-                    }}
+          {/* ── Messages ── */}
+          <div className="flex-1 overflow-y-auto px-4 py-4" style={{ scrollbarWidth: 'thin' }}>
+            <div className="flex flex-col gap-5">
+              {messages.map((message) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.18 }}
                 >
-                  {message.attachments && message.attachments.length > 0 && (
-                    <div className="mb-2 flex flex-wrap gap-2">
-                      {message.attachments.map((attachment, index) => (
-                        <div
-                          key={`${attachment.name}-${index}`}
-                          className="flex items-center gap-2 rounded-lg border border-white/20 bg-black/10 px-2 py-1 text-xs"
-                        >
-                          {attachment.mimeType.startsWith('image/') ? (
-                            <ImageIcon className="h-3.5 w-3.5" />
-                          ) : (
-                            <FileText className="h-3.5 w-3.5" />
-                          )}
-                          <span className="max-w-[120px] truncate">{attachment.name}</span>
+                  {message.role === 'assistant' ? (
+                    /* ── Mensaje ARIA: avatar + texto limpio, sin burbuja pesada ── */
+                    <div className="flex items-start gap-2.5">
+                      <div
+                        className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-white"
+                        style={{
+                          background: 'radial-gradient(circle at 30% 25%, #2BE9C6 0%, #00D4B3 45%, #0A2540 100%)',
+                          boxShadow: '0 2px 8px rgba(0,212,179,0.3)',
+                        }}
+                      >
+                        <Bot className="h-3.5 w-3.5" strokeWidth={1.8} />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        {message.attachments && message.attachments.length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-1.5">
+                            {message.attachments.map((attachment, index) => (
+                              <div
+                                key={`${attachment.name}-${index}`}
+                                className="flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs"
+                                style={{ borderColor: panelColors.border, color: panelColors.muted, backgroundColor: panelColors.bgMuted }}
+                              >
+                                {attachment.mimeType.startsWith('image/') ? (
+                                  <ImageIcon className="h-3 w-3" />
+                                ) : (
+                                  <FileText className="h-3 w-3" />
+                                )}
+                                <span className="max-w-[110px] truncate">{attachment.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="text-sm" style={{ color: panelColors.text, lineHeight: 1.6 }}>
+                          <MarkdownMessage
+                            content={message.content}
+                            colors={{
+                              text: panelColors.text,
+                              muted: panelColors.muted,
+                              accent: panelColors.accent,
+                              bgMuted: panelColors.bgMuted,
+                              border: panelColors.border,
+                            }}
+                          />
                         </div>
-                      ))}
+
+                        <p className="mt-1.5 text-[10px]" style={{ color: panelColors.muted }}>
+                          {message.timestamp.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Mensaje usuario: burbuja compacta a la derecha ── */
+                    <div className="flex justify-end">
+                      <div className="max-w-[78%]">
+                        {message.attachments && message.attachments.length > 0 && (
+                          <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
+                            {message.attachments.map((attachment, index) => (
+                              <div
+                                key={`${attachment.name}-${index}`}
+                                className="flex items-center gap-1.5 rounded-md border border-white/20 bg-black/20 px-2 py-1 text-xs text-white/80"
+                              >
+                                {attachment.mimeType.startsWith('image/') ? (
+                                  <ImageIcon className="h-3 w-3" />
+                                ) : (
+                                  <FileText className="h-3 w-3" />
+                                )}
+                                <span className="max-w-[110px] truncate">{attachment.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div
+                          className="rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-sm text-white"
+                          style={{
+                            background: `linear-gradient(135deg, #00D4B3 0%, #0A2540 100%)`,
+                            boxShadow: '0 2px 12px rgba(0,212,179,0.2)',
+                            lineHeight: 1.55,
+                          }}
+                        >
+                          {message.content}
+                        </div>
+
+                        <p className="mt-1 text-right text-[10px]" style={{ color: panelColors.muted }}>
+                          {message.timestamp.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
                     </div>
                   )}
-                  {message.role === 'assistant' ? (
-                    <MarkdownMessage
-                      content={message.content}
-                      colors={{
-                        text: panelColors.text,
-                        muted: panelColors.muted,
-                        accent: panelColors.accent,
-                        bgMuted: panelColors.bgMuted,
-                        border: panelColors.border,
-                      }}
-                    />
-                  ) : (
-                    <div className="whitespace-pre-wrap">{message.content}</div>
-                  )}
-                  <div
-                    className="mt-2 text-[11px]"
-                    style={{ color: message.role === 'user' ? 'rgba(255,255,255,0.75)' : panelColors.muted }}
-                  >
-                    {message.timestamp.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              ))}
 
-            {isLoading && (
-              <div className="flex justify-start">
-                <div
-                  className="flex items-center gap-2 rounded-xl border px-4 py-3 text-sm"
-                  style={{
-                    backgroundColor: panelColors.bgMuted,
-                    borderColor: panelColors.border,
-                    color: panelColors.muted,
-                  }}
+              {/* ── Typing indicator ── */}
+              {isLoading && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2.5"
                 >
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  ARIA esta pensando
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+                  <div
+                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-white"
+                    style={{
+                      background: 'radial-gradient(circle at 30% 25%, #2BE9C6 0%, #00D4B3 45%, #0A2540 100%)',
+                      boxShadow: '0 2px 8px rgba(0,212,179,0.3)',
+                    }}
+                  >
+                    <Bot className="h-3.5 w-3.5" strokeWidth={1.8} />
+                  </div>
+                  <div
+                    className="flex items-center gap-1 rounded-2xl rounded-tl-sm px-4 py-3"
+                    style={{ backgroundColor: panelColors.bgMuted, border: `1px solid ${panelColors.border}` }}
+                  >
+                    {[0, 1, 2].map((i) => (
+                      <motion.span
+                        key={i}
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: panelColors.accent }}
+                        animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
+                        transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18 }}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
           </div>
 
+          {/* ── Quick actions ── */}
           {showQuickActions && (
-            <div className="flex flex-wrap gap-2 px-4 pb-3">
+            <div className="flex flex-wrap gap-1.5 px-4 pb-2">
               {QUICK_ACTIONS.map((action) => (
                 <button
                   key={action.label}
                   type="button"
                   onClick={() => sendMessage(action.message)}
-                  className="rounded-lg border px-3 py-2 text-xs font-medium transition-all hover:border-[#00D4B3]"
+                  className="rounded-full border px-3 py-1.5 text-xs font-medium transition-all"
                   style={{
-                    backgroundColor: panelColors.bgSoft,
+                    backgroundColor: 'transparent',
                     borderColor: panelColors.border,
-                    color: panelColors.text,
+                    color: panelColors.muted,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = panelColors.accent;
+                    e.currentTarget.style.color = panelColors.accent;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = panelColors.border;
+                    e.currentTarget.style.color = panelColors.muted;
                   }}
                 >
                   {action.label}
@@ -470,109 +552,104 @@ export function LIAChatWidget({
             </div>
           )}
 
-          <footer
-            className="border-t p-4"
-            style={{ backgroundColor: panelColors.bgSoft, borderColor: panelColors.border }}
-          >
+          {/* ── Composer ── */}
+          <footer className="px-3 pb-4 pt-2">
+            {/* Preview de adjuntos */}
             {attachments.length > 0 && (
-              <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+              <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
                 {attachments.map((attachment, index) => (
                   <div
                     key={`${attachment.name}-${index}`}
-                    className="group relative flex max-w-[160px] items-center gap-2 rounded-lg border px-2 py-2 text-xs"
-                    style={{
-                      backgroundColor: panelColors.bg,
-                      borderColor: panelColors.border,
-                      color: panelColors.text,
-                    }}
+                    className="flex max-w-[150px] flex-shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs"
+                    style={{ backgroundColor: panelColors.bgMuted, borderColor: panelColors.border, color: panelColors.text }}
                   >
                     {attachment.mimeType.startsWith('image/') ? (
-                      <ImageIcon className="h-4 w-4 flex-shrink-0" />
+                      <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
                     ) : (
-                      <FileText className="h-4 w-4 flex-shrink-0" />
+                      <FileText className="h-3.5 w-3.5 flex-shrink-0" />
                     )}
                     <span className="truncate">{attachment.name}</span>
                     <button
                       type="button"
                       onClick={() => removeAttachment(index)}
-                      className="ml-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-red-400 hover:bg-red-500/10"
+                      className="ml-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-red-400 hover:bg-red-500/10"
                       aria-label={`Quitar ${attachment.name}`}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-2.5 w-2.5" />
                     </button>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="flex items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
+            {/* Caja del input — todo en una píldora */}
+            <div
+              className="flex items-center gap-1 rounded-2xl border px-2 py-1.5 transition-colors"
+              style={{
+                backgroundColor: panelColors.bgMuted,
+                borderColor: isListening ? '#EF4444' : panelColors.border,
+              }}
+            >
+              <input ref={fileInputRef} type="file" className="hidden"
                 accept="image/*,application/pdf,text/plain,text/markdown"
                 onChange={handleFileSelect}
               />
+
+              {/* Adjuntar */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border transition-colors hover:border-[#00D4B3]"
-                style={{
-                  backgroundColor: panelColors.bg,
-                  borderColor: panelColors.border,
-                  color: panelColors.muted,
-                }}
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl transition-colors"
+                style={{ color: panelColors.muted }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = panelColors.accent)}
+                onMouseLeave={(e) => (e.currentTarget.style.color = panelColors.muted)}
                 aria-label="Adjuntar archivo"
                 title="Adjuntar archivo"
               >
                 <Paperclip className="h-4 w-4" />
               </button>
 
+              {/* Input */}
               <input
                 ref={inputRef}
                 type="text"
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isLoading}
                 placeholder={isListening ? 'Escuchando...' : 'Escribe a ARIA...'}
-                className="min-w-0 flex-1 rounded-xl border px-4 py-3 text-sm outline-none transition-colors focus:border-[#00D4B3]"
-                style={{
-                  backgroundColor: panelColors.bg,
-                  borderColor: isListening ? '#EF4444' : panelColors.border,
-                  color: panelColors.text,
-                }}
+                className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:opacity-50"
+                style={{ color: panelColors.text }}
               />
 
+              {/* Voz / Enviar */}
               <button
                 type="button"
                 onClick={() => {
                   if (isLoading) return;
-                  if (isListening) {
-                    toggleVoiceInput();
-                    return;
-                  }
-                  if (hasContent) {
-                    sendMessage();
-                    return;
-                  }
+                  if (isListening) { toggleVoiceInput(); return; }
+                  if (hasContent) { sendMessage(); return; }
                   toggleVoiceInput();
                 }}
                 disabled={isLoading}
-                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl transition-all disabled:opacity-40"
                 style={{
                   background: isListening
                     ? '#EF4444'
                     : hasContent
-                      ? `linear-gradient(135deg, ${panelColors.accent}, ${panelColors.primary})`
-                      : panelColors.bg,
-                  border: hasContent || isListening ? 'none' : `1px solid ${panelColors.border}`,
-                  color: hasContent || isListening ? '#FFFFFF' : panelColors.muted,
+                      ? 'linear-gradient(135deg, #00D4B3 0%, #0A2540 100%)'
+                      : 'transparent',
+                  color: hasContent || isListening ? '#fff' : panelColors.muted,
+                  boxShadow: hasContent ? '0 2px 8px rgba(0,212,179,0.3)' : 'none',
                 }}
-                aria-label={isListening ? 'Detener dictado' : hasContent ? 'Enviar mensaje' : 'Dictar por voz'}
-                title={isListening ? 'Detener dictado' : hasContent ? 'Enviar mensaje' : 'Dictar por voz'}
+                aria-label={isListening ? 'Detener dictado' : hasContent ? 'Enviar' : 'Dictar por voz'}
+                title={isListening ? 'Detener dictado' : hasContent ? 'Enviar' : 'Dictar por voz'}
               >
-                {isListening ? <Square className="h-4 w-4 fill-current" /> : hasContent ? <Send className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                {isListening
+                  ? <Square className="h-3.5 w-3.5 fill-current" />
+                  : hasContent
+                    ? <Send className="h-3.5 w-3.5" />
+                    : <Mic className="h-4 w-4" />}
               </button>
             </div>
           </footer>

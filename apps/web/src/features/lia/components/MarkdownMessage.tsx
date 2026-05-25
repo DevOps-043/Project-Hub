@@ -4,11 +4,11 @@
  * Renderizador ligero de Markdown para los mensajes de ARIA.
  *
  * Soporta lo que el modelo realmente usa en respuestas de chat:
- *   - **negritas**
- *   - *cursivas*
+ *   - **negritas** y *cursivas*
  *   - `código inline` y ```bloques de código```
  *   - # / ## / ### encabezados
  *   - listas con `-`, `*` y `1.`
+ *   - tablas estilo pipe `| a | b |`
  *   - [enlaces](https://...)
  *   - separación en párrafos por líneas en blanco
  *
@@ -41,17 +41,14 @@ function renderInline(text: string, keyPrefix: string, colors: MarkdownMessagePr
   return tokens.map((token, index) => {
     const key = `${keyPrefix}-${index}`;
 
-    // **negrita**
     if (/^\*\*[^*]+\*\*$/.test(token)) {
-      return <strong key={key}>{token.slice(2, -2)}</strong>;
+      return <strong key={key} style={{ fontWeight: 600, color: colors.text }}>{token.slice(2, -2)}</strong>;
     }
 
-    // *cursiva*  (sólo cuando hay contenido y no es bullet de lista)
     if (/^\*[^*]+\*$/.test(token)) {
       return <em key={key}>{token.slice(1, -1)}</em>;
     }
 
-    // `código inline`
     if (/^`[^`]+`$/.test(token)) {
       return (
         <code
@@ -60,9 +57,10 @@ function renderInline(text: string, keyPrefix: string, colors: MarkdownMessagePr
             backgroundColor: colors.bgMuted,
             border: `1px solid ${colors.border}`,
             borderRadius: 4,
-            padding: '0.5px 4px',
+            padding: '1px 5px',
             fontSize: '0.85em',
             fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+            color: colors.accent,
           }}
         >
           {token.slice(1, -1)}
@@ -70,7 +68,6 @@ function renderInline(text: string, keyPrefix: string, colors: MarkdownMessagePr
       );
     }
 
-    // [texto](url)
     const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
       const [, label, href] = linkMatch;
@@ -80,7 +77,7 @@ function renderInline(text: string, keyPrefix: string, colors: MarkdownMessagePr
           href={href}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: colors.accent, textDecoration: 'underline' }}
+          style={{ color: colors.accent, textDecoration: 'underline', textUnderlineOffset: 2 }}
         >
           {label}
         </a>
@@ -97,7 +94,20 @@ type Block =
   | { type: 'heading'; level: 1 | 2 | 3; text: string }
   | { type: 'paragraph'; text: string }
   | { type: 'list'; ordered: boolean; items: string[] }
-  | { type: 'code'; lang: string; text: string };
+  | { type: 'code'; lang: string; text: string }
+  | { type: 'table'; header: string[]; rows: string[][] };
+
+function isTableSeparator(line: string): boolean {
+  // Línea tipo  | :--- | :--: | ---: |
+  const trimmed = line.trim();
+  if (!trimmed.includes('|') || !trimmed.includes('-')) return false;
+  const cells = trimmed.replace(/^\||\|$/g, '').split('|');
+  return cells.every((cell) => /^\s*:?-{3,}:?\s*$/.test(cell));
+}
+
+function splitTableRow(line: string): string[] {
+  return line.trim().replace(/^\||\|$/g, '').split('|').map((cell) => cell.trim());
+}
 
 function parseBlocks(source: string): Block[] {
   const lines = source.replace(/\r\n/g, '\n').split('\n');
@@ -125,7 +135,7 @@ function parseBlocks(source: string): Block[] {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Bloques de código ```lang ... ```
+    // ─── Bloques de código ```lang ... ```
     if (trimmed.startsWith('```')) {
       flushParagraph();
       flushList();
@@ -137,11 +147,26 @@ function parseBlocks(source: string): Block[] {
         i++;
       }
       blocks.push({ type: 'code', lang, text: codeLines.join('\n') });
-      i++; // saltar el cierre ```
+      i++;
       continue;
     }
 
-    // Encabezados
+    // ─── Tablas pipe (necesitan header + separador en la línea siguiente)
+    if (trimmed.startsWith('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      flushParagraph();
+      flushList();
+      const header = splitTableRow(trimmed);
+      i += 2; // saltar header y separador
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+      blocks.push({ type: 'table', header, rows });
+      continue;
+    }
+
+    // ─── Encabezados
     const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
     if (headingMatch) {
       flushParagraph();
@@ -155,7 +180,7 @@ function parseBlocks(source: string): Block[] {
       continue;
     }
 
-    // Listas con guión o asterisco
+    // ─── Listas con guión o asterisco
     const unorderedMatch = trimmed.match(/^[-*]\s+(.+)$/);
     if (unorderedMatch) {
       flushParagraph();
@@ -168,7 +193,7 @@ function parseBlocks(source: string): Block[] {
       continue;
     }
 
-    // Listas numeradas
+    // ─── Listas numeradas
     const orderedMatch = trimmed.match(/^\d+\.\s+(.+)$/);
     if (orderedMatch) {
       flushParagraph();
@@ -181,7 +206,7 @@ function parseBlocks(source: string): Block[] {
       continue;
     }
 
-    // Línea en blanco → cierra párrafo y lista
+    // ─── Línea en blanco → cierra párrafo y lista
     if (trimmed === '') {
       flushParagraph();
       flushList();
@@ -189,7 +214,7 @@ function parseBlocks(source: string): Block[] {
       continue;
     }
 
-    // Línea normal → acumula en párrafo
+    // ─── Línea normal → acumula en párrafo
     flushList();
     paragraphBuffer.push(trimmed);
     i++;
@@ -207,13 +232,13 @@ export function MarkdownMessage({ content, colors }: MarkdownMessageProps) {
   const blocks = parseBlocks(content);
 
   const headingStyle: Record<1 | 2 | 3, CSSProperties> = {
-    1: { fontSize: '1.05rem', fontWeight: 700, margin: '0.5rem 0 0.25rem', color: colors.text },
-    2: { fontSize: '1rem', fontWeight: 700, margin: '0.5rem 0 0.25rem', color: colors.text },
-    3: { fontSize: '0.95rem', fontWeight: 600, margin: '0.4rem 0 0.2rem', color: colors.text },
+    1: { fontSize: '0.98rem', fontWeight: 700, margin: '0.35rem 0 0.15rem', color: colors.text, letterSpacing: '-0.01em' },
+    2: { fontSize: '0.92rem', fontWeight: 700, margin: '0.35rem 0 0.15rem', color: colors.text, letterSpacing: '-0.01em' },
+    3: { fontSize: '0.88rem', fontWeight: 600, margin: '0.3rem 0 0.1rem', color: colors.accent, textTransform: 'uppercase', letterSpacing: '0.04em' },
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5 leading-relaxed">
       {blocks.map((block, blockIndex) => {
         const blockKey = `b-${blockIndex}`;
 
@@ -241,17 +266,84 @@ export function MarkdownMessage({ content, colors }: MarkdownMessageProps) {
               key={blockKey}
               style={{
                 margin: 0,
-                paddingLeft: '1.25rem',
+                paddingLeft: '1.15rem',
                 color: colors.text,
                 listStyleType: block.ordered ? 'decimal' : 'disc',
               }}
             >
               {block.items.map((item, itemIndex) => (
-                <li key={`${blockKey}-i-${itemIndex}`} style={{ margin: '0.15rem 0' }}>
+                <li
+                  key={`${blockKey}-i-${itemIndex}`}
+                  style={{ margin: '0.2rem 0', paddingLeft: '0.15rem' }}
+                >
                   {renderInline(item, `${blockKey}-i-${itemIndex}`, colors)}
                 </li>
               ))}
             </ListTag>
+          );
+        }
+
+        if (block.type === 'table') {
+          return (
+            <div
+              key={blockKey}
+              style={{
+                overflowX: 'auto',
+                borderRadius: 8,
+                border: `1px solid ${colors.border}`,
+              }}
+            >
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: '0.82rem',
+                  color: colors.text,
+                }}
+              >
+                <thead>
+                  <tr style={{ backgroundColor: colors.bgMuted }}>
+                    {block.header.map((cell, cellIndex) => (
+                      <th
+                        key={`${blockKey}-h-${cellIndex}`}
+                        style={{
+                          padding: '6px 10px',
+                          textAlign: 'left',
+                          fontWeight: 600,
+                          color: colors.accent,
+                          borderBottom: `1px solid ${colors.border}`,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {renderInline(cell, `${blockKey}-h-${cellIndex}`, colors)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, rowIndex) => (
+                    <tr
+                      key={`${blockKey}-r-${rowIndex}`}
+                      style={{
+                        borderTop: rowIndex === 0 ? 'none' : `1px solid ${colors.border}`,
+                      }}
+                    >
+                      {row.map((cell, cellIndex) => (
+                        <td
+                          key={`${blockKey}-r-${rowIndex}-c-${cellIndex}`}
+                          style={{
+                            padding: '6px 10px',
+                            verticalAlign: 'top',
+                          }}
+                        >
+                          {renderInline(cell, `${blockKey}-r-${rowIndex}-c-${cellIndex}`, colors)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           );
         }
 
@@ -261,15 +353,16 @@ export function MarkdownMessage({ content, colors }: MarkdownMessageProps) {
             key={blockKey}
             style={{
               margin: 0,
-              padding: '0.6rem 0.75rem',
+              padding: '0.65rem 0.8rem',
               borderRadius: 8,
               backgroundColor: colors.bgMuted,
               border: `1px solid ${colors.border}`,
-              fontSize: '0.8rem',
+              fontSize: '0.78rem',
               fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
               color: colors.text,
               overflowX: 'auto',
               whiteSpace: 'pre',
+              lineHeight: 1.5,
             }}
           >
             <code>{block.text}</code>
