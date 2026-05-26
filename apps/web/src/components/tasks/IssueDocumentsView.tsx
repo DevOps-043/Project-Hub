@@ -111,6 +111,10 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
       } else if (res.status === 409) {
         alert('Este documento ya está vinculado a esta tarea.');
       }
+      if (!res.ok && res.status !== 409) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'No se pudo vincular el documento a la tarea.');
+      }
       return false;
     } catch (error) {
       console.error('Error vinculando documento:', error);

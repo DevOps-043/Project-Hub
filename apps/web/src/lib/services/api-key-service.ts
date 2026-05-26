@@ -8,6 +8,11 @@ import { hashToken } from '@/lib/auth/jwt';
 
 // --- Tipos ---
 
+export const MCP_API_KEY_SCOPES = ['read', 'write'] as const;
+export type McpApiKeyScope = (typeof MCP_API_KEY_SCOPES)[number];
+
+const DEFAULT_API_KEY_SCOPES: McpApiKeyScope[] = ['read', 'write'];
+
 export interface McpApiKey {
   key_id: string;
   workspace_id: string;
@@ -36,6 +41,38 @@ export interface VerifyResult {
 
 // --- Funciones ---
 
+export function normalizeApiKeyScopes(
+  scopes: unknown,
+  fallbackScopes: McpApiKeyScope[] | null = DEFAULT_API_KEY_SCOPES
+): McpApiKeyScope[] | null {
+  if (scopes === undefined || scopes === null) {
+    return fallbackScopes ? [...fallbackScopes] : null;
+  }
+
+  if (!Array.isArray(scopes)) {
+    return null;
+  }
+
+  const validScopes = new Set<string>(MCP_API_KEY_SCOPES);
+  const normalized = Array.from(
+    new Set(
+      scopes
+        .map(scope => (typeof scope === 'string' ? scope.trim().toLowerCase() : ''))
+        .filter((scope): scope is McpApiKeyScope => validScopes.has(scope))
+    )
+  );
+
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  if (normalized.includes('write') && !normalized.includes('read')) {
+    normalized.unshift('read');
+  }
+
+  return normalized;
+}
+
 /**
  * Genera una nueva API key para un workspace
  * Retorna la key en texto plano UNA SOLA VEZ
@@ -44,10 +81,15 @@ export async function generateApiKey(
   workspaceId: string,
   createdBy: string,
   name: string,
-  scopes: string[] = ['read', 'write'],
+  scopes: McpApiKeyScope[] = DEFAULT_API_KEY_SCOPES,
   expiresAt?: string | null
 ): Promise<{ plainKey: string; keyRecord: McpApiKey }> {
   const supabase = getSupabaseAdmin();
+  const normalizedScopes = normalizeApiKeyScopes(scopes, null);
+
+  if (!normalizedScopes) {
+    throw new Error('Permisos de API key invalidos');
+  }
 
   // Generar 32 bytes aleatorios → 64 chars hex
   const randomBytes = new Uint8Array(32);
@@ -66,7 +108,7 @@ export async function generateApiKey(
       name,
       key_hash: keyHash,
       key_prefix: keyPrefix,
-      scopes,
+      scopes: normalizedScopes,
       expires_at: expiresAt || null,
     })
     .select()
@@ -119,6 +161,7 @@ export async function verifyApiKey(plainKey: string): Promise<VerifyResult | nul
   if (!data.is_active) return null;
   if (data.revoked_at) return null;
   if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
+  const normalizedScopes = normalizeApiKeyScopes(data.scopes, ['read']) || ['read'];
 
   // Actualizar uso atomicamente
   await supabase
@@ -137,7 +180,7 @@ export async function verifyApiKey(plainKey: string): Promise<VerifyResult | nul
       created_by: data.created_by,
       name: data.name,
       key_prefix: data.key_prefix,
-      scopes: data.scopes,
+      scopes: normalizedScopes,
       is_active: data.is_active,
       last_used_at: data.last_used_at,
       total_requests: data.total_requests,
@@ -178,7 +221,7 @@ export async function listApiKeys(workspaceId: string): Promise<McpApiKeyDisplay
     created_by: row.created_by,
     name: row.name,
     key_prefix: row.key_prefix,
-    scopes: row.scopes,
+    scopes: normalizeApiKeyScopes(row.scopes, ['read']) || ['read'],
     is_active: row.is_active,
     last_used_at: row.last_used_at,
     total_requests: row.total_requests,

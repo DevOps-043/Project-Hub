@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
 import { verifyToken } from '@/lib/auth/jwt';
-import { generateApiKey, listApiKeys } from '@/lib/services/api-key-service';
+import { generateApiKey, listApiKeys, normalizeApiKeyScopes } from '@/lib/services/api-key-service';
 
 type RouteParams = { params: Promise<{ slug: string }> };
 
@@ -50,7 +50,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Sin permisos para crear API keys' }, { status: 403 });
     }
 
-    const body = await request.json();
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'JSON invalido' }, { status: 400 });
+    }
+
     const { name, scopes, expiresAt } = body;
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -61,10 +67,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'El nombre no puede exceder 100 caracteres' }, { status: 400 });
     }
 
-    const validScopes = ['read', 'write'];
-    const finalScopes = Array.isArray(scopes)
-      ? scopes.filter((s: string) => validScopes.includes(s))
-      : ['read', 'write'];
+    const finalScopes = normalizeApiKeyScopes(scopes);
+    if (!finalScopes) {
+      return NextResponse.json({ error: 'Permisos invalidos. Usa read y/o write.' }, { status: 400 });
+    }
 
     const result = await generateApiKey(
       workspace.workspace_id,
