@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
 import { verifyToken } from '@/lib/auth/jwt';
+import { parsePagination } from '@/lib/http/query';
 
 async function enrichProjectsWithIssueProgress(supabase: any, rawProjects: any[]) {
   if (rawProjects.length === 0) return [];
@@ -22,9 +23,6 @@ async function enrichProjectsWithIssueProgress(supabase: any, rawProjects: any[]
     issuesByProject[pid].push(issue);
   }
 
-  // Build enriched projects and batch-update completion_percentage
-  const updates: { id: string; pct: number }[] = [];
-
   const projects = rawProjects.map((p: any) => {
     const issues = issuesByProject[p.project_id] || [];
     const total = issues.length;
@@ -32,10 +30,6 @@ async function enrichProjectsWithIssueProgress(supabase: any, rawProjects: any[]
     const cancelled = issues.filter((i: any) => i.task_statuses?.status_type === 'cancelled').length;
     const effectiveTotal = total - cancelled;
     const pct = effectiveTotal > 0 ? Math.round((done / effectiveTotal) * 100) : (p.completion_percentage || 0);
-
-    if (total > 0 && p.completion_percentage !== pct) {
-      updates.push({ id: p.project_id, pct });
-    }
 
     return {
       project_id: p.project_id,
@@ -62,15 +56,6 @@ async function enrichProjectsWithIssueProgress(supabase: any, rawProjects: any[]
     };
   });
 
-  // Batch update completion_percentage in DB (fire and forget)
-  for (const u of updates) {
-    supabase
-      .from('pm_projects')
-      .update({ completion_percentage: u.pct })
-      .eq('project_id', u.id)
-      .then(() => {});
-  }
-
   return projects;
 }
 
@@ -93,23 +78,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
-
-    // Auto-fix: asignar workspace_id a proyectos huérfanos cuyo equipo pertenece a este workspace
-    const { data: workspaceTeams } = await supabase
-      .from('teams')
-      .select('team_id')
-      .eq('workspace_id', workspace.workspace_id);
-    const wsTeamIds = (workspaceTeams || []).map((t: any) => t.team_id);
-
-    if (wsTeamIds.length > 0) {
-      await supabase
-        .from('pm_projects')
-        .update({ workspace_id: workspace.workspace_id })
-        .is('workspace_id', null)
-        .in('team_id', wsTeamIds);
-    }
+    const { limit, offset } = parsePagination(searchParams, {
+      defaultLimit: 50,
+      maxLimit: 100,
+    });
 
     const isAdmin = ['owner', 'admin'].includes(member.iris_role);
 

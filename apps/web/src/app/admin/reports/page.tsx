@@ -288,9 +288,13 @@ const downloadCSV = (data: any[], filename: string) => {
         alert('No hay datos para exportar');
         return;
     }
-    const headers = Object.keys(data[0] || {}).join(',');
-    const rows = data.map(obj => Object.values(obj).join(',')).join('\n');
-    const blob = new Blob([headers + '\n' + rows], { type: 'text/csv' });
+    const escapeValue = (value: unknown) => {
+        const text = value === null || value === undefined ? '' : String(value);
+        return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const headers = Object.keys(data[0] || {});
+    const rows = data.map(obj => headers.map(header => escapeValue(obj[header])).join(',')).join('\r\n');
+    const blob = new Blob([`\uFEFF${headers.join(',')}\r\n${rows}`], { type: 'text/csv;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -311,6 +315,8 @@ export default function ReportsPage() {
     const [aiLoading, setAiLoading] = useState(false);
     const [aiAnalysis, setAiAnalysis] = useState<any>(null);
     const [tasksData, setTasksData] = useState<any[]>([]);
+    const [tasksLoading, setTasksLoading] = useState(true);
+    const [tasksExportError, setTasksExportError] = useState<string | null>(null);
 
     useEffect(() => {
         setIsMounted(true);
@@ -337,33 +343,24 @@ export default function ReportsPage() {
     };
 
     const fetchTasksForExport = async () => {
+        setTasksLoading(true);
+        setTasksExportError(null);
         try {
             const token = localStorage.getItem('accessToken');
-            const res = await fetch('/api/admin/teams?limit=1', {
+            const res = await fetch('/api/admin/tasks/export?limit=5000', {
                 headers: token ? { Authorization: `Bearer ${token}` } : {},
             });
-            if (res.ok) {
-                const teamsData = await res.json();
-                if (teamsData.teams?.length > 0) {
-                    const teamId = teamsData.teams[0].team_id || teamsData.teams[0].id;
-                    const tasksRes = await fetch(`/api/admin/teams/${teamId}/issues?limit=500`, {
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
-                    });
-                    if (tasksRes.ok) {
-                        const data = await tasksRes.json();
-                        setTasksData(data.issues?.map((i: any) => ({
-                            id: `${i.identifier || i.issue_number}`,
-                            title: i.title,
-                            status: i.status?.name || 'N/A',
-                            priority: i.priority?.name || 'N/A',
-                            assignee: i.assignee?.display_name || i.assignee?.first_name || 'Sin asignar',
-                            created: new Date(i.created_at).toLocaleDateString()
-                        })) || []);
-                    }
-                }
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'No se pudieron cargar las tareas');
             }
+            setTasksData(data.tasks || []);
         } catch (error) {
             console.error('Error fetching tasks:', error);
+            setTasksData([]);
+            setTasksExportError(error instanceof Error ? error.message : 'No se pudieron cargar las tareas');
+        } finally {
+            setTasksLoading(false);
         }
     };
 
@@ -451,12 +448,13 @@ export default function ReportsPage() {
                     
                     <button 
                         onClick={() => downloadCSV(tasksData, `project_hub_tasks_export_${new Date().toISOString().split('T')[0]}.csv`)}
-                        disabled={tasksData.length === 0}
+                        disabled={tasksLoading || tasksData.length === 0}
                         className="flex items-center justify-center w-full py-3 rounded-xl font-medium transition-all disabled:opacity-50"
                         style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f3f4f6', color: colors.textPrimary }}
                     >
-                        {tasksData.length > 0 ? 'Descargar CSV' : 'Cargando tareas...'}
+                        {tasksLoading ? 'Cargando tareas...' : tasksData.length > 0 ? 'Descargar CSV' : 'Sin tareas para exportar'}
                     </button>
+                    {tasksExportError && <p className="text-xs text-red-500 mt-2">{tasksExportError}</p>}
                 </div>
 
                 {/* 3. AI PREDICTIVE REPORT */}

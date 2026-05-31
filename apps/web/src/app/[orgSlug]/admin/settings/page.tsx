@@ -19,7 +19,7 @@ interface ApiKeyDisplay {
     created_by_name: string;
 }
 
-type ApiKeyScopeMode = 'read' | 'read_write';
+type ApiKeyScopeMode = 'read' | 'write' | 'read_write';
 
 // --- ICONS ---
 const Icons = {
@@ -227,7 +227,12 @@ const MCPServersPanel = () => {
         setCreatingKey(true);
         try {
             const token = localStorage.getItem('accessToken');
-            const scopes = newKeyScopeMode === 'read' ? ['read'] : ['read', 'write'];
+            const scopes =
+                newKeyScopeMode === 'read'
+                    ? ['read']
+                    : newKeyScopeMode === 'write'
+                        ? ['write']
+                        : ['read', 'write'];
             const res = await fetch(`/api/workspaces/${workspace.slug}/api-keys`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -445,11 +450,16 @@ const MCPServersPanel = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-1.5 opacity-70">Permisos</label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                     <button type="button" onClick={() => setNewKeyScopeMode('read')}
                                         className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${newKeyScopeMode === 'read' ? 'border-[#00D4B3] bg-[#00D4B3]/10' : 'border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
                                         <span className="block text-sm font-semibold">Solo lectura</span>
                                         <span className="block text-[11px] opacity-50 mt-0.5">GET: contexto y consultas</span>
+                                    </button>
+                                    <button type="button" onClick={() => setNewKeyScopeMode('write')}
+                                        className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${newKeyScopeMode === 'write' ? 'border-[#00D4B3] bg-[#00D4B3]/10' : 'border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
+                                        <span className="block text-sm font-semibold">Solo escritura</span>
+                                        <span className="block text-[11px] opacity-50 mt-0.5">POST: crear o actualizar</span>
                                     </button>
                                     <button type="button" onClick={() => setNewKeyScopeMode('read_write')}
                                         className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${newKeyScopeMode === 'read_write' ? 'border-[#00D4B3] bg-[#00D4B3]/10' : 'border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5'}`}>

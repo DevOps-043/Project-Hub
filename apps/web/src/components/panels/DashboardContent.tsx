@@ -33,8 +33,8 @@ export function DashboardContent() {
       setLoadingStats(true);
       try {
         const [teamsRes, membersRes, analyticsRes] = await Promise.all([
-          fetch(`/api/workspaces/${workspace.slug}/teams`),
-          fetch(`/api/workspaces/${workspace.slug}/members`),
+          fetch(`/api/workspaces/${workspace.slug}/teams?limit=1`),
+          fetch(`/api/workspaces/${workspace.slug}/members?limit=1`),
           fetch(`/api/workspaces/${workspace.slug}/analytics`),
         ]);
 

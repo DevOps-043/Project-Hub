@@ -5,6 +5,21 @@ import { useAuthStore } from '@/core/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
+async function readApiJson(response: Response): Promise<any> {
+  const text = await response.text().catch(() => '');
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      error: response.ok
+        ? 'Respuesta inesperada del servidor'
+        : 'Respuesta no valida del servidor. Intenta nuevamente o revisa el tamano del archivo.',
+    };
+  }
+}
+
 export default function ProfilePage() {
   const { user, fetchCurrentUser } = useAuthStore();
   const { isDark } = useTheme();
@@ -139,7 +154,7 @@ export default function ProfilePage() {
         body: JSON.stringify(dataToSend)
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
 
       if (!res.ok) {
         throw new Error(data.error || 'Error al actualizar perfil');
@@ -180,7 +195,7 @@ export default function ProfilePage() {
         body: JSON.stringify(passwordData)
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
 
       if (!res.ok) {
         throw new Error(data.error || 'Error al cambiar contraseña');
@@ -207,11 +222,13 @@ export default function ProfilePage() {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
       setErrorMessage('Tipo de archivo no permitido. Usa: JPG, PNG, GIF o WebP');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setErrorMessage('El archivo es demasiado grande. Máximo 5MB');
+      setErrorMessage('El archivo es demasiado grande. Maximo 5MB');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
@@ -229,7 +246,7 @@ export default function ProfilePage() {
         body: formDataUpload
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
 
       if (!res.ok) {
         throw new Error(data.error || 'Error al subir la imagen');
@@ -263,7 +280,7 @@ export default function ProfilePage() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      const data = await res.json();
+      const data = await readApiJson(res);
 
       if (!res.ok) {
         throw new Error(data.error || 'Error al eliminar la imagen');

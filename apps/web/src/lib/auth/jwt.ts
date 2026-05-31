@@ -5,10 +5,12 @@
 
 import { AccountUser } from '../supabase/server';
 
-// Secreto para firmar tokens (debe estar en .env)
-const JWT_SECRET = process.env.JWT_SECRET || 'iris-super-secret-key-change-in-production';
 const ACCESS_TOKEN_EXPIRY = 60 * 60; // 1 hora en segundos
 const REFRESH_TOKEN_EXPIRY = 60 * 60 * 24 * 7; // 7 días en segundos
+const DEVELOPMENT_JWT_SECRET = 'iris-super-secret-key-change-in-production';
+
+let cachedSecret: string | null = null;
+let cachedSigningKey: Promise<CryptoKey> | null = null;
 
 // Tipos
 export interface JWTPayload {
@@ -28,11 +30,46 @@ export interface TokenPair {
   expiresIn: number;
 }
 
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET no esta configurado');
+  }
+
+  return secret || DEVELOPMENT_JWT_SECRET;
+}
+
+async function getSigningKey(): Promise<CryptoKey> {
+  const secret = getJwtSecret();
+
+  if (!cachedSigningKey || cachedSecret !== secret) {
+    cachedSecret = secret;
+    cachedSigningKey = crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+  }
+
+  return cachedSigningKey;
+}
+
 /**
  * Codifica un string a Base64URL
  */
 function base64UrlEncode(str: string): string {
-  return Buffer.from(str)
+  return Buffer.from(str, 'utf-8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
+function base64UrlEncodeBytes(bytes: Uint8Array): string {
+  return Buffer.from(bytes)
     .toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
@@ -54,23 +91,34 @@ function base64UrlDecode(str: string): string {
 /**
  * Crea una firma HMAC-SHA256
  */
-async function createSignature(data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(JWT_SECRET),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  
+function constantTimeEqual(a: string, b: string): boolean {
+  const maxLength = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+
+  for (let index = 0; index < maxLength; index += 1) {
+    diff |= (a.charCodeAt(index) || 0) ^ (b.charCodeAt(index) || 0);
+  }
+
+  return diff === 0;
+}
+
+async function sign(data: string): Promise<Uint8Array> {
+  const key = await getSigningKey();
   const signature = await crypto.subtle.sign(
     'HMAC',
     key,
-    encoder.encode(data)
+    new TextEncoder().encode(data)
   );
-  
-  return base64UrlEncode(String.fromCharCode(...new Uint8Array(signature)));
+
+  return new Uint8Array(signature);
+}
+
+async function createSignature(data: string): Promise<string> {
+  return base64UrlEncodeBytes(await sign(data));
+}
+
+async function createLegacySignature(data: string): Promise<string> {
+  return base64UrlEncode(String.fromCharCode(...await sign(data)));
 }
 
 /**
@@ -107,10 +155,24 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
     
     const [headerB64, payloadB64, signature] = parts;
     const signatureInput = `${headerB64}.${payloadB64}`;
-    const expectedSignature = await createSignature(signatureInput);
+    const header = JSON.parse(base64UrlDecode(headerB64));
+
+    if (header.alg !== 'HS256' || header.typ !== 'JWT') {
+      return null;
+    }
+
+    const [expectedSignature, legacySignature] = await Promise.all([
+      createSignature(signatureInput),
+      createLegacySignature(signatureInput),
+    ]);
     
     // Verificar firma
-    if (signature !== expectedSignature) return null;
+    if (
+      !constantTimeEqual(signature, expectedSignature) &&
+      !constantTimeEqual(signature, legacySignature)
+    ) {
+      return null;
+    }
     
     // Decodificar payload
     const payload: JWTPayload = JSON.parse(base64UrlDecode(payloadB64));

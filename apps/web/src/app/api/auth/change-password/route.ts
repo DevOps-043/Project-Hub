@@ -11,7 +11,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
 import { hashBcryptPassword, hashPassword, verifyPassword } from '@/lib/auth/password';
 import { findSofiaUser } from '@/lib/auth/sofia-auth';
-import { getSofiaAdmin, isSofiaConfigured } from '@/lib/supabase/sofia-client';
+import { getSofiaServiceRoleClient, isSofiaConfigured } from '@/lib/supabase/sofia-client';
 
 export const runtime = 'nodejs';
 
@@ -85,28 +85,30 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'La nueva contrasena debe ser diferente a la actual' }, { status: 400 });
       }
 
-      const sofia = getSofiaAdmin();
+      const sofia = getSofiaServiceRoleClient();
       if (!sofia) {
         return NextResponse.json({
-          error: 'SOFIA Supabase no esta configurado para actualizar contrasenas',
-        }, { status: 500 });
+          error: 'SOFIA_SUPABASE_SERVICE_ROLE_KEY no esta disponible en el runtime de apps/web. La contrasena no se actualizo.',
+        }, { status: 503 });
       }
 
       const newSofiaPasswordHash = await hashBcryptPassword(newPassword);
-      const { error: sofiaUpdateError } = await sofia
+      const { data: updatedSofiaUser, error: sofiaUpdateError } = await sofia
         .from('users')
         .update({
           password_hash: newSofiaPasswordHash,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', sofiaUser.user_id);
+        .eq('id', sofiaUser.user_id)
+        .select('id')
+        .maybeSingle();
 
-      if (sofiaUpdateError) {
+      if (sofiaUpdateError || !updatedSofiaUser) {
         console.error('Error actualizando contrasena en SOFIA:', sofiaUpdateError);
         return NextResponse.json({
-          error: 'SOFIA no permitio actualizar la contrasena. Revisa la RLS de users o configura SOFIA_SUPABASE_SERVICE_ROLE_KEY.',
-          details: sofiaUpdateError.message,
-        }, { status: 500 });
+          error: 'SOFIA no permitio actualizar la contrasena. Verifica que la service role pertenezca al proyecto SOFIA y que el usuario exista.',
+          details: sofiaUpdateError?.message,
+        }, { status: sofiaUpdateError ? 500 : 404 });
       }
 
       passwordHashForLocalMirror = newSofiaPasswordHash;

@@ -6,6 +6,21 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGoogleConnection } from '@/shared/hooks/useGoogleConnection';
 
+async function readApiJson(response: Response): Promise<any> {
+  const text = await response.text().catch(() => '');
+  if (!text) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      error: response.ok
+        ? 'Respuesta inesperada del servidor'
+        : 'Respuesta no valida del servidor. Intenta nuevamente o revisa el tamano del archivo.',
+    };
+  }
+}
+
 export default function WorkspaceProfilePage() {
   const { user, fetchCurrentUser } = useAuthStore();
   const { isDark } = useTheme();
@@ -126,7 +141,7 @@ export default function WorkspaceProfilePage() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(dataToSend)
       });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.error || 'Error al actualizar perfil');
       setSuccessMessage('Perfil actualizado correctamente');
       await fetchCurrentUser();
@@ -151,7 +166,7 @@ export default function WorkspaceProfilePage() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(passwordData)
       });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.error || 'Error al cambiar contrasena');
       setSuccessMessage('Contrasena actualizada correctamente');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -165,15 +180,23 @@ export default function WorkspaceProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) { setErrorMessage('Tipo de archivo no permitido. Usa: JPG, PNG, GIF o WebP'); return; }
-    if (file.size > 5 * 1024 * 1024) { setErrorMessage('El archivo es demasiado grande. Maximo 5MB'); return; }
+    if (!allowedTypes.includes(file.type)) {
+      setErrorMessage('Tipo de archivo no permitido. Usa: JPG, PNG, GIF o WebP');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('El archivo es demasiado grande. Maximo 5MB');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     setUploadingAvatar(true); setErrorMessage(null);
     try {
       const token = localStorage.getItem('accessToken');
       const formDataUpload = new FormData();
       formDataUpload.append('file', file);
       const res = await fetch('/api/upload/avatar', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formDataUpload });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.error || 'Error al subir la imagen');
       setFormData(prev => ({ ...prev, avatar_url: data.avatarUrl }));
       setSuccessMessage('Imagen de perfil actualizada');
@@ -190,7 +213,7 @@ export default function WorkspaceProfilePage() {
     try {
       const token = localStorage.getItem('accessToken');
       const res = await fetch('/api/upload/avatar', { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok) throw new Error(data.error || 'Error al eliminar la imagen');
       setFormData(prev => ({ ...prev, avatar_url: '' }));
       setSuccessMessage('Imagen de perfil eliminada');

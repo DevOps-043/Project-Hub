@@ -8,6 +8,7 @@ import { verifyToken } from '@/lib/auth/jwt';
 import {
   getWorkspaceBySlug,
   getUserWorkspaceRole,
+  getWorkspaceMemberCount,
   getWorkspaceMembers,
 } from '@/lib/services/workspace-service';
 
@@ -54,8 +55,11 @@ export async function GET(
       );
     }
 
-    // Obtener miembros del workspace
-    const members = await getWorkspaceMembers(workspace.workspace_id);
+    const includeMembers = request.nextUrl.searchParams.get('includeMembers') === 'true';
+    const [memberCount, members] = await Promise.all([
+      getWorkspaceMemberCount(workspace.workspace_id),
+      includeMembers ? getWorkspaceMembers(workspace.workspace_id, { limit: 1000, offset: 0 }) : Promise.resolve([]),
+    ]);
 
     return NextResponse.json({
       workspace: {
@@ -69,6 +73,7 @@ export async function GET(
       },
       userRole: membership.iris_role,
       sofiaRole: membership.sofia_role,
+      memberCount,
       members: members.map((m: any) => ({
         id: m.member_id,
         userId: m.user_id,

@@ -5,8 +5,34 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Variable para almacenar el cliente (lazy initialization)
-let _supabaseAdmin: SupabaseClient | null = null;
+declare global {
+  // Mantiene una sola instancia por proceso incluso con HMR en desarrollo.
+  // eslint-disable-next-line no-var
+  var __projectHubSupabaseAdmin: SupabaseClient | undefined;
+}
+
+let _supabaseAdmin: SupabaseClient | null = globalThis.__projectHubSupabaseAdmin || null;
+
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} no esta configurada`);
+  }
+
+  return value;
+}
+
+function validateSupabaseUrl(url: string): void {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new Error('invalid protocol');
+    }
+  } catch {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL debe ser una URL valida');
+  }
+}
 
 /**
  * Obtiene el cliente de Supabase Admin.
@@ -18,39 +44,9 @@ export function getSupabaseAdmin(): SupabaseClient {
   }
 
   // Leer variables de entorno EN TIEMPO DE EJECUCIÓN (no al importar el módulo)
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  // DEBUG: Mostrar qué valores se están leyendo
-  console.log('🔍 DEBUG - Variables de Supabase:');
-  console.log('   NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? `"${supabaseUrl.substring(0, 30)}..."` : 'undefined');
-  console.log('   SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? '[CONFIGURADA]' : 'undefined');
-
-  if (!supabaseUrl) {
-    console.error('❌ NEXT_PUBLIC_SUPABASE_URL no está configurada');
-    console.error('   Valor actual:', supabaseUrl);
-    console.error('   ');
-    console.error('   Asegúrate de configurar en apps/web/.env.local:');
-    console.error('   NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co');
-    throw new Error('NEXT_PUBLIC_SUPABASE_URL no está configurada. Revisa la consola para más detalles.');
-  }
-
-  if (!supabaseServiceKey) {
-    console.error('❌ SUPABASE_SERVICE_ROLE_KEY no está configurada');
-    console.error('   ');
-    console.error('   Asegúrate de configurar en apps/web/.env.local:');
-    console.error('   SUPABASE_SERVICE_ROLE_KEY=tu-service-role-key');
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY no está configurada. Revisa la consola para más detalles.');
-  }
-
-  // Validar formato de URL
-  if (!supabaseUrl.startsWith('http://') && !supabaseUrl.startsWith('https://')) {
-    console.error('❌ NEXT_PUBLIC_SUPABASE_URL tiene formato inválido');
-    console.error('   Valor actual:', supabaseUrl);
-    console.error('   ');
-    console.error('   Debe ser una URL válida como: https://tu-proyecto.supabase.co');
-    throw new Error('NEXT_PUBLIC_SUPABASE_URL debe comenzar con http:// o https://');
-  }
+  const supabaseUrl = getRequiredEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const supabaseServiceKey = getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY');
+  validateSupabaseUrl(supabaseUrl);
 
   // Cliente con service role (acceso completo, sin RLS)
   _supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
@@ -58,7 +54,13 @@ export function getSupabaseAdmin(): SupabaseClient {
       autoRefreshToken: false,
       persistSession: false,
     },
+    global: {
+      headers: {
+        'X-Client-Info': 'project-hub-web',
+      },
+    },
   });
+  globalThis.__projectHubSupabaseAdmin = _supabaseAdmin;
 
   return _supabaseAdmin;
 }

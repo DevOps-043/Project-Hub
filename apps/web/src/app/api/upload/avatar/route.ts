@@ -11,7 +11,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
 import { findSofiaUser } from '@/lib/auth/sofia-auth';
-import { getSofiaAdmin, isSofiaConfigured } from '@/lib/supabase/sofia-client';
+import { getSofiaServiceRoleClient, isSofiaConfigured } from '@/lib/supabase/sofia-client';
 
 export const runtime = 'nodejs';
 
@@ -60,7 +60,7 @@ async function getStorageTarget(user: AuthenticatedUser): Promise<{
 } | NextResponse> {
   if (isSofiaConfigured()) {
     const sofiaUser = await findSofiaUser(user.email || user.username);
-    const sofia = getSofiaAdmin();
+    const sofia = getSofiaServiceRoleClient();
 
     if (!sofiaUser) {
       return NextResponse.json({
@@ -70,8 +70,8 @@ async function getStorageTarget(user: AuthenticatedUser): Promise<{
 
     if (!sofia) {
       return NextResponse.json({
-        error: 'SOFIA Supabase no esta configurado para actualizar la foto de perfil',
-      }, { status: 500 });
+        error: 'SOFIA_SUPABASE_SERVICE_ROLE_KEY no esta disponible en el runtime de apps/web. Agrega la variable en apps/web/.env.local y reinicia Next.js para subir avatares en SOFIA.',
+      }, { status: 503 });
     }
 
     return {
@@ -114,7 +114,15 @@ export async function POST(request: NextRequest) {
     const userResult = await getAuthenticatedUser(request);
     if (userResult instanceof NextResponse) return userResult;
 
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch (error) {
+      console.warn('No se pudo procesar FormData de avatar:', error);
+      return NextResponse.json({
+        error: 'No se pudo procesar la imagen. Verifica que sea un archivo JPG, PNG, GIF o WebP de maximo 5MB.',
+      }, { status: 400 });
+    }
     const file = formData.get('file') as File | null;
 
     if (!file) {
@@ -153,7 +161,7 @@ export async function POST(request: NextRequest) {
       console.error('Error subiendo avatar:', uploadError);
       return NextResponse.json({
         error: target.isSofia
-          ? 'No se pudo subir la imagen al bucket avatars de SOFIA. Revisa las politicas de Storage/RLS o configura SOFIA_SUPABASE_SERVICE_ROLE_KEY.'
+          ? `No se pudo subir la imagen al bucket ${target.bucket} de SOFIA. Verifica que el bucket exista, acepte el tipo/tamano del archivo y que la service role pertenezca al proyecto SOFIA.`
           : 'Error al subir la imagen',
         details: uploadError.message,
       }, { status: 500 });

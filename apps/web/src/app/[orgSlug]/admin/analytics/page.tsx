@@ -100,7 +100,18 @@ export default function WorkspaceAnalyticsPage() {
     if (loading) return <div className="p-10 text-center animate-pulse">Cargando metricas...</div>;
     if (!data) return <div className="p-10 text-center">No hay datos disponibles</div>;
 
-    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+    const projectHealth = data.summary?.projectHealth || { on_track: 0, at_risk: 0, off_track: 0, none: 0 };
+    const projectHealthData = [
+        { name: 'On Track', value: projectHealth.on_track || 0, color: '#10B981' },
+        { name: 'At Risk', value: projectHealth.at_risk || 0, color: '#F59E0B' },
+        { name: 'Off Track', value: projectHealth.off_track || 0, color: '#EF4444' },
+        { name: 'None', value: projectHealth.none || 0, color: '#6B7280' }
+    ].filter(d => d.value > 0);
+    const safeProjectHealthData = projectHealthData.length > 0
+        ? projectHealthData
+        : [{ name: 'Sin proyectos', value: 1, color: '#6B7280' }];
+    const velocityData = data.velocity || [];
+    const workloadData = data.workload || [];
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8 animate-fadeIn pb-20">
@@ -119,21 +130,21 @@ export default function WorkspaceAnalyticsPage() {
                 />
                 <StatCard
                     title="Tasa de Entrega"
-                    value={`${data.summary.compilationRate}%`}
+                    value={`${data.summary.completionRate ?? data.summary.compilationRate ?? 0}%`}
                     sub="Tareas completadas vs total"
                     icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>}
                     color="bg-green-500/10 text-green-500"
                 />
                 <StatCard
                     title="Proyectos en Riesgo"
-                    value={data.summary.projectHealth.at_risk + data.summary.projectHealth.off_track}
-                    sub={`${data.summary.projectHealth.on_track} en curso normal`}
+                    value={(projectHealth.at_risk || 0) + (projectHealth.off_track || 0)}
+                    sub={`${projectHealth.on_track || 0} en curso normal`}
                     icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}
                     color="bg-orange-500/10 text-orange-500"
                 />
                 <StatCard
                     title="Velocidad Reciente"
-                    value={data.velocity.length > 0 ? data.velocity[data.velocity.length - 1].points : 0}
+                    value={velocityData.length > 0 ? velocityData[velocityData.length - 1].points : 0}
                     sub="Puntos entregados el último ciclo"
                     icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m13 2-2 10h3L11 22"/></svg>}
                     color="bg-yellow-500/10 text-yellow-500"
@@ -145,14 +156,14 @@ export default function WorkspaceAnalyticsPage() {
                     <h3 className="font-bold mb-6">Velocidad del Equipo (Puntos por Ciclo)</h3>
                     <div className="h-72">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={data.velocity}>
+                            <BarChart data={velocityData}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.1} />
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} opacity={0.6} />
                                 <YAxis axisLine={false} tickLine={false} fontSize={12} opacity={0.6} />
                                 <Tooltip contentStyle={{ background: isDark ? '#1f2937' : '#fff', borderRadius: '8px', border: 'none' }} />
                                 <Bar dataKey="points" radius={[4, 4, 0, 0]}>
-                                    {data.velocity.map((_:any, index:number) => (
-                                        <Cell key={`cell-${index}`} fill={index === data.velocity.length - 1 ? '#00D4B3' : '#3B82F6'} fillOpacity={0.8} />
+                                    {velocityData.map((_:any, index:number) => (
+                                        <Cell key={`cell-${index}`} fill={index === velocityData.length - 1 ? '#00D4B3' : '#3B82F6'} fillOpacity={0.8} />
                                     ))}
                                 </Bar>
                             </BarChart>
@@ -163,9 +174,9 @@ export default function WorkspaceAnalyticsPage() {
                 <div className="bg-white dark:bg-[#161b22] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
                     <h3 className="font-bold mb-6">Distribución de Carga (Tareas Activas)</h3>
                     <div className="h-72">
-                        {data.workload.length > 0 ? (
+                        {workloadData.length > 0 ? (
                             <ResponsiveContainer width="100%" height="100%">
-                                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={data.workload}>
+                                <RadarChart cx="50%" cy="50%" outerRadius="80%" data={workloadData}>
                                     <PolarGrid strokeOpacity={0.1} />
                                     <PolarAngleAxis dataKey="name" fontSize={11} />
                                     <Radar name="Tareas" dataKey="tasks" stroke="#00D4B3" fill="#00D4B3" fillOpacity={0.5} />
@@ -186,29 +197,15 @@ export default function WorkspaceAnalyticsPage() {
                          <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie 
-                                    data={[
-                                        { name: 'On Track', value: data.summary.projectHealth.on_track, color: '#10B981' },
-                                        { name: 'At Risk', value: data.summary.projectHealth.at_risk, color: '#F59E0B' },
-                                        { name: 'Off Track', value: data.summary.projectHealth.off_track, color: '#EF4444' },
-                                        { name: 'None', value: data.summary.projectHealth.none, color: '#6B7280' }
-                                    ].filter(d => d.value > 0)} 
+                                    data={safeProjectHealthData}
                                     innerRadius={60} 
                                     outerRadius={80} 
                                     paddingAngle={5} 
                                     dataKey="value"
                                 >
-                                    {(data.summary.projectHealth.on_track + data.summary.projectHealth.at_risk + data.summary.projectHealth.off_track + data.summary.projectHealth.none) > 0 ? (
-                                        [
-                                            { name: 'On Track', value: data.summary.projectHealth.on_track, color: '#10B981' },
-                                            { name: 'At Risk', value: data.summary.projectHealth.at_risk, color: '#F59E0B' },
-                                            { name: 'Off Track', value: data.summary.projectHealth.off_track, color: '#EF4444' },
-                                            { name: 'None', value: data.summary.projectHealth.none, color: '#6B7280' }
-                                        ].filter(d => d.value > 0).map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} />
-                                        ))
-                                    ) : (
-                                        <Cell fill="#374151" />
-                                    )}
+                                    {safeProjectHealthData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
                                 </Pie>
                                 <Tooltip />
                                 <Legend />

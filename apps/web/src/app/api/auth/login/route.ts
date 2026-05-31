@@ -66,6 +66,14 @@ interface LoginResponse {
   authSource: 'sofia' | 'local';
 }
 
+const AUTH_DEBUG = process.env.AUTH_DEBUG === 'true';
+
+function debugLogin(...args: unknown[]): void {
+  if (AUTH_DEBUG) {
+    console.log(...args);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: LoginRequest = await request.json();
@@ -103,12 +111,12 @@ export async function POST(request: NextRequest) {
     // FLUJO 1: Intentar autenticación con SOFIA primero
     // ═══════════════════════════════════════════════════════════
     if (isSofiaAuthEnabled()) {
-      console.log('🔐 [LOGIN] Intentando autenticación con SOFIA...');
+      debugLogin('🔐 [LOGIN] Intentando autenticación con SOFIA...');
       
       const sofiaUser = await findSofiaUser(email);
       
       if (sofiaUser) {
-        console.log('✅ [LOGIN] Usuario encontrado en SOFIA:', sofiaUser.email);
+        debugLogin('✅ [LOGIN] Usuario encontrado en SOFIA:', sofiaUser.email);
         
         // Verificar estado de cuenta en SOFIA
         if (sofiaUser.locked_until) {
@@ -147,7 +155,7 @@ export async function POST(request: NextRequest) {
         }
 
         // ✅ Autenticación SOFIA exitosa - Sincronizar con IRIS
-        console.log('✅ [LOGIN] Password verificado con SOFIA, sincronizando con IRIS...');
+        debugLogin('✅ [LOGIN] Password verificado con SOFIA, sincronizando con IRIS...');
         
         const irisUser = await syncSofiaUserToIris(sofiaUser);
         
@@ -214,14 +222,14 @@ export async function POST(request: NextRequest) {
         });
         return res;
       } else {
-        console.log('ℹ️ [LOGIN] Usuario no encontrado en SOFIA, probando auth local...');
+        debugLogin('ℹ️ [LOGIN] Usuario no encontrado en SOFIA, probando auth local...');
       }
     }
 
     // ═══════════════════════════════════════════════════════════
     // FLUJO 2: Fallback a autenticación local (IRIS)
     // ═══════════════════════════════════════════════════════════
-    console.log('🔐 [LOGIN] Usando autenticación local (Project Hub)...');
+    debugLogin('🔐 [LOGIN] Usando autenticación local (Project Hub)...');
 
     // Buscar usuario por email o username en la BD local (case-insensitive)
     const { data: user, error: userError } = await supabaseAdmin
@@ -240,8 +248,8 @@ export async function POST(request: NextRequest) {
     };
 
     if (userError || !user) {
-      console.log('❌ [LOGIN] Usuario NO encontrado en BD local. Email/Username:', email);
-      console.log('❌ [LOGIN] Error de Supabase:', userError?.message || 'Sin error, simplemente no existe');
+      debugLogin('❌ [LOGIN] Usuario NO encontrado en BD local. Email/Username:', email);
+      debugLogin('❌ [LOGIN] Error de Supabase:', userError?.message || 'Sin error, simplemente no existe');
       await supabaseAdmin.from('auth_login_history').insert(loginLog);
       return NextResponse.json(
         { error: 'Credenciales inválidas' },
@@ -250,8 +258,8 @@ export async function POST(request: NextRequest) {
     }
 
     const accountUser = user as AccountUser;
-    console.log('✅ [LOGIN] Usuario encontrado en BD local:', accountUser.email, '| Status:', accountUser.account_status);
-    console.log('🔑 [LOGIN] Hash format:', accountUser.password_hash?.substring(0, 10) + '...');
+    debugLogin('✅ [LOGIN] Usuario encontrado en BD local:', accountUser.email, '| Status:', accountUser.account_status);
+    debugLogin('🔑 [LOGIN] Hash format:', accountUser.password_hash?.substring(0, 10) + '...');
     loginLog.user_id = accountUser.user_id;
 
     // Verificar si la cuenta está bloqueada
@@ -283,9 +291,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificar contraseña
-    console.log('🔑 [LOGIN] Verificando contraseña contra hash...');
+    debugLogin('🔑 [LOGIN] Verificando contraseña contra hash...');
     const isPasswordValid = await verifyPassword(password, accountUser.password_hash);
-    console.log('🔑 [LOGIN] Resultado verificación:', isPasswordValid ? '✅ VÁLIDA' : '❌ INVÁLIDA');
+    debugLogin('🔑 [LOGIN] Resultado verificación:', isPasswordValid ? '✅ VÁLIDA' : '❌ INVÁLIDA');
 
     if (!isPasswordValid) {
       loginLog.login_status = 'failed_password';
@@ -387,9 +395,9 @@ async function syncSofiaUserToIris(sofiaUser: any): Promise<AccountUser> {
     // Solo actualizar avatar si SOFIA tiene uno (no sobrescribir con null)
     if (sofiaUser.avatar_url) {
       updateData.avatar_url = sofiaUser.avatar_url;
-      console.log('🖼️ [SYNC] Sincronizando avatar desde SOFIA:', sofiaUser.avatar_url.substring(0, 60) + '...');
+      debugLogin('🖼️ [SYNC] Sincronizando avatar desde SOFIA:', sofiaUser.avatar_url.substring(0, 60) + '...');
     } else {
-      console.log('🖼️ [SYNC] SOFIA no tiene avatar, manteniendo el existente:', existingUser.avatar_url ? 'tiene' : 'vacío');
+      debugLogin('🖼️ [SYNC] SOFIA no tiene avatar, manteniendo el existente:', existingUser.avatar_url ? 'tiene' : 'vacío');
     }
 
     const { data: updatedUser } = await supabaseAdmin
@@ -432,7 +440,7 @@ async function syncSofiaUserToIris(sofiaUser: any): Promise<AccountUser> {
     throw new Error('Error al sincronizar usuario con Project Hub');
   }
 
-  console.log('✅ [SYNC] Usuario sincronizado de SOFIA a Project Hub:', newUser.email);
+  debugLogin('✅ [SYNC] Usuario sincronizado de SOFIA a Project Hub:', newUser.email);
   return newUser as AccountUser;
 }
 

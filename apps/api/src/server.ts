@@ -17,6 +17,10 @@ dotenv.config();
 const app: Application = express();
 const PORT = process.env.PORT || 4000;
 const API_VERSION = process.env.API_VERSION || 'v1';
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || `${15 * 60 * 1000}`, 10);
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '1000', 10);
+const BODY_LIMIT = process.env.BODY_LIMIT || '1mb';
+const ENABLE_HTTP_LOGGING = process.env.HTTP_LOGGING === 'true' || process.env.NODE_ENV === 'development';
 
 // ======================
 // GLOBAL MIDDLEWARE
@@ -24,6 +28,8 @@ const API_VERSION = process.env.API_VERSION || 'v1';
 
 // Security middleware
 app.use(helmet());
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
 
 // CORS configuration
 app.use(cors({
@@ -33,8 +39,10 @@ app.use(cors({
 
 // Rate limiting
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    windowMs: Number.isFinite(RATE_LIMIT_WINDOW_MS) ? RATE_LIMIT_WINDOW_MS : 15 * 60 * 1000,
+    max: Number.isFinite(RATE_LIMIT_MAX) ? RATE_LIMIT_MAX : 1000,
+    standardHeaders: true,
+    legacyHeaders: false,
     message: {
         success: false,
         error: {
@@ -46,11 +54,15 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Request logging
-app.use(morgan('dev'));
+if (ENABLE_HTTP_LOGGING) {
+    app.use(morgan('dev', {
+        skip: (req) => req.path === '/health',
+    }));
+}
 
 // Body parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 
 // Compression
 app.use(compression());

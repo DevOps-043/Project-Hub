@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
 import { verifyToken } from '@/lib/auth/jwt';
+import { parsePagination } from '@/lib/http/query';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
@@ -30,10 +31,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const { page, limit, offset } = parsePagination(searchParams, {
+      defaultLimit: 10,
+      maxLimit: 100,
+    });
     const search = searchParams.get('search') || '';
-    const offset = (page - 1) * limit;
 
     const isAdmin = ['owner', 'admin'].includes(member.iris_role);
 

@@ -39,6 +39,22 @@ export interface VerifyResult {
   workspaceId: string;
 }
 
+async function recordApiKeyUsage(keyId: string, currentTotalRequests: number): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase.rpc('increment_mcp_api_key_usage', { p_key_id: keyId });
+
+  if (!error) return;
+
+  // Compatibilidad mientras la migracion de performance no se haya aplicado.
+  await supabase
+    .from('mcp_api_keys')
+    .update({
+      last_used_at: new Date().toISOString(),
+      total_requests: currentTotalRequests + 1,
+    })
+    .eq('key_id', keyId);
+}
+
 // --- Funciones ---
 
 export function normalizeApiKeyScopes(
@@ -64,10 +80,6 @@ export function normalizeApiKeyScopes(
 
   if (normalized.length === 0) {
     return null;
-  }
-
-  if (normalized.includes('write') && !normalized.includes('read')) {
-    normalized.unshift('read');
   }
 
   return normalized;
@@ -163,14 +175,7 @@ export async function verifyApiKey(plainKey: string): Promise<VerifyResult | nul
   if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
   const normalizedScopes = normalizeApiKeyScopes(data.scopes, ['read']) || ['read'];
 
-  // Actualizar uso atomicamente
-  await supabase
-    .from('mcp_api_keys')
-    .update({
-      last_used_at: new Date().toISOString(),
-      total_requests: (data.total_requests || 0) + 1,
-    })
-    .eq('key_id', data.key_id);
+  await recordApiKeyUsage(data.key_id, data.total_requests || 0);
 
   return {
     valid: true,

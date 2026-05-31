@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWorkspaceBySlug, getUserWorkspaceRole, getWorkspaceMembers, syncAllOrgMembers, updateMemberRole } from '@/lib/services/workspace-service';
+import {
+  getWorkspaceBySlug,
+  getUserWorkspaceRole,
+  getWorkspaceMembersPage,
+  syncAllOrgMembers,
+  updateMemberRole,
+} from '@/lib/services/workspace-service';
 import { verifyToken } from '@/lib/auth/jwt';
+import { parsePagination } from '@/lib/http/query';
 
 const ALLOWED_ROLES = ['owner', 'admin', 'manager', 'leader', 'member'] as const;
 const ROLES_THAT_CAN_EDIT = ['owner', 'admin'];
@@ -23,17 +30,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!userMember) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 });
 
     const forceSync = request.nextUrl.searchParams.get('sync') === 'true';
+    const { page, limit, offset } = parsePagination(request.nextUrl.searchParams, {
+      defaultLimit: 1000,
+      maxLimit: 1000,
+    });
 
     // Obtener miembros actuales
-    let members = await getWorkspaceMembers(workspace.workspace_id);
+    let memberPage = await getWorkspaceMembersPage(workspace.workspace_id, { limit, offset });
 
     // Sincronizar con SOFIA solo si: se fuerza, o hay muy pocos miembros (primera carga)
-    if (workspace.sofia_org_id && (forceSync || members.length <= 1)) {
+    if (workspace.sofia_org_id && (forceSync || memberPage.total <= 1)) {
       await syncAllOrgMembers(workspace.workspace_id, workspace.sofia_org_id);
-      members = await getWorkspaceMembers(workspace.workspace_id);
+      memberPage = await getWorkspaceMembersPage(workspace.workspace_id, { limit, offset });
     }
 
-    const transformedMembers = members.map((m: any) => ({
+    const transformedMembers = memberPage.members.map((m: any) => ({
       id: m.user_id,
       firstName: m.account_users?.first_name || '',
       lastNamePaternal: m.account_users?.last_name_paternal || '',
@@ -49,7 +60,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({
       users: transformedMembers,
-      pagination: { page: 1, limit: transformedMembers.length, total: transformedMembers.length, totalPages: 1 },
+      pagination: {
+        page,
+        limit,
+        total: memberPage.total,
+        totalPages: Math.ceil(memberPage.total / limit),
+      },
     });
   } catch (error) {
     console.error('Workspace members API error:', error);

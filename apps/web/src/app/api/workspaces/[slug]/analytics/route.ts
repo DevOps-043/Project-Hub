@@ -2,8 +2,46 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
 import { verifyToken } from '@/lib/auth/jwt';
+import { getMemoryCache, setMemoryCache } from '@/lib/cache/memory-cache';
 
 export const dynamic = 'force-dynamic';
+const configuredAnalyticsCacheTtl = Number.parseInt(process.env.ANALYTICS_CACHE_TTL_SECONDS || '30', 10);
+const configuredAnalyticsLookbackDays = Number.parseInt(process.env.ANALYTICS_LOOKBACK_DAYS || '90', 10);
+const ANALYTICS_CACHE_TTL_SECONDS = Number.isFinite(configuredAnalyticsCacheTtl)
+  ? configuredAnalyticsCacheTtl
+  : 30;
+const ANALYTICS_LOOKBACK_DAYS = Number.isFinite(configuredAnalyticsLookbackDays)
+  ? configuredAnalyticsLookbackDays
+  : 90;
+
+function isDoneStatus(statusType?: string): boolean {
+  return statusType === 'done' || statusType === 'completed';
+}
+
+function emptyAnalyticsPayload() {
+  const projectHealth = { on_track: 0, at_risk: 0, off_track: 0, none: 0 };
+
+  return {
+    isEmpty: true,
+    summary: {
+      totalTasks: 0,
+      avgCycleTime: 0,
+      projectHealth,
+      completionRate: 0,
+      compilationRate: 0,
+    },
+    tasks: {
+      total: 0,
+      distribution: [{ name: 'Sin datos', value: 1, color: '#6B7280' }],
+    },
+    projects: { total: 0, completed: 0, active: 0 },
+    velocity: [],
+    workload: [],
+    heatmap: [],
+    leaderboard: [],
+    ariaUsage: [],
+  };
+}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
@@ -20,6 +58,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
     if (!member) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 });
+
+    const cacheKey = `workspace-analytics:${workspace.workspace_id}`;
+    const cachedPayload = getMemoryCache<Record<string, any>>(cacheKey);
+    if (cachedPayload) {
+      return NextResponse.json(cachedPayload, {
+        headers: {
+          'Cache-Control': 'private, max-age=15',
+          'X-Project-Hub-Cache': 'HIT',
+        },
+      });
+    }
 
     const supabase = getSupabaseAdmin();
 
@@ -46,7 +95,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (orFilters.length > 0) {
       const { data } = await supabase
         .from('task_issues')
-        .select('status_id, completed_at, assignee_id, issue_id, created_at')
+        .select('status_id, completed_at, started_at, assignee_id, issue_id, created_at, cycle_id, estimate_points')
         .or(orFilters.join(','));
       tasks = data || [];
     }
@@ -67,10 +116,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // AI Usage scoped to members
     let ariaUsage: any[] = [];
     if (memberIds.length > 0) {
+      const usageSince = new Date(
+        Date.now() - ANALYTICS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
+      ).toISOString();
       const { data: usageLogs } = await supabase
         .from('aria_usage_logs')
         .select('tokens_total, created_at')
         .in('user_id', memberIds)
+        .gte('created_at', usageSince)
         .order('created_at', { ascending: true });
       
       if (usageLogs && usageLogs.length > 0) {
@@ -89,24 +142,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const hasRealData = tasks.length > 0 || projects.length > 0 || ariaUsage.length > 0;
 
     if (!hasRealData) {
-      const today = new Date();
-      const mockHeatmap = [];
-      for (let i = 0; i < 365; i++) {
-        const d = new Date(); d.setDate(today.getDate() - i);
-        if (Math.random() > 0.6) mockHeatmap.push({ date: d.toISOString().split('T')[0], count: Math.floor(Math.random() * 8) });
-      }
-      const mockAria = [];
-      for (let i = 30; i >= 0; i--) {
-        const d = new Date(); d.setDate(today.getDate() - i);
-        mockAria.push({ date: d.toISOString().split('T')[0], tokens: Math.floor(Math.random() * 5000) + 1000 });
-      }
-      return NextResponse.json({
-        isMock: true,
-        tasks: { total: 0, distribution: [{ name: 'Sin datos', value: 1, color: '#6B7280' }] },
-        projects: { total: 0, completed: 0, active: 0 },
-        heatmap: mockHeatmap,
-        leaderboard: [],
-        ariaUsage: mockAria,
+      const payload = emptyAnalyticsPayload();
+      setMemoryCache(cacheKey, payload, ANALYTICS_CACHE_TTL_SECONDS);
+      return NextResponse.json(payload, {
+        headers: {
+          'Cache-Control': 'private, max-age=15',
+          'X-Project-Hub-Cache': 'MISS',
+        },
       });
     }
 
@@ -120,15 +162,19 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }, { on_track: 0, at_risk: 0, off_track: 0, none: 0 });
 
     // 2. Velocidad (Puntos por Ciclo - Últimos 5 ciclos)
-    const { data: cycles } = await supabase
-      .from('task_cycles')
-      .select('cycle_id, name, start_date, number')
-      .eq('team_id', teamIds[0]) // Simplificado al primer equipo para el demo/contexto
-      .order('start_date', { ascending: false })
-      .limit(5);
+    let cycles: any[] = [];
+    if (teamIds.length > 0) {
+      const { data } = await supabase
+        .from('task_cycles')
+        .select('cycle_id, name, start_date, number')
+        .eq('team_id', teamIds[0]) // Simplificado al primer equipo para el demo/contexto
+        .order('start_date', { ascending: false })
+        .limit(5);
+      cycles = data || [];
+    }
 
-    const velocityData = (cycles || []).reverse().map(cycle => {
-      const cycleTasks = tasks.filter(t => t.cycle_id === cycle.cycle_id && (statusMap[t.status_id]?.status_type === 'done'));
+    const velocityData = cycles.reverse().map(cycle => {
+      const cycleTasks = tasks.filter(t => t.cycle_id === cycle.cycle_id && isDoneStatus(statusMap[t.status_id]?.status_type));
       const points = cycleTasks.reduce((sum, t) => sum + (t.estimate_points || 0), 0);
       return { name: cycle.name, points };
     });
@@ -147,7 +193,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 4. Workload distribution (Tareas activas por usuario)
     const workloadMap: Record<string, { tasks: number, points: number }> = {};
     tasks.forEach(t => {
-      if (t.assignee_id && statusMap[t.status_id]?.status_type !== 'done' && statusMap[t.status_id]?.status_type !== 'cancelled') {
+      if (t.assignee_id && !isDoneStatus(statusMap[t.status_id]?.status_type) && statusMap[t.status_id]?.status_type !== 'cancelled') {
         if (!workloadMap[t.assignee_id]) workloadMap[t.assignee_id] = { tasks: 0, points: 0 };
         workloadMap[t.assignee_id].tasks += 1;
         workloadMap[t.assignee_id].points += (t.estimate_points || 0);
@@ -170,26 +216,63 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const heatmapData: Record<string, number> = {};
     tasks.forEach(t => {
       const type = statusMap[t.status_id]?.status_type;
-      if ((type === 'done' || t.completed_at) && t.created_at) {
+      if ((isDoneStatus(type) || t.completed_at) && t.created_at) {
         const date = new Date(t.completed_at || t.created_at).toISOString().split('T')[0];
         heatmapData[date] = (heatmapData[date] || 0) + 1;
       }
     });
 
     // Task Distribution
-    const typeLabelMap: Record<string, string> = { done: 'Completadas', in_progress: 'En Progreso', todo: 'Por Hacer', backlog: 'Backlog', cancelled: 'Canceladas', in_review: 'En Revision' };
+    const typeLabelMap: Record<string, string> = { done: 'Completadas', completed: 'Completadas', in_progress: 'En Progreso', todo: 'Por Hacer', backlog: 'Backlog', cancelled: 'Canceladas', in_review: 'En Revision' };
     const taskStatusCounts = tasks.reduce((acc: any, t) => { const type = statusMap[t.status_id]?.status_type || 'backlog'; acc[type] = (acc[type] || 0) + 1; return acc; }, {});
-    const distribution = Object.entries(taskStatusCounts).map(([type, count]) => ({
+    const distribution = tasks.length > 0 ? Object.entries(taskStatusCounts).map(([type, count]) => ({
       name: typeLabelMap[type] || type, value: count,
-      color: type === 'done' ? '#10B981' : type === 'in_progress' ? '#3B82F6' : type === 'todo' ? '#F59E0B' : type === 'cancelled' ? '#EF4444' : '#6B7280',
-    }));
+      color: isDoneStatus(type) ? '#10B981' : type === 'in_progress' ? '#3B82F6' : type === 'todo' ? '#F59E0B' : type === 'cancelled' ? '#EF4444' : '#6B7280',
+    })) : [{ name: 'Sin datos', value: 1, color: '#6B7280' }];
 
-    return NextResponse.json({
+    const completedByUser: Record<string, number> = {};
+    tasks.forEach(t => {
+      if (t.assignee_id && (isDoneStatus(statusMap[t.status_id]?.status_type) || t.completed_at)) {
+        completedByUser[t.assignee_id] = (completedByUser[t.assignee_id] || 0) + 1;
+      }
+    });
+    const leaderboardUserIds = Object.entries(completedByUser)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([userId]) => userId);
+    let leaderboard: any[] = [];
+    if (leaderboardUserIds.length > 0) {
+      const { data: users } = await supabase
+        .from('account_users')
+        .select('user_id, display_name, first_name, last_name_paternal, email, avatar_url')
+        .in('user_id', leaderboardUserIds);
+
+      leaderboard = leaderboardUserIds.map(userId => {
+        const user = users?.find(u => u.user_id === userId);
+        const fullName = user?.display_name || [user?.first_name, user?.last_name_paternal].filter(Boolean).join(' ') || user?.email || 'Usuario';
+        return {
+          count: completedByUser[userId],
+          user: {
+            user_id: userId,
+            full_name: fullName,
+            email: user?.email || '',
+            avatar_url: user?.avatar_url || null,
+          },
+        };
+      });
+    }
+
+    const completedCount = Object.entries(taskStatusCounts).reduce((sum, [type, count]) => (
+      isDoneStatus(type) ? sum + Number(count) : sum
+    ), 0);
+
+    const responsePayload = {
       summary: {
         totalTasks: tasks.length,
         avgCycleTime: avgCycleTimeDays,
         projectHealth,
-        compilationRate: tasks.length > 0 ? Math.round((taskStatusCounts['done'] || 0) / tasks.length * 100) : 0
+        completionRate: tasks.length > 0 ? Math.round(completedCount / tasks.length * 100) : 0,
+        compilationRate: tasks.length > 0 ? Math.round(completedCount / tasks.length * 100) : 0,
       },
       tasks: { total: tasks.length, distribution },
       projects: {
@@ -200,6 +283,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       velocity: velocityData,
       workload: workloadData,
       heatmap: Object.entries(heatmapData).map(([date, count]) => ({ date, count })),
+      leaderboard,
+      ariaUsage,
+    };
+    setMemoryCache(cacheKey, responsePayload, ANALYTICS_CACHE_TTL_SECONDS);
+
+    return NextResponse.json(responsePayload, {
+      headers: {
+        'Cache-Control': 'private, max-age=15',
+        'X-Project-Hub-Cache': 'MISS',
+      },
     });
   } catch (error: any) {
     console.error('Workspace analytics error:', error);

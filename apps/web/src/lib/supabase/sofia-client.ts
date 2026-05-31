@@ -90,10 +90,12 @@ export function getSofiaClient(): SupabaseClient | null {
 // ── Cliente SOFIA (Server-side) ──
 
 let _sofiaAdmin: SupabaseClient | null = null;
+let _sofiaServiceRole: SupabaseClient | null = null;
 
 /**
- * Obtiene el cliente SOFIA para el lado del servidor (API routes)
- * Usa anon key ya que no tenemos service_role de SOFIA
+ * Obtiene el cliente SOFIA para el lado del servidor (API routes).
+ * Puede usar anon key para lecturas compatibles con RLS; no debe usarse para
+ * escrituras privilegiadas.
  */
 export function getSofiaAdmin(): SupabaseClient | null {
   if (_sofiaAdmin) return _sofiaAdmin;
@@ -114,12 +116,45 @@ export function getSofiaAdmin(): SupabaseClient | null {
 }
 
 /**
+ * Cliente server-side con service role. Usar solo en rutas API que escriben en
+ * SOFIA despues de validar autenticacion/autorizacion en Project Hub.
+ */
+export function getSofiaServiceRoleClient(): SupabaseClient | null {
+  if (_sofiaServiceRole) return _sofiaServiceRole;
+
+  const sofiaUrl = isValidUrl(SOFIA_SUPABASE.URL) ? SOFIA_SUPABASE.URL : '';
+  const serviceRoleKey = SOFIA_SUPABASE.SERVICE_ROLE_KEY || '';
+
+  if (!sofiaUrl || !serviceRoleKey) return null;
+
+  _sofiaServiceRole = createClient(sofiaUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+
+  return _sofiaServiceRole;
+}
+
+/**
  * Verifica si SOFIA está configurado
  */
 export function isSofiaConfigured(): boolean {
   return (
     SOFIA_SUPABASE.URL !== '' &&
     SOFIA_SUPABASE.ANON_KEY !== '' &&
+    isValidUrl(SOFIA_SUPABASE.URL)
+  );
+}
+
+/**
+ * Verifica si el runtime puede escribir en SOFIA con service role.
+ */
+export function isSofiaServiceRoleConfigured(): boolean {
+  return (
+    SOFIA_SUPABASE.URL !== '' &&
+    SOFIA_SUPABASE.SERVICE_ROLE_KEY !== '' &&
     isValidUrl(SOFIA_SUPABASE.URL)
   );
 }

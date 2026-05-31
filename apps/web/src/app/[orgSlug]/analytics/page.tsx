@@ -101,6 +101,11 @@ export default function WorkspaceAnalyticsPage() {
     if (!data) return <div className="p-10 text-center">No hay datos disponibles</div>;
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+    const taskDistribution = data.tasks?.distribution?.length
+        ? data.tasks.distribution
+        : [{ name: 'Sin datos', value: 1, color: '#6B7280' }];
+    const leaderboard = data.leaderboard || [];
+    const ariaUsage = data.ariaUsage || [];
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8 animate-fadeIn">
@@ -125,13 +130,13 @@ export default function WorkspaceAnalyticsPage() {
                 />
                 <StatCard
                     title="Tasa de Completitud"
-                    value={`${data.tasks.total > 0 ? Math.round((data.tasks.distribution.find((d:any) => d.name === 'Completadas')?.value || 0) / data.tasks.total * 100) : 0}%`}
+                    value={`${data.tasks.total > 0 ? Math.round((taskDistribution.find((d:any) => d.name === 'Completadas')?.value || 0) / data.tasks.total * 100) : 0}%`}
                     icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>}
                     color="bg-green-500/10 text-green-500"
                 />
                 <StatCard
                     title="Uso de Tokens (Hoy)"
-                    value={data.ariaUsage?.length > 0 ? data.ariaUsage[data.ariaUsage.length - 1].tokens : 0}
+                    value={ariaUsage.length > 0 ? ariaUsage[ariaUsage.length - 1].tokens : 0}
                     icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20"/><path d="M2 12h20"/><path d="m4.93 4.93 14.14 14.14"/><path d="m19.07 4.93-14.14 14.14"/></svg>}
                     color="bg-[#00D4B3]/10 text-[#00D4B3]"
                 />
@@ -143,8 +148,8 @@ export default function WorkspaceAnalyticsPage() {
                     <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
-                                <Pie data={data.tasks.distribution} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                    {data.tasks.distribution.map((entry: any, index: number) => (
+                                <Pie data={taskDistribution} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                                    {taskDistribution.map((entry: any, index: number) => (
                                         <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
@@ -158,7 +163,7 @@ export default function WorkspaceAnalyticsPage() {
                 <div className="bg-white dark:bg-[#161b22] p-6 rounded-2xl border border-gray-200 dark:border-white/5 lg:col-span-2 shadow-sm">
                     <h3 className="font-bold mb-6">Top Productividad (Usuarios)</h3>
                     <div className="space-y-4">
-                        {data.leaderboard.map((item: any, i: number) => (
+                        {leaderboard.map((item: any, i: number) => (
                             <div key={i} className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                 <div className={`w-8 h-8 flex items-center justify-center rounded-full font-bold text-xs ${i === 0 ? 'bg-yellow-500 text-black' : 'bg-gray-200 dark:bg-zinc-800'}`}>
                                     {i + 1}
@@ -182,7 +187,7 @@ export default function WorkspaceAnalyticsPage() {
                                 </div>
                             </div>
                         ))}
-                        {data.leaderboard.length === 0 && (
+                        {leaderboard.length === 0 && (
                             <div className="text-center py-10 opacity-50">No hay datos suficientes aun</div>
                         )}
                     </div>
@@ -196,12 +201,12 @@ export default function WorkspaceAnalyticsPage() {
                 <ActivityHeatmap data={data.heatmap} />
             </div>
 
-            {data.ariaUsage?.length > 0 && (
+            {ariaUsage.length > 0 && (
                 <div className="bg-white dark:bg-[#161b22] p-6 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm">
                     <h3 className="font-bold mb-6">Consumo de IA (Tokens)</h3>
                     <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={data.ariaUsage}>
+                            <AreaChart data={ariaUsage}>
                                 <defs>
                                     <linearGradient id="colorTokens" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#00D4B3" stopOpacity={0.3}/>

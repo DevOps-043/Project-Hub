@@ -37,6 +37,12 @@ const icons = {
       <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
     </svg>
   ),
+  tasks: (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4"/>
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+    </svg>
+  ),
 
   analytics: (
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -98,6 +104,7 @@ const ownerMenuItems: MenuItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
   { id: 'users', label: 'Usuarios', icon: 'users', path: '/members' },
   { id: 'teams', label: 'Equipos', icon: 'teams', path: '/teams' },
+  { id: 'tasks', label: 'Tareas', icon: 'tasks', path: '/tasks' },
   { id: 'projects', label: 'Proyectos', icon: 'projects', path: '/projects' },
 
   { id: 'analytics', label: 'Analytics', icon: 'analytics', path: '/analytics' },
@@ -110,6 +117,7 @@ const adminMenuItems: MenuItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
   { id: 'users', label: 'Usuarios', icon: 'users', path: '/members' },
   { id: 'teams', label: 'Equipos', icon: 'teams', path: '/teams' },
+  { id: 'tasks', label: 'Tareas', icon: 'tasks', path: '/tasks' },
   { id: 'projects', label: 'Proyectos', icon: 'projects', path: '/projects' },
 
   { id: 'analytics', label: 'Analytics', icon: 'analytics', path: '/analytics' },
@@ -120,6 +128,7 @@ const adminMenuItems: MenuItem[] = [
 const managerMenuItems: MenuItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
   { id: 'teams', label: 'Equipos', icon: 'teams', path: '/teams' },
+  { id: 'tasks', label: 'Tareas', icon: 'tasks', path: '/tasks' },
   { id: 'projects', label: 'Proyectos', icon: 'projects', path: '/projects' },
   { id: 'reports', label: 'Reportes', icon: 'reports', path: '/reports' },
   { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },
@@ -128,6 +137,7 @@ const managerMenuItems: MenuItem[] = [
 const leaderMenuItems: MenuItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
   { id: 'teams', label: 'Mis Equipos', icon: 'teams', path: '/teams' },
+  { id: 'tasks', label: 'Tareas', icon: 'tasks', path: '/tasks' },
   { id: 'projects', label: 'Mis Proyectos', icon: 'projects', path: '/projects' },
   { id: 'reports', label: 'Reportes', icon: 'reports', path: '/reports' },
   { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },
@@ -136,6 +146,7 @@ const leaderMenuItems: MenuItem[] = [
 const memberMenuItems: MenuItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '' },
   { id: 'teams', label: 'Mis Equipos', icon: 'teams', path: '/teams' },
+  { id: 'tasks', label: 'Tareas', icon: 'tasks', path: '/tasks' },
   { id: 'projects', label: 'Mis Proyectos', icon: 'projects', path: '/projects' },
   { id: 'reports', label: 'Reportes', icon: 'reports', path: '/reports' },
   { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },

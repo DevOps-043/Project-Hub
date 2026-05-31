@@ -11,6 +11,56 @@ import { getSofiaAdmin, isSofiaConfigured } from '@/lib/supabase/sofia-client';
 
 export const runtime = 'nodejs';
 
+const USER_PROFILE_SELECT = `
+  user_id,
+  email,
+  username,
+  first_name,
+  last_name_paternal,
+  last_name_maternal,
+  display_name,
+  phone_number,
+  permission_level,
+  company_role,
+  department,
+  avatar_url,
+  is_email_verified,
+  timezone,
+  locale,
+  created_at,
+  updated_at,
+  last_activity_at
+`;
+
+const configuredActivityTouchSeconds = Number.parseInt(
+  process.env.AUTH_ACTIVITY_TOUCH_INTERVAL_SECONDS || '300',
+  10
+);
+const ACTIVITY_TOUCH_INTERVAL_MS = (
+  Number.isFinite(configuredActivityTouchSeconds) ? configuredActivityTouchSeconds : 300
+) * 1000;
+
+function shouldTouchActivity(lastActivityAt: string | null): boolean {
+  if (!lastActivityAt) return true;
+
+  const lastActivityTime = new Date(lastActivityAt).getTime();
+  if (!Number.isFinite(lastActivityTime)) return true;
+
+  return Date.now() - lastActivityTime >= ACTIVITY_TOUCH_INTERVAL_MS;
+}
+
+function touchUserActivity(userId: string): void {
+  void supabaseAdmin
+    .from('account_users')
+    .update({ last_activity_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .then(({ error }) => {
+      if (error) {
+        console.error('Error actualizando last_activity_at:', error.message);
+      }
+    });
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Obtener token del header Authorization
@@ -43,7 +93,7 @@ export async function GET(request: NextRequest) {
     // Obtener datos actualizados del usuario
     const { data: user, error } = await supabaseAdmin
       .from('account_users')
-      .select('*')
+      .select(USER_PROFILE_SELECT)
       .eq('user_id', payload.sub)
       .single();
 
@@ -54,11 +104,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Actualizar last_activity_at
-    await supabaseAdmin
-      .from('account_users')
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq('user_id', user.user_id);
+    if (shouldTouchActivity(user.last_activity_at)) {
+      touchUserActivity(user.user_id);
+    }
 
     // Mapear respuesta
     const response = mapUserResponse(user);

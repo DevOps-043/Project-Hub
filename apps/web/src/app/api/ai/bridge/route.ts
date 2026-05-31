@@ -467,18 +467,6 @@ async function getFallbackWorkspaceTeamId(workspaceId?: string) {
   return data?.team_id || null;
 }
 
-async function getNextIssueNumber(teamId: string) {
-  const { data: lastIssue } = await supabaseAdmin
-    .from('task_issues')
-    .select('issue_number')
-    .eq('team_id', teamId)
-    .order('issue_number', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  return (lastIssue?.issue_number || 0) + 1;
-}
-
 async function buildCreateTaskPayload(params: Record<string, any>, auth: BridgeAuth) {
   const title = nullableText(params.title || params.name || params.summary);
   if (!title) {
@@ -520,12 +508,9 @@ async function buildCreateTaskPayload(params: Record<string, any>, auth: BridgeA
     return { error: 'Could not resolve or create a task status for this team', status: 500 };
   }
 
-  const issueNumber = await getNextIssueNumber(teamId);
-
   return {
     payload: {
       team_id: teamId,
-      issue_number: issueNumber,
       title,
       description: nullableText(params.description),
       status_id: statusId,
@@ -547,6 +532,10 @@ export async function GET(request: NextRequest) {
     const auth = await authenticateBridgeRequest(request);
     if (!auth.authenticated) {
       return NextResponse.json({ error: `Unauthorized: ${auth.error}` }, { status: 401 });
+    }
+
+    if (!auth.scopes?.includes('read')) {
+      return NextResponse.json({ error: 'API key does not have read permission' }, { status: 403 });
     }
 
     let projectsQuery = supabaseAdmin.from('pm_projects').select('project_id, project_name, project_status, priority_level, target_date, team_id');

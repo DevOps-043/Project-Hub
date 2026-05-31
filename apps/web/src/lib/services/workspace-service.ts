@@ -57,6 +57,52 @@ interface SofiaOrgData {
 
 // ── Funciones ──
 
+export interface WorkspaceMemberListOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export interface WorkspaceMembersPage {
+  members: any[];
+  total: number;
+}
+
+const WORKSPACE_SELECT = `
+  workspace_id,
+  sofia_org_id,
+  name,
+  slug,
+  description,
+  logo_url,
+  brand_color,
+  is_active,
+  settings,
+  created_at,
+  updated_at
+`;
+
+const WORKSPACE_MEMBER_SELECT = `
+  member_id,
+  workspace_id,
+  user_id,
+  sofia_role,
+  iris_role,
+  is_active,
+  joined_at,
+  updated_at,
+  account_users (
+    user_id,
+    first_name,
+    last_name_paternal,
+    display_name,
+    email,
+    avatar_url,
+    permission_level
+  )
+`;
+
+const SYNC_BATCH_SIZE = 500;
+
 /**
  * Mapea un rol de SOFIA al rol equivalente en Project Hub
  */
@@ -67,6 +113,14 @@ function mapSofiaRoleToIris(sofiaRole: string): WorkspaceMember['iris_role'] {
     case 'member': return 'member';
     default: return 'member';
   }
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 /**
@@ -105,7 +159,7 @@ export async function syncWorkspacesFromSofia(
           },
           { onConflict: 'sofia_org_id' }
         )
-        .select()
+        .select(WORKSPACE_SELECT)
         .single();
 
       if (wsError) {
@@ -185,7 +239,7 @@ export async function getWorkspacesForUser(userId: string): Promise<WorkspaceWit
       sofia_role,
       iris_role,
       is_active,
-      workspaces (*)
+      workspaces (${WORKSPACE_SELECT})
     `)
     .eq('user_id', userId)
     .eq('is_active', true);
@@ -214,7 +268,7 @@ export async function getWorkspaceBySlug(slug: string): Promise<Workspace | null
 
   const { data, error } = await supabase
     .from('workspaces')
-    .select('*')
+    .select(WORKSPACE_SELECT)
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -238,7 +292,7 @@ export async function getUserWorkspaceRole(
 
   const { data, error } = await supabase
     .from('workspace_members')
-    .select('*')
+    .select('member_id, workspace_id, user_id, sofia_role, iris_role, is_active, joined_at, updated_at')
     .eq('workspace_id', workspaceId)
     .eq('user_id', userId)
     .eq('is_active', true)
@@ -253,34 +307,65 @@ export async function getUserWorkspaceRole(
 }
 
 /**
- * Obtiene todos los miembros de un workspace
+ * Obtiene miembros de un workspace con paginacion opcional.
  */
-export async function getWorkspaceMembers(workspaceId: string) {
+export async function getWorkspaceMembersPage(
+  workspaceId: string,
+  options: WorkspaceMemberListOptions = {}
+): Promise<WorkspaceMembersPage> {
   const supabase = getSupabaseAdmin();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('workspace_members')
-    .select(`
-      *,
-      account_users (
-        user_id,
-        first_name,
-        last_name_paternal,
-        display_name,
-        email,
-        avatar_url,
-        permission_level
-      )
-    `)
+    .select(WORKSPACE_MEMBER_SELECT, { count: 'exact' })
+    .eq('workspace_id', workspaceId)
+    .eq('is_active', true)
+    .order('joined_at', { ascending: true });
+
+  if (options.limit !== undefined) {
+    const offset = options.offset || 0;
+    query = query.range(offset, offset + options.limit - 1);
+  }
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    console.error('[WORKSPACE SERVICE] Error fetching members:', error.message);
+    return { members: [], total: 0 };
+  }
+
+  return {
+    members: data || [],
+    total: count ?? data?.length ?? 0,
+  };
+}
+
+/**
+ * Obtiene todos los miembros de un workspace.
+ */
+export async function getWorkspaceMembers(
+  workspaceId: string,
+  options: WorkspaceMemberListOptions = {}
+) {
+  const { members } = await getWorkspaceMembersPage(workspaceId, options);
+  return members;
+}
+
+export async function getWorkspaceMemberCount(workspaceId: string): Promise<number> {
+  const supabase = getSupabaseAdmin();
+
+  const { count, error } = await supabase
+    .from('workspace_members')
+    .select('member_id', { count: 'exact', head: true })
     .eq('workspace_id', workspaceId)
     .eq('is_active', true);
 
   if (error) {
-    console.error('[WORKSPACE SERVICE] Error fetching members:', error.message);
-    return [];
+    console.error('[WORKSPACE SERVICE] Error counting members:', error.message);
+    return 0;
   }
 
-  return data || [];
+  return count || 0;
 }
 
 /**
@@ -315,6 +400,13 @@ export async function syncAllOrgMembers(
   workspaceId: string,
   sofiaOrgId: string
 ): Promise<void> {
+  return syncAllOrgMembersBatched(workspaceId, sofiaOrgId);
+}
+
+async function syncAllOrgMembersBatched(
+  workspaceId: string,
+  sofiaOrgId: string
+): Promise<void> {
   const sofia = getSofiaAdmin();
   if (!sofia) return;
 
@@ -322,81 +414,128 @@ export async function syncAllOrgMembers(
 
   try {
     // 1. Obtener miembros ya existentes en workspace_members (para no sobreescribir iris_role)
-    const { data: existingMembers } = await supabase
+    const { data: existingMembers, error: existingMembersError } = await supabase
       .from('workspace_members')
       .select('user_id')
       .eq('workspace_id', workspaceId);
 
-    const existingIds = new Set((existingMembers || []).map((m: any) => m.user_id));
+    if (existingMembersError) {
+      console.error('[WORKSPACE SERVICE] Error fetching existing members:', existingMembersError.message);
+      return;
+    }
+
+    const existingIds = new Set((existingMembers || []).map((member: any) => member.user_id));
 
     // 2. Obtener todos los miembros de la org en SOFIA
     const { data: orgMembers, error: orgError } = await sofia
       .from('organization_users')
-      .select('*')
+      .select('user_id, role, status')
       .eq('organization_id', sofiaOrgId);
 
     if (orgError || !orgMembers?.length) return;
 
     // 3. Filtrar solo los que NO existen aún en workspace_members
-    const newOrgMembers = orgMembers.filter((m: any) => !existingIds.has(m.user_id));
+    const newOrgMembers = orgMembers.filter((member: any) => {
+      if (member.status === 'removed') return false;
+      return !existingIds.has(member.user_id);
+    });
     if (newOrgMembers.length === 0) return; // Todos ya sincronizados
 
     // 4. Obtener datos de SOFIA solo para los nuevos
-    const newUserIds = newOrgMembers.map((m: any) => m.user_id);
+    const newUserIds = newOrgMembers.map((member: any) => member.user_id);
+    const orgMemberByUserId = new Map<string, any>(
+      newOrgMembers.map((member: any) => [member.user_id, member])
+    );
     const { data: sofiaUsers, error: usersError } = await sofia
       .from('users')
-      .select('*')
+      .select(`
+        id,
+        user_id,
+        first_name,
+        last_name,
+        last_name_paternal,
+        last_name_maternal,
+        display_name,
+        username,
+        email,
+        password_hash,
+        permission_level,
+        role,
+        account_status,
+        status,
+        is_email_verified,
+        avatar_url,
+        avatar,
+        timezone,
+        locale
+      `)
       .in('id', newUserIds);
 
     if (usersError || !sofiaUsers?.length) return;
 
-    // 5. Insertar solo los nuevos en account_users y workspace_members
-    for (const sofiaUser of sofiaUsers) {
-      const orgMember = newOrgMembers.find((m: any) => m.user_id === sofiaUser.id);
-      if (!orgMember) continue;
-
+    const accountRows = sofiaUsers.map((sofiaUser: any) => {
       const sofiaUserId = sofiaUser.id || sofiaUser.user_id;
 
-      try {
-        await supabase
-          .from('account_users')
-          .upsert(
-            {
-              user_id: sofiaUserId,
-              first_name: sofiaUser.first_name || sofiaUser.username || '',
-              last_name_paternal: sofiaUser.last_name_paternal || sofiaUser.last_name || '',
-              last_name_maternal: sofiaUser.last_name_maternal || null,
-              display_name: sofiaUser.display_name || sofiaUser.username || '',
-              username: sofiaUser.username || sofiaUser.email,
-              email: sofiaUser.email,
-              password_hash: sofiaUser.password_hash || 'synced-from-sofia',
-              permission_level: sofiaUser.permission_level || sofiaUser.role || 'user',
-              account_status: sofiaUser.account_status || sofiaUser.status || 'active',
-              is_email_verified: sofiaUser.is_email_verified ?? true,
-              avatar_url: sofiaUser.avatar_url || sofiaUser.avatar || null,
-              timezone: sofiaUser.timezone || 'America/Mexico_City',
-              locale: sofiaUser.locale || 'es-MX',
-            },
-            { onConflict: 'user_id' }
-          );
+      return {
+        user_id: sofiaUserId,
+        first_name: sofiaUser.first_name || sofiaUser.username || '',
+        last_name_paternal: sofiaUser.last_name_paternal || sofiaUser.last_name || '',
+        last_name_maternal: sofiaUser.last_name_maternal || null,
+        display_name: sofiaUser.display_name || sofiaUser.username || '',
+        username: sofiaUser.username || sofiaUser.email,
+        email: sofiaUser.email,
+        password_hash: sofiaUser.password_hash || 'synced-from-sofia',
+        permission_level: sofiaUser.permission_level || sofiaUser.role || 'user',
+        account_status: sofiaUser.account_status || sofiaUser.status || 'active',
+        is_email_verified: sofiaUser.is_email_verified ?? true,
+        avatar_url: sofiaUser.avatar_url || sofiaUser.avatar || null,
+        timezone: sofiaUser.timezone || 'America/Mexico_City',
+        locale: sofiaUser.locale || 'es-MX',
+      };
+    });
 
-        const irisRole = mapSofiaRoleToIris(orgMember.role || 'member');
+    const memberRows = sofiaUsers
+      .map((sofiaUser: any) => {
+        const sofiaUserId = sofiaUser.id || sofiaUser.user_id;
+        const orgMember = orgMemberByUserId.get(sofiaUserId);
+        if (!orgMember) return null;
 
-        await supabase
-          .from('workspace_members')
-          .insert({
-            workspace_id: workspaceId,
-            user_id: sofiaUserId,
-            sofia_role: orgMember.role || 'member',
-            iris_role: irisRole,
-            is_active: true,
-          });
-      } catch (err) {
-        console.error(`[WORKSPACE SERVICE] Error syncing member ${sofiaUser.email}:`, err);
+        return {
+          workspace_id: workspaceId,
+          user_id: sofiaUserId,
+          sofia_role: orgMember.role || 'member',
+          iris_role: mapSofiaRoleToIris(orgMember.role || 'member'),
+          is_active: true,
+        };
+      })
+      .filter(Boolean) as Array<Record<string, unknown>>;
+
+    for (const batch of chunkArray(accountRows, SYNC_BATCH_SIZE)) {
+      const { error: accountError } = await supabase
+        .from('account_users')
+        .upsert(batch, { onConflict: 'user_id' });
+
+      if (accountError) {
+        console.error('[WORKSPACE SERVICE] Error upserting synced users:', accountError.message);
+        return;
       }
     }
 
-    console.log(`[WORKSPACE SERVICE] Synced ${sofiaUsers.length} new members from SOFIA org`);
+    for (const batch of chunkArray(memberRows, SYNC_BATCH_SIZE)) {
+      const { error: memberError } = await supabase
+        .from('workspace_members')
+        .upsert(batch, { onConflict: 'workspace_id,user_id', ignoreDuplicates: true });
+
+      if (memberError) {
+        console.error('[WORKSPACE SERVICE] Error upserting workspace members:', memberError.message);
+        return;
+      }
+    }
+
+    if (process.env.DEBUG_WORKSPACE_SYNC === 'true') {
+      console.log(`[WORKSPACE SERVICE] Synced ${memberRows.length} new members from SOFIA org`);
+    }
+
   } catch (err) {
     console.error('[WORKSPACE SERVICE] Error in syncAllOrgMembers:', err);
   }

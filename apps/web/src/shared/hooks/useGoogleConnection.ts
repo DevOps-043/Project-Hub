@@ -11,6 +11,29 @@ interface GoogleConnectionState {
   scopes: string[] | null;
 }
 
+export async function startGoogleConnection(returnUrl?: string): Promise<void> {
+  const token = localStorage.getItem('accessToken');
+  if (!token) {
+    throw new Error('Sesion no disponible. Inicia sesion nuevamente.');
+  }
+
+  const res = await fetch('/api/auth/google/connect', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ returnUrl: returnUrl || window.location.pathname }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.url) {
+    throw new Error(data.error || 'No se pudo iniciar la conexion con Google');
+  }
+
+  window.location.href = data.url;
+}
+
 /**
  * Hook para gestionar la conexión de Google OAuth del usuario.
  * Verifica el estado de conexión y proporciona funciones para conectar/desconectar.
@@ -71,8 +94,9 @@ export function useGoogleConnection() {
   }, [checkStatus]);
 
   const connect = useCallback((returnUrl?: string) => {
-    const url = returnUrl || window.location.pathname;
-    window.location.href = `/api/auth/google/connect?returnUrl=${encodeURIComponent(url)}`;
+    void startGoogleConnection(returnUrl).catch((error) => {
+      console.error('Error iniciando Google OAuth:', error);
+    });
   }, []);
 
   const disconnect = useCallback(async () => {

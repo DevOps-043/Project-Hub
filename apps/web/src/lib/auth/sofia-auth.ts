@@ -24,6 +24,14 @@ import { createClient } from '@supabase/supabase-js';
 import { SOFIA_SUPABASE, isValidUrl } from '../supabase/config';
 import type { SofiaUser } from '../supabase/sofia-client';
 
+const SOFIA_AUTH_DEBUG = process.env.SOFIA_AUTH_DEBUG === 'true';
+
+function debugSofiaAuth(...args: unknown[]): void {
+  if (SOFIA_AUTH_DEBUG) {
+    console.log(...args);
+  }
+}
+
 /**
  * Obtiene un cliente SOFIA para el servidor (API routes)
  * No usa storage, no persiste sesión
@@ -63,7 +71,43 @@ export async function findSofiaUser(emailOrUsername: string): Promise<SofiaUser 
   try {
     const { data, error } = await sofia
       .from('users')
-      .select('*')
+      .select(`
+        id,
+        user_id,
+        first_name,
+        last_name,
+        last_name_paternal,
+        last_name_maternal,
+        display_name,
+        username,
+        email,
+        password_hash,
+        permission_level,
+        role,
+        company_role,
+        bio,
+        department,
+        location,
+        account_status,
+        status,
+        is_email_verified,
+        email_verified_at,
+        profile_picture_url,
+        avatar_url,
+        avatar,
+        profile_image_url,
+        photo_url,
+        phone_number,
+        phone,
+        timezone,
+        locale,
+        last_login_at,
+        last_activity_at,
+        failed_login_attempts,
+        locked_until,
+        created_at,
+        updated_at
+      `)
       .or(`email.ilike.${emailOrUsername},username.ilike.${emailOrUsername}`)
       .maybeSingle();
 
@@ -72,17 +116,17 @@ export async function findSofiaUser(emailOrUsername: string): Promise<SofiaUser 
       return null;
     }
     if (!data) {
-      console.log('[SOFIA AUTH] Usuario no encontrado en tabla users');
+      debugSofiaAuth('[SOFIA AUTH] Usuario no encontrado en tabla users');
       return null;
     }
 
-    console.log('[SOFIA AUTH] Usuario encontrado en SOFIA:', data.email, '| username:', data.username);
+    debugSofiaAuth('[SOFIA AUTH] Usuario encontrado en SOFIA:', data.email, '| username:', data.username);
 
     // Resolver avatar desde múltiples posibles nombres de columna en SofLIA
     // En SofLIA Learning, la columna es "profile_picture_url"
     const resolvedAvatar = data.profile_picture_url || data.avatar_url || data.avatar || data.profile_image_url || data.photo_url || null;
-    console.log('[SOFIA AUTH] Avatar resuelto:', resolvedAvatar ? resolvedAvatar.substring(0, 80) + '...' : 'NULL');
-    console.log('[SOFIA AUTH] Campos disponibles:', Object.keys(data).join(', '));
+    debugSofiaAuth('[SOFIA AUTH] Avatar resuelto:', resolvedAvatar ? resolvedAvatar.substring(0, 80) + '...' : 'NULL');
+    debugSofiaAuth('[SOFIA AUTH] Campos disponibles:', Object.keys(data).join(', '));
 
     // Mapear columnas de SOFIA (users) al formato SofiaUser
     const mapped: SofiaUser = {
@@ -129,14 +173,35 @@ export async function findSofiaUserById(userId: string): Promise<SofiaUser | nul
   try {
     const { data, error } = await sofia
       .from('users')
-      .select('*')
+      .select(`
+        id,
+        user_id,
+        first_name,
+        last_name,
+        last_name_paternal,
+        last_name_maternal,
+        display_name,
+        username,
+        email,
+        password_hash,
+        permission_level,
+        role,
+        account_status,
+        status,
+        avatar_url,
+        profile_picture_url,
+        timezone,
+        locale,
+        created_at,
+        updated_at
+      `)
       .eq('id', userId)
       .maybeSingle();
 
     if (error || !data) return null;
 
     // Mapear id -> user_id
-    return { ...data, user_id: data.id || data.user_id } as SofiaUser;
+    return { ...data, user_id: data.id || data.user_id } as unknown as SofiaUser;
   } catch {
     console.error('[SOFIA AUTH] Error buscando usuario por ID en SOFIA');
     return null;
@@ -146,18 +211,37 @@ export async function findSofiaUserById(userId: string): Promise<SofiaUser | nul
 /**
  * Obtiene las organizaciones y equipos del usuario en SOFIA
  */
-export async function getSofiaUserOrgs(userId: string) {
+export async function getSofiaUserOrgs(userId: string): Promise<any[]> {
   const sofia = getSofiaServerClient();
   if (!sofia) return [];
 
   try {
     const { data, error } = await sofia
       .from('organization_users')
-      .select('*, organizations(*)')
+      .select(`
+        organization_id,
+        user_id,
+        role,
+        status,
+        organizations (
+          id,
+          name,
+          slug,
+          logo_url,
+          brand_logo_url,
+          brand_primary_color,
+          description
+        )
+      `)
       .eq('user_id', userId);
 
     if (error || !data) return [];
-    return data;
+    return data.map((row: any) => ({
+      ...row,
+      organizations: Array.isArray(row.organizations)
+        ? row.organizations[0]
+        : row.organizations,
+    }));
   } catch {
     console.error('[SOFIA AUTH] Error obteniendo organizaciones del usuario');
     return [];

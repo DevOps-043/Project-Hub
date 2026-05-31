@@ -606,6 +606,7 @@ export function TeamTasksContent() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         teamId={teamId}
+        workspaceSlug={orgSlug}
         onIssueCreated={(issue) => {
           setIssues(prev => [...prev, issue]);
         }}

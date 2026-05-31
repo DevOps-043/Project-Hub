@@ -255,17 +255,6 @@ export async function POST(
       }
     }
 
-    // Get the next issue number for this team
-    const { data: lastIssue } = await supabaseAdmin
-      .from('task_issues')
-      .select('issue_number')
-      .eq('team_id', teamId)
-      .order('issue_number', { ascending: false })
-      .limit(1)
-      .single();
-
-    const nextIssueNumber = (lastIssue?.issue_number || 0) + 1;
-
     const finalStatusId = await resolveTaskStatusId(supabaseAdmin, teamId, status_id, body.status_type);
 
     if (!finalStatusId) {
@@ -283,7 +272,6 @@ export async function POST(
     // Create issue
     const insertData = {
       team_id: teamId,
-      issue_number: nextIssueNumber,
       title: title.trim(),
       description: description || null,
       status_id: finalStatusId,
@@ -297,8 +285,6 @@ export async function POST(
       creator_id: payload.sub,
       sort_order: 0
     };
-
-    console.log('[POST issues] Inserting issue:', JSON.stringify(insertData, null, 2));
 
     const { data: issue, error } = await supabaseAdmin
       .from('task_issues')
