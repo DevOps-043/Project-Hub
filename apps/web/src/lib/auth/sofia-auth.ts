@@ -69,45 +69,12 @@ export async function findSofiaUser(emailOrUsername: string): Promise<SofiaUser 
   if (!sofia) return null;
 
   try {
+    // SELECT * para evitar errores por columnas que pueden no existir en SofLIA
+    // (la tabla users de SofLIA puede tener esquema distinto: cargo_rol vs permission_level,
+    //  last_name vs last_name_paternal, is_banned vs account_status, etc.)
     const { data, error } = await sofia
       .from('users')
-      .select(`
-        id,
-        user_id,
-        first_name,
-        last_name,
-        last_name_paternal,
-        last_name_maternal,
-        display_name,
-        username,
-        email,
-        password_hash,
-        permission_level,
-        role,
-        company_role,
-        bio,
-        department,
-        location,
-        account_status,
-        status,
-        is_email_verified,
-        email_verified_at,
-        profile_picture_url,
-        avatar_url,
-        avatar,
-        profile_image_url,
-        photo_url,
-        phone_number,
-        phone,
-        timezone,
-        locale,
-        last_login_at,
-        last_activity_at,
-        failed_login_attempts,
-        locked_until,
-        created_at,
-        updated_at
-      `)
+      .select('*')
       .or(`email.ilike.${emailOrUsername},username.ilike.${emailOrUsername}`)
       .maybeSingle();
 
@@ -128,6 +95,14 @@ export async function findSofiaUser(emailOrUsername: string): Promise<SofiaUser 
     debugSofiaAuth('[SOFIA AUTH] Avatar resuelto:', resolvedAvatar ? resolvedAvatar.substring(0, 80) + '...' : 'NULL');
     debugSofiaAuth('[SOFIA AUTH] Campos disponibles:', Object.keys(data).join(', '));
 
+    // Resolver account_status desde múltiples posibles campos de SofLIA.
+    // SofLIA usa is_banned (boolean) en vez de account_status (string).
+    // Solo marcamos inactivo si hay evidencia explícita de que la cuenta está bloqueada.
+    const INACTIVE_STATUSES = new Set(['banned', 'suspended', 'deleted', 'inactive', 'disabled', 'deactivated', 'blocked']);
+    const rawStatus = (data.account_status || data.status || '').toLowerCase();
+    const isBanned = data.is_banned === true;
+    const resolvedStatus = (isBanned || INACTIVE_STATUSES.has(rawStatus)) ? rawStatus || 'banned' : 'active';
+
     // Mapear columnas de SOFIA (users) al formato SofiaUser
     const mapped: SofiaUser = {
       user_id: data.id || data.user_id,
@@ -138,11 +113,11 @@ export async function findSofiaUser(emailOrUsername: string): Promise<SofiaUser 
       username: data.username,
       email: data.email,
       password_hash: data.password_hash,
-      permission_level: data.permission_level || data.role || 'user',
+      permission_level: data.permission_level || data.role || data.cargo_rol || 'user',
       company_role: data.company_role || data.bio || null,
       department: data.department || data.location || null,
-      account_status: data.account_status || data.status || 'active',
-      is_email_verified: data.is_email_verified ?? true,
+      account_status: resolvedStatus,
+      is_email_verified: data.is_email_verified ?? data.email_verified ?? true,
       email_verified_at: data.email_verified_at || null,
       avatar_url: resolvedAvatar,
       phone_number: data.phone_number || data.phone || null,
@@ -173,28 +148,7 @@ export async function findSofiaUserById(userId: string): Promise<SofiaUser | nul
   try {
     const { data, error } = await sofia
       .from('users')
-      .select(`
-        id,
-        user_id,
-        first_name,
-        last_name,
-        last_name_paternal,
-        last_name_maternal,
-        display_name,
-        username,
-        email,
-        password_hash,
-        permission_level,
-        role,
-        account_status,
-        status,
-        avatar_url,
-        profile_picture_url,
-        timezone,
-        locale,
-        created_at,
-        updated_at
-      `)
+      .select('*')
       .eq('id', userId)
       .maybeSingle();
 
@@ -216,23 +170,12 @@ export async function getSofiaUserOrgs(userId: string): Promise<any[]> {
   if (!sofia) return [];
 
   try {
+    // Seleccionar organization_users + join con organizations.
+    // Usamos * en ambas partes para tolerar diferencias de esquema entre
+    // la tabla de SofLIA y lo que Project Hub espera (slug, logo_url, etc.)
     const { data, error } = await sofia
       .from('organization_users')
-      .select(`
-        organization_id,
-        user_id,
-        role,
-        status,
-        organizations (
-          id,
-          name,
-          slug,
-          logo_url,
-          brand_logo_url,
-          brand_primary_color,
-          description
-        )
-      `)
+      .select('*, organizations (*)')
       .eq('user_id', userId);
 
     if (error || !data) return [];

@@ -19,7 +19,6 @@ export const SOFIA_SUPABASE = {
     process.env.SOFIA_SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SOFIA_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_SOFIA_SERVICE_ROLE_KEY ||
-    process.env.SOFLIA_SUPABASE_SERVICE_ROLE_KEY ||
     '',
 };
 

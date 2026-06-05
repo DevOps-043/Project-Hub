@@ -135,7 +135,11 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (sofiaUser.account_status !== 'active') {
+        // Bloqueamos solo si hay evidencia explícita de cuenta inactiva.
+        // sofia-auth.ts ya normaliza account_status: si is_banned=true o status=banned/suspended/etc.
+        // lo marca como no-'active'. Usuarios nuevos o con status desconocido quedan como 'active'.
+        const BLOCKED_STATUSES = new Set(['banned', 'suspended', 'deleted', 'inactive', 'disabled', 'deactivated', 'blocked']);
+        if (BLOCKED_STATUSES.has(sofiaUser.account_status)) {
           await logLoginAttempt(email, request, 'account_suspended', null);
           return NextResponse.json(
             { error: `Cuenta ${sofiaUser.account_status}. Contacta al administrador.` },
