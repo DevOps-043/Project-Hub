@@ -264,14 +264,57 @@ export async function POST(
     // Validate UUIDs for optional foreign keys - strip invalid values
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const validPriorityId = priority_id && uuidRegex.test(priority_id) ? priority_id : null;
-    const validAssigneeId = assignee_id && uuidRegex.test(assignee_id) ? assignee_id : null;
+    let validAssigneeId = assignee_id && uuidRegex.test(assignee_id) ? assignee_id : null;
     const validProjectId = project_id && uuidRegex.test(project_id) ? project_id : null;
     const validCycleId = cycle_id && uuidRegex.test(cycle_id) ? cycle_id : null;
     const validParentIssueId = parent_issue_id && uuidRegex.test(parent_issue_id) ? parent_issue_id : null;
 
+    // El creador (creator_id) tiene FK NOT NULL contra account_users. El JWT.sub
+    // proviene de la sincronización SOFIA->Project Hub, pero verificamos que exista
+    // para devolver un error claro en lugar de un 500 opaco por violación de FK.
+    const { data: creatorRow } = await supabaseAdmin
+      .from('account_users')
+      .select('user_id')
+      .eq('user_id', payload.sub)
+      .maybeSingle();
+
+    if (!creatorRow) {
+      return NextResponse.json(
+        { error: 'Tu usuario no está sincronizado en este espacio. Cierra sesión y vuelve a entrar.' },
+        { status: 409 }
+      );
+    }
+
+    // El assignee también referencia account_users. Un miembro de SOFIA puede no
+    // estar aún en account_users: en ese caso lo dejamos sin asignar en vez de
+    // romper el INSERT con una violación de FK.
+    if (validAssigneeId) {
+      const { data: assigneeRow } = await supabaseAdmin
+        .from('account_users')
+        .select('user_id')
+        .eq('user_id', validAssigneeId)
+        .maybeSingle();
+      if (!assigneeRow) {
+        console.warn(`Assignee ${validAssigneeId} no existe en account_users; se crea la tarea sin asignar.`);
+        validAssigneeId = null;
+      }
+    }
+
+    // issue_number depende del trigger trg_issue_number. Lo calculamos como respaldo
+    // por si el trigger no está aplicado en la BD (evita violación de NOT NULL).
+    const { data: lastIssue } = await supabaseAdmin
+      .from('task_issues')
+      .select('issue_number')
+      .eq('team_id', teamId)
+      .order('issue_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const nextIssueNumber = (lastIssue?.issue_number || 0) + 1;
+
     // Create issue
     const insertData = {
       team_id: teamId,
+      issue_number: nextIssueNumber,
       title: title.trim(),
       description: description || null,
       status_id: finalStatusId,
@@ -300,7 +343,15 @@ export async function POST(
 
     if (error) {
       console.error('Error creating issue:', JSON.stringify(error, null, 2));
-      return NextResponse.json({ error: 'Error al crear la tarea' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'Error al crear la tarea',
+          detail: error.message,
+          code: error.code,
+          hint: error.hint,
+        },
+        { status: 500 }
+      );
     }
 
     // Add labels if provided
