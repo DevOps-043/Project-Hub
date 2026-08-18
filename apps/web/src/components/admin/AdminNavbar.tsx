@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { NotificationCenter } from '@/features/notifications/NotificationCenter';
+import shellStyles from './AdminShell.module.css';
 
 // Iconos
 const icons = {
@@ -141,14 +142,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
 
   return (
     <header
-      className="fixed top-0 h-16 z-30 flex items-center justify-between px-6 transition-all duration-300 ease-in-out"
-      style={{
-        left: isMobile ? '0px' : (sidebarCollapsed ? '72px' : '260px'),
-        right: '0px',
-        background: isDark ? 'rgba(15, 20, 25, 0.8)' : 'rgba(255, 255, 255, 0.9)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: `1px solid ${colors.border}`,
-      }}
+      className={`${shellStyles.navbar} ${!isMobile && sidebarCollapsed ? shellStyles.navbarCollapsed : ''}`}
     >
       {/* Left Section */}
       <div className="flex items-center gap-3">
@@ -160,32 +154,35 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
         </button>
 
         {/* Workspace Logo & Name */}
-        {workspaceLogo && (
-          <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 border" style={{ borderColor: colors.border }}>
               <img
-                src={workspaceLogo}
+                src={workspaceLogo || '/Logo.png'}
                 alt={workspaceName || 'Workspace'}
                 className="w-full h-full object-contain"
               />
             </div>
-            {workspaceName && (
-              <span className="text-sm font-semibold hidden sm:block truncate max-w-[200px]" style={{ color: colors.textPrimary }}>
-                {workspaceName}
+            <div className="hidden sm:block min-w-0">
+              <span className="block text-sm font-semibold truncate max-w-[200px]" style={{ color: colors.textPrimary }}>
+                {workspaceName || 'Project Hub'}
               </span>
-            )}
+              <span className="block text-[10px] uppercase tracking-[0.12em]" style={{ color: colors.textMuted, fontFamily: 'var(--font-system-label)' }}>
+                Workspace
+              </span>
+            </div>
           </div>
-        )}
       </div>
 
       {/* Right Section */}
       <div className="flex items-center gap-3">
         {/* Search Bar Container */}
-        <div ref={searchContainerRef} className="relative">
+        <div ref={searchContainerRef} className="relative hidden sm:block">
           <div
             className="flex items-center gap-2 px-3 py-2 rounded-xl border transition-all duration-200"
             style={{
-              width: isSearchFocused ? '420px' : '250px',
+              width: isMobile
+                ? (isSearchFocused ? 'min(420px, 36vw)' : '210px')
+                : (isSearchFocused ? '420px' : '250px'),
               backgroundColor: isSearchFocused 
                 ? (isDark ? '#1a1f25' : colors.bgCard) 
                 : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'),

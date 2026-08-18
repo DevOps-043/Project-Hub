@@ -1,11 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTheme, themeColors } from '@/contexts/ThemeContext';
-import { useWorkspace, getPanelPathForRole } from '@/contexts/WorkspaceContext';
+import {
+  ArrowUpRight,
+  BarChart3,
+  Building2,
+  CalendarDays,
+  FolderKanban,
+  Loader2,
+  Settings,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
+import { useTheme } from '@/contexts/ThemeContext';
+import { getPanelPathForRole, useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuthStore } from '@/core/stores/authStore';
-import { Building2, Users, FolderKanban, BarChart3, Settings, Shield, Loader2 } from 'lucide-react';
+import styles from './DashboardContent.module.css';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Propietario',
@@ -17,10 +28,9 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function DashboardContent() {
   const { isDark } = useTheme();
-  const colors = isDark ? themeColors.dark : themeColors.light;
   const router = useRouter();
   const { workspace, userRole, permissions } = useWorkspace();
-  const user = useAuthStore((s) => s.user);
+  const user = useAuthStore((state) => state.user);
   const panelBase = getPanelPathForRole(workspace.slug, userRole);
 
   const [stats, setStats] = useState({ projects: 0, teams: 0, members: 0 });
@@ -50,7 +60,7 @@ export function DashboardContent() {
           members: membersData?.pagination?.total ?? (Array.isArray(membersData?.users) ? membersData.users.length : 0),
         });
       } catch {
-        // Keep defaults
+        // El dashboard sigue siendo utilizable aunque una métrica no esté disponible.
       } finally {
         setLoadingStats(false);
       }
@@ -59,142 +69,138 @@ export function DashboardContent() {
     fetchStats();
   }, [workspace?.slug]);
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Buenos días';
-    if (hour < 18) return 'Buenas tardes';
-    return 'Buenas noches';
-  };
-
-  const getFormattedDate = () => {
-    return new Date().toLocaleDateString('es-MX', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
+  const formattedDate = new Date().toLocaleDateString('es-MX', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
   const quickActions = [
     ...(permissions.manageProjects
-      ? [{ label: 'Nuevo Proyecto', icon: FolderKanban, href: `${panelBase}/projects?create=true` }]
+      ? [{ label: 'Nuevo proyecto', description: 'Crea y organiza un nuevo espacio de trabajo.', icon: FolderKanban, href: `${panelBase}/projects?create=true` }]
       : []),
     ...(permissions.manageTeams
-      ? [{ label: 'Crear Equipo', icon: Users, href: `${panelBase}/teams?create=true` }]
+      ? [{ label: 'Crear equipo', description: 'Agrupa responsables y colaboradores.', icon: Users, href: `${panelBase}/teams?create=true` }]
       : []),
     ...(permissions.viewAnalytics
-      ? [{ label: 'Ver Analytics', icon: BarChart3, href: `${panelBase}/analytics` }]
+      ? [{ label: 'Ver analítica', description: 'Revisa avance, carga y rendimiento.', icon: BarChart3, href: `${panelBase}/analytics` }]
       : []),
     ...(permissions.manageWorkspace
-      ? [{ label: 'Configuración', icon: Settings, href: `${panelBase}/settings` }]
+      ? [{ label: 'Configuración', description: 'Personaliza permisos y preferencias.', icon: Settings, href: `${panelBase}/settings` }]
       : []),
   ];
 
   const statCards = [
-    { label: 'Proyectos', value: stats.projects, icon: FolderKanban, href: `${panelBase}/projects` },
-    { label: 'Equipos', value: stats.teams, icon: Users, href: `${panelBase}/teams` },
+    { label: 'Proyectos', caption: 'en el workspace', value: stats.projects, icon: FolderKanban, href: `${panelBase}/projects` },
+    { label: 'Equipos', caption: 'grupos activos', value: stats.teams, icon: Users, href: `${panelBase}/teams` },
     ...(permissions.viewAllMembers
-      ? [{ label: 'Miembros', value: stats.members, icon: Users, href: `${panelBase}/members` }]
+      ? [{ label: 'Miembros', caption: 'personas registradas', value: stats.members, icon: Users, href: `${panelBase}/members` }]
       : []),
   ];
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* Welcome Banner */}
-      <div
-        className="relative overflow-hidden rounded-2xl p-6 md:p-8 transition-colors duration-300"
-        style={{
-          background: isDark
-            ? 'linear-gradient(135deg, rgba(0, 212, 179, 0.1) 0%, rgba(10, 37, 64, 0.8) 50%, rgba(15, 20, 25, 0.9) 100%)'
-            : 'linear-gradient(135deg, rgba(0, 212, 179, 0.15) 0%, rgba(248, 250, 252, 0.9) 50%, rgba(255, 255, 255, 1) 100%)',
-          border: `1px solid ${isDark ? 'rgba(0, 212, 179, 0.2)' : colors.border}`,
-        }}
-      >
-        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00D4B3]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-[#0A2540]/30 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
+    <div className={styles.dashboard} data-theme={isDark ? 'dark' : 'light'}>
+      <section className={styles.hero} aria-labelledby="workspace-greeting">
+        <div className={styles.heroGlow} aria-hidden="true" />
+        <div className={styles.heroArcLarge} aria-hidden="true" />
+        <div className={styles.heroArcSmall} aria-hidden="true" />
+        <span className={styles.heroDot} aria-hidden="true" />
 
-        <div className="relative z-10">
-          {/* Workspace Badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#00D4B3]/10 border border-[#00D4B3]/20 mb-4">
-            <Building2 className="w-4 h-4 text-[#00D4B3]" />
-            <span className="text-[#00D4B3] text-sm font-medium">{workspace.name}</span>
-            <span className="text-[#00D4B3]/60 text-xs">•</span>
-            <div className="flex items-center gap-1">
-              <Shield className="w-3 h-3 text-[#00D4B3]/60" />
-              <span className="text-[#00D4B3]/80 text-xs">{ROLE_LABELS[userRole] || userRole}</span>
+        <div className={styles.heroContent}>
+          <div className={styles.eyebrow}>
+            <span className={styles.eyebrowLine} aria-hidden="true" />
+            <Building2 size={13} aria-hidden="true" />
+            <span>Control del workspace</span>
+            <span className={styles.eyebrowSeparator} aria-hidden="true" />
+            <ShieldCheck size={13} aria-hidden="true" />
+            <span>{ROLE_LABELS[userRole] || userRole}</span>
+          </div>
+
+          <h1 id="workspace-greeting" className={styles.heroTitle}>
+            {greeting}, {user?.name || user?.firstName || 'Usuario'}.
+          </h1>
+
+          <div className={styles.heroMeta}>
+            <p>Supervisa tus proyectos, equipos y operación desde un solo lugar.</p>
+            <span className={styles.date}>
+              <CalendarDays size={14} aria-hidden="true" />
+              {formattedDate}
+            </span>
+          </div>
+        </div>
+
+        <div className={styles.workspacePill}>
+          <span className={styles.workspacePulse} aria-hidden="true" />
+          <span>{workspace.name}</span>
+        </div>
+      </section>
+
+      <section className={styles.section} aria-labelledby="summary-title">
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2 id="summary-title">Estado general</h2>
+            <p>Una vista rápida de la actividad de tu organización.</p>
+          </div>
+        </div>
+
+        <div className={styles.statsGrid}>
+          {statCards.map((stat) => (
+            <button
+              key={stat.label}
+              type="button"
+              onClick={() => router.push(stat.href)}
+              className={styles.statCard}
+              aria-label={`Abrir ${stat.label.toLowerCase()}`}
+            >
+              <span className={styles.iconBox}>
+                <stat.icon size={19} strokeWidth={1.7} aria-hidden="true" />
+              </span>
+              <span className={styles.statCopy}>
+                <span className={styles.statLabel}>{stat.label}</span>
+                <span className={styles.statValue}>
+                  {loadingStats ? <Loader2 className={styles.spinner} size={22} aria-label="Cargando" /> : stat.value}
+                </span>
+                <span className={styles.statCaption}>{stat.caption}</span>
+              </span>
+              <ArrowUpRight className={styles.cardArrow} size={18} aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {quickActions.length > 0 && (
+        <section className={styles.section} aria-labelledby="actions-title">
+          <div className={styles.sectionHeading}>
+            <div>
+              <h2 id="actions-title">Acciones rápidas</h2>
+              <p>Atajos para las tareas más frecuentes.</p>
             </div>
           </div>
 
-          {/* Greeting */}
-          <h1
-            className="text-2xl md:text-3xl font-bold mb-2 transition-colors"
-            style={{ color: colors.textPrimary }}
-          >
-            {getGreeting()},{' '}
-            <span className="text-[#00D4B3]">{user?.name || user?.firstName || 'Usuario'}</span>
-          </h1>
-
-          <p className="text-sm md:text-base" style={{ color: colors.textSecondary }}>
-            {getFormattedDate()} — Espacio de trabajo: <strong>{workspace.name}</strong>
-          </p>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      {quickActions.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold mb-3" style={{ color: colors.textPrimary }}>
-            Acciones rápidas
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className={styles.actionsGrid}>
             {quickActions.map((action) => (
               <button
                 key={action.label}
+                type="button"
                 onClick={() => router.push(action.href)}
-                className="flex items-center gap-3 p-4 rounded-xl border transition-all hover:shadow-md"
-                style={{
-                  background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'white',
-                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
-                }}
+                className={styles.actionCard}
               >
-                <action.icon className="w-5 h-5 text-[#00D4B3] flex-shrink-0" />
-                <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>
-                  {action.label}
+                <span className={styles.actionIcon}>
+                  <action.icon size={18} strokeWidth={1.8} aria-hidden="true" />
                 </span>
+                <span className={styles.actionCopy}>
+                  <strong>{action.label}</strong>
+                  <span>{action.description}</span>
+                </span>
+                <ArrowUpRight className={styles.actionArrow} size={17} aria-hidden="true" />
               </button>
             ))}
           </div>
-        </div>
+        </section>
       )}
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {statCards.map((stat) => (
-          <button
-            key={stat.label}
-            onClick={() => router.push(stat.href)}
-            className="p-5 rounded-xl border transition-all hover:shadow-md text-left"
-            style={{
-              background: isDark ? 'rgba(30, 35, 41, 0.8)' : 'white',
-              borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
-            }}
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <stat.icon className="w-5 h-5 text-[#00D4B3]" />
-              <span className="text-sm" style={{ color: colors.textSecondary }}>
-                {stat.label}
-              </span>
-            </div>
-            <p className="text-2xl font-bold" style={{ color: colors.textPrimary }}>
-              {loadingStats ? (
-                <Loader2 className="w-5 h-5 animate-spin text-[#00D4B3]" />
-              ) : (
-                stat.value
-              )}
-            </p>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

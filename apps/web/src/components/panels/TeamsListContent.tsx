@@ -1,490 +1,97 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useTheme, themeColors } from '@/contexts/ThemeContext';
+import Link from 'next/link';
+import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowRight, BriefcaseBusiness, Building2, Check, ChevronDown, CircleDot, GitBranch,
+  Globe2, Grid2X2, Layers3, Map as MapIcon, MapPin, Network, Plus, Search, Settings2,
+  ShieldCheck, Sparkles, UserPlus, Users, X,
+} from 'lucide-react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { useAuthStore } from '@/core/stores/authStore';
+import styles from './TeamsListContent.module.css';
 
-interface TeamOwner {
-  id: string;
-  name: string;
-  email: string;
-  avatarUrl: string | null;
+type View = 'map' | 'teams' | 'settings';
+type NodeType = 'organization' | 'area' | 'region' | 'zone' | 'team' | 'custom';
+type Member = { id:string; name:string; email:string; avatarUrl:string|null; jobTitle:string; department:string; workspaceRole:string };
+type Structure = { id:string; name:string; description:string|null; is_default:boolean; template:string|null };
+type OrgNode = {
+  id:string; structure_id:string; parent_id:string|null; name:string; type:NodeType; manager_id:string|null;
+  depth:number; position:number; properties:Record<string,any>; memberCount:number; manager:Member|null;
+  members:Array<{id:string;user_id:string;role:string;profile:Member|null}>;
+  localTeam:{id:string;name:string;slug:string;color:string;status:string;memberCount:number}|null;
+};
+type LocalTeam = { id:string; name:string; slug:string; description:string|null; color:string; status:string; visibility:string; memberCount:number; hierarchyNodeId:string|null };
+type Data = {
+  organization:{id:string;name:string;hierarchy_enabled:boolean;hierarchy_config:Record<string,any>};
+  structures:Structure[]; activeStructure:Structure|null; nodes:OrgNode[]; members:Member[]; teams:LocalTeam[];
+  permissions:{canManage:boolean}; summary:{structures:number;levels:number;nodes:number;members:number;managers:number;teams:number};
+};
+
+const META:Record<NodeType,{label:string;description:string}> = {
+  organization:{label:'Organización',description:'Raíz de la arquitectura'}, area:{label:'Área',description:'Función o departamento'},
+  region:{label:'Región',description:'Cobertura geográfica amplia'}, zone:{label:'Zona',description:'Unidad territorial local'},
+  team:{label:'Equipo',description:'Unidad operativa de trabajo'}, custom:{label:'Nivel personalizado',description:'Una división a tu medida'},
+};
+const headers=(json=false):Record<string,string>=>{const token=typeof window==='undefined'?null:localStorage.getItem('accessToken');return{...(json?{'Content-Type':'application/json'}:{}),...(token?{Authorization:`Bearer ${token}`}:{})}};
+function NodeIcon({type,size=18}:{type:NodeType;size?:number}){if(type==='organization')return <Building2 size={size}/>;if(type==='region')return <Globe2 size={size}/>;if(type==='zone')return <MapPin size={size}/>;if(type==='team')return <Users size={size}/>;if(type==='area')return <BriefcaseBusiness size={size}/>;return <Grid2X2 size={size}/>}
+
+export function TeamsListContent(){
+  const {workspace}=useWorkspace();
+  const [view,setView]=useState<View>('map'); const [data,setData]=useState<Data|null>(null); const [loading,setLoading]=useState(true);
+  const [error,setError]=useState(''); const [search,setSearch]=useState(''); const [structureId,setStructureId]=useState('');
+  const [selectedId,setSelectedId]=useState<string|null>(null); const [modal,setModal]=useState<'structure'|'node'|'member'|null>(null);
+  const load=useCallback(async(id?:string)=>{setLoading(true);setError('');try{const query=id?`?structureId=${encodeURIComponent(id)}`:'';const response=await fetch(`/api/workspaces/${workspace.slug}/hierarchy${query}`,{headers:headers()});const body=await response.json();if(!response.ok)throw new Error(body.error||'No se pudo cargar la arquitectura');setData(body);setStructureId(body.activeStructure?.id||'');setSelectedId(current=>body.nodes.some((node:OrgNode)=>node.id===current)?current:body.nodes[0]?.id||null)}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo cargar la arquitectura')}finally{setLoading(false)}},[workspace.slug]);
+  useEffect(()=>{load()},[load]);
+  const selected=data?.nodes.find(node=>node.id===selectedId)||null;
+  const children=useMemo(()=>{const map=new Map<string|null,OrgNode[]>();for(const node of data?.nodes||[]){const list=map.get(node.parent_id)||[];list.push(node);map.set(node.parent_id,list)}for(const list of map.values())list.sort((a,b)=>a.position-b.position);return map},[data?.nodes]);
+  const teams=useMemo(()=>{const term=search.trim().toLowerCase();return(data?.teams||[]).filter(team=>!term||`${team.name} ${team.description||''}`.toLowerCase().includes(term))},[data?.teams,search]);
+  const action=async(body:Record<string,unknown>)=>{const response=await fetch(`/api/workspaces/${workspace.slug}/hierarchy`,{method:'POST',headers:headers(true),body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(result.error||'No se pudo guardar');return result};
+  if(loading&&!data)return <div className={styles.loader}><span/><p>Preparando la arquitectura organizacional…</p></div>;
+  return <div className={styles.page}>
+    <section className={styles.hero}><div><div className={styles.eyebrow}><Network size={15}/> Centro organizacional</div><h1>Equipos con estructura.</h1><p>Organiza {workspace.name} por áreas, regiones, zonas y equipos desde un mapa conectado con SofLIA.</p></div>{data?.permissions.canManage&&<button className={styles.heroButton} onClick={()=>setModal(data.activeStructure?'node':'structure')}><Plus size={18}/>{data.activeStructure?'Agregar nivel':'Crear estructura'}</button>}<div className={styles.heroRings}/></section>
+    {error&&<div className={styles.errorBanner}><CircleDot size={18}/><span>{error}</span><button onClick={()=>load()}>Reintentar</button></div>}
+    <section className={styles.stats}><Stat icon={<Layers3/>} label="Estructuras" value={data?.summary.structures||0}/><Stat icon={<GitBranch/>} label="Niveles" value={data?.summary.levels||0}/><Stat icon={<Users/>} label="Personas asignadas" value={data?.summary.members||0}/><Stat icon={<ShieldCheck/>} label="Responsables" value={data?.summary.managers||0}/></section>
+    <div className={styles.toolbar}><nav className={styles.tabs}><Tab active={view==='map'} onClick={()=>setView('map')} icon={<MapIcon size={16}/>} label="Mapa organizacional"/><Tab active={view==='teams'} onClick={()=>setView('teams')} icon={<Users size={16}/>} label="Equipos" count={data?.summary.teams}/><Tab active={view==='settings'} onClick={()=>setView('settings')} icon={<Settings2 size={16}/>} label="Configuración"/></nav><span className={`${styles.syncBadge} ${data?.organization.hierarchy_enabled?styles.enabled:''}`}><CircleDot size={13}/> SofLIA {data?.organization.hierarchy_enabled?'activa':'conectada'}</span></div>
+    {view==='map'&&<section className={styles.organizer}>
+      <aside className={styles.structurePanel}><div className={styles.panelHeading}><span><Network size={18}/></span><div><small>Centro de estructura</small><h2>Arquitectura</h2></div></div><p>Selecciona una estructura y administra sus niveles sin perder el contexto.</p><label className={styles.fieldLabel}>Estructura activa</label><div className={styles.structureList}>{(data?.structures||[]).map(s=><button key={s.id} className={s.id===structureId?styles.structureActive:''} onClick={()=>{setStructureId(s.id);load(s.id)}}><span><Layers3 size={16}/>{s.name}</span>{s.is_default&&<em>Principal</em>}</button>)}</div>{data?.activeStructure&&<div className={styles.activeStructure}><span className={styles.liveDot}/><div><small>Estructura en uso</small><strong>{data.activeStructure.name}</strong></div></div>}<div className={styles.panelActions}>{selected&&<button onClick={()=>setModal('member')}><UserPlus size={16}/> Asignar persona</button>}{data?.permissions.canManage&&<button className={styles.primary} onClick={()=>setModal('structure')}><Plus size={16}/> Nueva estructura</button>}</div></aside>
+      <div className={styles.mapPanel}><div className={styles.mapHeader}><div><small>Mapa organizacional</small><h2>{data?.activeStructure?.name||'Sin estructura'}</h2><p>Selecciona un nodo para consultar responsables, personas y equipo vinculado.</p></div><span>{data?.nodes.length||0} unidades</span></div>{!data?.activeStructure?<Empty icon={<Network size={30}/>} title="Diseña la arquitectura de tu organización" text="Empieza con una estructura y añade áreas, regiones, zonas o equipos según tu operación." action={data?.permissions.canManage?<button onClick={()=>setModal('structure')}><Plus size={17}/>Crear primera estructura</button>:null}/>:<div className={styles.mapCanvas}><div className={styles.mapHint}><Sparkles size={14}/> Arquitectura sincronizada con SofLIA</div><div className={styles.tree}>{(children.get(null)||[]).map(node=><Tree key={node.id} node={node} childMap={children} selectedId={selectedId} onSelect={setSelectedId}/>)}</div>{selected&&<Inspector node={selected} canManage={!!data.permissions.canManage} slug={workspace.slug} onAdd={()=>setModal('node')} onAssign={()=>setModal('member')} onClose={()=>setSelectedId(null)}/>}</div>}</div>
+    </section>}
+    {view==='teams'&&<section className={styles.teamsSection}><div className={styles.sectionHeader}><div><small>Unidades operativas</small><h2>Equipos de {workspace.name}</h2><p>Los equipos vinculados comparten miembros y contexto con SofLIA.</p></div><label className={styles.search}><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar equipos…"/></label></div>{teams.length?<div className={styles.teamGrid}>{teams.map(team=><article className={styles.teamCard} key={team.id}><div className={styles.teamTop}><span className={styles.teamAvatar} style={{'--team-color':team.color} as React.CSSProperties}>{team.name.slice(0,2).toUpperCase()}</span><span className={styles.status}><CircleDot size={12}/>{team.status==='active'?'Activo':team.status}</span></div><h3>{team.name}</h3><p>{team.description||'Equipo listo para colaborar en proyectos y tareas.'}</p><div className={styles.teamMeta}><span><Users size={15}/>{team.memberCount} miembros</span><span><GitBranch size={15}/>{team.hierarchyNodeId?'En jerarquía':'Sin asignar'}</span></div><Link href={`/${workspace.slug}/admin/teams/${team.id}`}>Abrir equipo <ArrowRight size={16}/></Link></article>)}</div>:<Empty icon={<Users size={30}/>} title="Aún no hay equipos" text="Crea un nivel de tipo equipo y Project Hub lo vinculará automáticamente." action={<button onClick={()=>{setView('map');setModal(data?.activeStructure?'node':'structure')}}><Plus size={17}/>Crear equipo</button>}/>}</section>}
+    {view==='settings'&&data&&<Settings data={data} onSave={async settings=>{await action(settings);await load(structureId)}}/>}
+    {modal==='structure'&&data&&<StructureModal onClose={()=>setModal(null)} onSubmit={async values=>{const result=await action({action:'create_structure',...values,isDefault:data.structures.length===0});setModal(null);await load(result.structure.id)}}/>}
+    {modal==='node'&&data?.activeStructure&&<NodeModal structure={data.activeStructure} parent={selected} members={data.members} onClose={()=>setModal(null)} onSubmit={async values=>{await action({action:'create_node',structureId:data.activeStructure!.id,parentId:selected?.id||null,...values});setModal(null);await load(data.activeStructure!.id)}}/>}
+    {modal==='member'&&selected&&data&&<MemberModal node={selected} members={data.members.filter(m=>!selected.members.some(a=>a.user_id===m.id))} onClose={()=>setModal(null)} onSubmit={async userId=>{await action({action:'assign_member',nodeId:selected.id,userId});setModal(null);await load(structureId)}}/>}
+  </div>
 }
 
-interface Team {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  color: string;
-  status: 'active' | 'archived' | 'suspended';
-  visibility: 'public' | 'private' | 'internal';
-  owner: TeamOwner | null;
-  memberCount: number;
-  createdAt: string;
+function Stat({icon,label,value}:{icon:React.ReactNode;label:string;value:number}){return <div className={styles.stat}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong></div></div>}
+function Tab({active,onClick,icon,label,count}:{active:boolean;onClick:()=>void;icon:React.ReactNode;label:string;count?:number}){return <button className={active?styles.tabActive:''} onClick={onClick}>{icon}{label}{count!==undefined&&<em>{count}</em>}</button>}
+function Tree({node,childMap,selectedId,onSelect}:{node:OrgNode;childMap:Map<string|null,OrgNode[]>;selectedId:string|null;onSelect:(id:string)=>void}){const kids=childMap.get(node.id)||[];return <div className={styles.treeBranch}><button className={`${styles.nodeCard} ${selectedId===node.id?styles.nodeSelected:''}`} onClick={()=>onSelect(node.id)}><span className={styles.nodeIcon}><NodeIcon type={node.type} size={20}/></span><div><small>{META[node.type]?.label||node.type}</small><strong>{node.name}</strong><em>{node.memberCount} {node.memberCount===1?'persona':'personas'}</em></div></button>{kids.length>0&&<div className={styles.treeChildren}>{kids.map(child=><Tree key={child.id} node={child} childMap={childMap} selectedId={selectedId} onSelect={onSelect}/>)}</div>}</div>}
+function Inspector({node,canManage,slug,onAdd,onAssign,onClose}:{node:OrgNode;canManage:boolean;slug:string;onAdd:()=>void;onAssign:()=>void;onClose:()=>void}){return <aside className={styles.inspector}><button className={styles.iconButton} onClick={onClose}><X size={17}/></button><small>{META[node.type]?.label||node.type}</small><h3>{node.name}</h3><p>{node.properties.description||'Unidad organizacional conectada con SofLIA.'}</p><dl><div><dt>Responsable</dt><dd>{node.manager?.name||'Sin asignar'}</dd></div><div><dt>Personas</dt><dd>{node.memberCount}</dd></div><div><dt>Ubicación</dt><dd>{[node.properties.city,node.properties.country].filter(Boolean).join(', ')||'Sin definir'}</dd></div></dl><div className={styles.inspectorActions}>{node.localTeam&&<Link href={`/${slug}/admin/teams/${node.localTeam.id}`}>Abrir equipo <ArrowRight size={15}/></Link>}{canManage&&node.type!=='team'&&<button onClick={onAdd}><Plus size={15}/>Subnivel</button>}{canManage&&<button onClick={onAssign}><UserPlus size={15}/>Persona</button>}</div></aside>}
+
+function Settings({data,onSave}:{data:Data;onSave:(value:Record<string,unknown>)=>Promise<void>}){const config=data.organization.hierarchy_config||{};const[enabled,setEnabled]=useState(!!data.organization.hierarchy_enabled);const[auto,setAuto]=useState(!!config.autoAssignNewUsers);const[required,setRequired]=useState(!!config.requireTeam);const[saving,setSaving]=useState(false);const[message,setMessage]=useState('');const save=async()=>{setSaving(true);setMessage('');try{await onSave({action:'update_settings',enabled,hierarchyConfig:{...config,autoAssignNewUsers:auto,requireTeam:required}});setMessage('Configuración guardada')}catch(cause){setMessage(cause instanceof Error?cause.message:'No se pudo guardar')}setSaving(false)};return <section className={styles.settingsPanel}><div className={styles.sectionHeader}><div><small>Gobernanza organizacional</small><h2>Configuración de jerarquía</h2><p>Controla cómo se asignan personas y qué alcance tiene cada rol.</p></div></div><div className={styles.settingsGrid}><div className={styles.settingsCard}><Setting icon={<Network/>} title="Jerarquía activa" text="Segmenta proyectos, analítica y permisos." value={enabled} set={setEnabled}/><Setting icon={<UserPlus/>} title="Asignación automática" text="Coloca nuevos usuarios en la unidad predeterminada." value={auto} set={setAuto}/><Setting icon={<Users/>} title="Equipo obligatorio" text="Solicita una unidad antes de activar a una persona." value={required} set={setRequired}/>{data.permissions.canManage&&<div className={styles.saveRow}>{message&&<span>{message}</span>}<button onClick={save} disabled={saving}><Check size={16}/>{saving?'Guardando…':'Guardar configuración'}</button></div>}</div><div className={styles.rolesCard}><small>Alcance por rol</small><h3>Permisos heredados</h3>{[['Propietario','Toda la organización'],['Administrador','Estructuras asignadas'],['Responsable regional','Región y niveles inferiores'],['Líder de equipo','Su equipo y miembros'],['Miembro','Su propia unidad']].map(([role,scope])=><div key={role}><span><ShieldCheck size={15}/>{role}</span><em>{scope}</em></div>)}</div></div></section>}
+function Setting({icon,title,text,value,set}:{icon:React.ReactNode;title:string;text:string;value:boolean;set:(v:boolean)=>void}){return <div className={styles.settingRow}><span>{icon}<div><strong>{title}</strong><p>{text}</p></div></span><button className={`${styles.toggle} ${value?styles.toggleOn:''}`} onClick={()=>set(!value)}><span/></button></div>}
+
+function Modal({title,eyebrow,onClose,children}:{title:string;eyebrow:string;onClose:()=>void;children:React.ReactNode}){if(typeof document==='undefined')return null;return createPortal(<div className={styles.modalLayer}><button className={styles.backdrop} onClick={onClose}/><div className={styles.modal}><header><div><small>{eyebrow}</small><h2>{title}</h2></div><button onClick={onClose}><X size={19}/></button></header>{children}</div></div>,document.body)}
+function StructureModal({onClose,onSubmit}:{onClose:()=>void;onSubmit:(v:{name:string;description:string})=>Promise<void>}){const[name,setName]=useState('');const[description,setDescription]=useState('');const[saving,setSaving]=useState(false);const[error,setError]=useState('');const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setError('');try{await onSubmit({name,description})}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo crear');setSaving(false)}};return <Modal title="Nueva estructura" eyebrow="Arquitectura organizacional" onClose={onClose}><form onSubmit={submit} className={styles.modalForm}><div className={styles.modalIntro}><span><Network size={22}/></span><div><strong>Un nuevo mapa para tu organización</strong><p>Después podrás añadir áreas, regiones, zonas y equipos.</p></div></div>{error&&<p className={styles.formError}>{error}</p>}<label>Nombre de la estructura<input required autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="Ej. Estructura comercial 2026"/></label><label>Descripción<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Describe el alcance…"/></label><footer><button type="button" onClick={onClose}>Cancelar</button><button className={styles.submitButton} disabled={saving}><Plus size={16}/>{saving?'Creando…':'Crear estructura'}</button></footer></form></Modal>}
+function NodeModal({structure,parent,members,onClose,onSubmit}:{structure:Structure;parent:OrgNode|null;members:Member[];onClose:()=>void;onSubmit:(v:Record<string,unknown>)=>Promise<void>}){
+  const[name,setName]=useState(''); const[description,setDescription]=useState(''); const[type,setType]=useState<NodeType>('team');
+  const[managerId,setManager]=useState(''); const[managerOpen,setManagerOpen]=useState(false);
+  const[location,setLocation]=useState({city:'',state:'',country:''}); const[saving,setSaving]=useState(false); const[error,setError]=useState('');
+  const selectedManager=members.find(member=>member.id===managerId);
+  const submit=async(e:React.FormEvent)=>{e.preventDefault();setSaving(true);setError('');try{await onSubmit({name,description,type,managerId:managerId||null,...location})}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo crear');setSaving(false)}};
+  return <Modal title="Agregar nivel" eyebrow={parent?`Dentro de ${parent.name}`:structure.name} onClose={onClose}>
+    <form onSubmit={submit} className={styles.modalForm}>
+      {error&&<p className={styles.formError}>{error}</p>}
+      <label>Nombre<input required autoFocus value={name} onChange={e=>setName(e.target.value)} placeholder="Ej. Región Centro"/></label>
+      <div><span className={styles.fieldLabel}>Tipo de nivel</span><div className={styles.typeGrid}>{(['area','region','zone','team','custom'] as NodeType[]).map(option=><button type="button" key={option} className={type===option?styles.typeSelected:''} onClick={()=>setType(option)}><NodeIcon type={option}/><span><strong>{META[option].label}</strong><small>{META[option].description}</small></span>{type===option&&<Check size={15}/>}</button>)}</div></div>
+      <label>Descripción<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Propósito y responsabilidades…"/></label>
+      <div className={styles.managerField}><span className={styles.fieldLabel}>Responsable</span><button type="button" className={styles.managerTrigger} onClick={()=>setManagerOpen(open=>!open)}><span>{selectedManager?.name||'Sin responsable por ahora'}<small>{selectedManager?.jobTitle||selectedManager?.workspaceRole||'Podrás asignarlo después'}</small></span><ChevronDown size={15}/></button>{managerOpen&&<div className={styles.managerMenu}><button type="button" onClick={()=>{setManager('');setManagerOpen(false)}} className={!managerId?styles.managerSelected:''}>Sin responsable por ahora{!managerId&&<Check size={15}/>}</button>{members.map(member=><button type="button" key={member.id} onClick={()=>{setManager(member.id);setManagerOpen(false)}} className={managerId===member.id?styles.managerSelected:''}><span>{member.name}<small>{member.jobTitle||member.department||member.email}</small></span>{managerId===member.id&&<Check size={15}/>}</button>)}</div>}</div>
+      <div className={styles.formColumns}><label>Ciudad<input value={location.city} onChange={e=>setLocation(c=>({...c,city:e.target.value}))}/></label><label>Estado / región<input value={location.state} onChange={e=>setLocation(c=>({...c,state:e.target.value}))}/></label><label>País<input value={location.country} onChange={e=>setLocation(c=>({...c,country:e.target.value}))}/></label></div>
+      <footer><button type="button" onClick={onClose}>Cancelar</button><button className={styles.submitButton} disabled={saving}><Plus size={16}/>{saving?'Creando…':type==='team'?'Crear y vincular equipo':'Agregar nivel'}</button></footer>
+    </form>
+  </Modal>
 }
-
-export function TeamsListContent() {
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const { isDark } = useTheme();
-  const colors = isDark ? themeColors.dark : themeColors.light;
-  const { workspace, permissions } = useWorkspace();
-  const { user } = useAuthStore();
-  const canManage = permissions.manageTeams;
-
-  const fetchTeams = useCallback(async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('accessToken');
-      const params = new URLSearchParams({ page: String(page), limit: '10' });
-      if (search) params.append('search', search);
-      const res = await fetch(`/api/workspaces/${workspace.slug}/teams?${params}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setTeams(data.teams || []);
-        setTotal(data.pagination?.total || 0);
-      }
-    } catch (e) { console.error(e); }
-    setLoading(false);
-  }, [workspace.slug, page, search]);
-
-  useEffect(() => { fetchTeams(); }, [fetchTeams]);
-
-  const deleteTeam = async () => {
-    if (!selectedTeam) return;
-    const token = localStorage.getItem('accessToken');
-    await fetch(`/api/workspaces/${workspace.slug}/teams/${selectedTeam.id}`, {
-      method: 'DELETE',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    setShowDeleteConfirm(false);
-    setSelectedTeam(null);
-    fetchTeams();
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return { bg: 'rgba(16, 185, 129, 0.15)', text: '#10B981' };
-      case 'archived': return { bg: 'rgba(107, 114, 128, 0.15)', text: '#6B7280' };
-      case 'suspended': return { bg: 'rgba(239, 68, 68, 0.15)', text: '#EF4444' };
-      default: return { bg: 'rgba(107, 114, 128, 0.15)', text: '#6B7280' };
-    }
-  };
-
-  const getVisibilityIcon = (visibility: string) => {
-    switch (visibility) {
-      case 'public':
-        return (
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-          </svg>
-        );
-      case 'private':
-        return (
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        );
-      default:
-        return (
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
-        );
-    }
-  };
-
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2" style={{ color: colors.textPrimary }}>Equipos</h1>
-        <p style={{ color: colors.textMuted }}>{total} equipos en {workspace.name}</p>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        {[
-          { label: 'Total', value: total, color: '#00D4B3' },
-          { label: 'Activos', value: teams.filter(t => t.status === 'active').length, color: '#10B981' },
-          { label: 'Miembros', value: teams.reduce((acc, t) => acc + t.memberCount, 0), color: '#8B5CF6' },
-        ].map((stat, i) => (
-          <div key={i} className="p-5 rounded-xl" style={{ background: isDark ? 'rgba(30, 35, 41, 0.5)' : colors.bgCard, border: `1px solid ${colors.border}` }}>
-            <span className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</span>
-            <p className="text-sm mt-1" style={{ color: colors.textMuted }}>{stat.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Search + Create */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="relative">
-          <input
-            type="text" placeholder="Buscar equipos..." value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="w-80 px-4 py-2.5 pl-10 rounded-lg focus:outline-none transition-colors"
-            style={{ backgroundColor: isDark ? 'transparent' : colors.bgCard, border: `1px solid ${isDark ? 'rgb(55, 65, 81)' : colors.border}`, color: colors.textPrimary }}
-          />
-          <svg className="absolute left-3 top-3" style={{ color: colors.textMuted }} width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-        </div>
-        {canManage && (
-          <button onClick={() => { setSelectedTeam(null); setShowModal(true); }}
-            className="px-5 py-2.5 bg-[#00D4B3] text-black font-semibold rounded-lg hover:bg-[#00b89c] transition-colors flex items-center gap-2">
-            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Nuevo Equipo
-          </button>
-        )}
-      </div>
-
-      {/* Teams Grid */}
-      {loading ? (
-        <div className="flex justify-center py-20"><div className="w-8 h-8 border-2 border-[#00D4B3] border-t-transparent rounded-full animate-spin" /></div>
-      ) : teams.length === 0 ? (
-        <div className="text-center py-20" style={{ color: colors.textMuted }}><p>No hay equipos creados</p></div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {teams.map((team) => {
-            const statusColor = getStatusColor(team.status);
-            return (
-              <div
-                key={team.id}
-                className="group p-5 rounded-2xl transition-all cursor-pointer hover:scale-[1.02]"
-                style={{ background: isDark ? 'rgba(30, 35, 41, 0.5)' : colors.bgCard, border: `1px solid ${colors.border}` }}
-                onClick={() => { setSelectedTeam(team); setShowModal(true); }}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: team.color }}>
-                      {team.name.substring(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold" style={{ color: colors.textPrimary }}>{team.name}</h3>
-                      <div className="flex items-center gap-1.5 text-xs" style={{ color: colors.textMuted }}>
-                        {getVisibilityIcon(team.visibility)}
-                        <span className="capitalize">{team.visibility}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium capitalize" style={{ backgroundColor: statusColor.bg, color: statusColor.text }}>
-                    {team.status}
-                  </span>
-                </div>
-
-                {team.description && <p className="text-sm mb-4 line-clamp-2" style={{ color: colors.textSecondary }}>{team.description}</p>}
-
-                <div className="flex items-center justify-between pt-4" style={{ borderTop: `1px solid ${colors.border}` }}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium text-white"
-                      style={{ backgroundColor: team.color, border: `2px solid ${isDark ? '#1E2329' : colors.bgCard}` }}>
-                      {team.memberCount}
-                    </div>
-                    <span className="text-sm" style={{ color: colors.textMuted }}>
-                      {team.memberCount} {team.memberCount === 1 ? 'miembro' : 'miembros'}
-                    </span>
-                  </div>
-
-                  {canManage && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedTeam(team); setShowDeleteConfirm(true); }}
-                        className="p-1.5 rounded-lg transition-colors hover:text-red-400"
-                        style={{ color: colors.textMuted }}
-                        title="Eliminar"
-                      >
-                        <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {team.owner && (
-                  <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${colors.border}` }}>
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium text-white"
-                      style={{ background: 'linear-gradient(135deg, #00D4B3, #0A2540)' }}>
-                      {team.owner.name[0]}
-                    </div>
-                    <span className="text-xs" style={{ color: colors.textMuted }}>
-                      Creado por <span style={{ color: colors.textSecondary }}>{team.owner.name}</span>
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {total > 10 && (
-        <div className="flex items-center justify-center gap-2 mt-8">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-            style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', color: colors.textSecondary }}>
-            Anterior
-          </button>
-          <span className="px-4 py-2 text-sm" style={{ color: colors.textMuted }}>Pagina {page} de {Math.ceil(total / 10)}</span>
-          <button onClick={() => setPage(p => p + 1)} disabled={page >= Math.ceil(total / 10)}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-            style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', color: colors.textSecondary }}>
-            Siguiente
-          </button>
-        </div>
-      )}
-
-      {/* Create/Edit Modal */}
-      {showModal && (
-        <TeamFormModal
-          team={selectedTeam}
-          workspaceSlug={workspace.slug}
-          currentUserId={user?.id}
-          canManage={canManage}
-          onClose={() => { setShowModal(false); setSelectedTeam(null); }}
-          onSave={() => { setShowModal(false); setSelectedTeam(null); fetchTeams(); }}
-        />
-      )}
-
-      {/* Delete Confirmation */}
-      {showDeleteConfirm && selectedTeam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 backdrop-blur-sm" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setShowDeleteConfirm(false)} />
-          <div className="relative rounded-2xl p-6 max-w-md w-full shadow-2xl"
-            style={{ backgroundColor: isDark ? '#1E2329' : colors.bgCard, border: `1px solid ${colors.border}` }}>
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-                <svg width="32" height="32" fill="none" stroke="#EF4444" strokeWidth="2" viewBox="0 0 24 24">
-                  <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                </svg>
-              </div>
-              <h3 className="text-xl font-semibold mb-2" style={{ color: colors.textPrimary }}>Eliminar equipo?</h3>
-              <p style={{ color: colors.textMuted }}>
-                Esta accion eliminara permanentemente el equipo <strong style={{ color: colors.textPrimary }}>{selectedTeam.name}</strong> y todas sus configuraciones.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 py-2.5 rounded-lg transition-colors"
-                style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', color: colors.textSecondary }}>
-                Cancelar
-              </button>
-              <button onClick={deleteTeam}
-                className="flex-1 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors">
-                Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Team Form Modal - Create & Edit
-function TeamFormModal({ team, workspaceSlug, currentUserId, canManage, onClose, onSave }: {
-  team: Team | null;
-  workspaceSlug: string;
-  currentUserId?: string;
-  canManage: boolean;
-  onClose: () => void;
-  onSave: () => void;
-}) {
-  const { isDark } = useTheme();
-  const colors = isDark ? themeColors.dark : themeColors.light;
-  const isEditing = !!team;
-
-  const [form, setForm] = useState({
-    name: team?.name || '',
-    description: team?.description || '',
-    color: team?.color || '#00D4B3',
-    visibility: team?.visibility || 'private',
-    status: team?.status || 'active',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const colorOptions = ['#00D4B3', '#0A2540', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#EF4444', '#3B82F6'];
-
-  const visibilityOptions = [
-    { value: 'private', label: 'Privado', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> },
-    { value: 'internal', label: 'Interno', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-    { value: 'public', label: 'Publico', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
-  ];
-
-  const selectedVisibility = visibilityOptions.find(v => v.value === form.visibility);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canManage && isEditing) return;
-    setLoading(true);
-    setError('');
-
-    try {
-      const token = localStorage.getItem('accessToken');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers.Authorization = `Bearer ${token}`;
-
-      const url = isEditing
-        ? `/api/workspaces/${workspaceSlug}/teams/${team.id}`
-        : `/api/workspaces/${workspaceSlug}/teams`;
-
-      const res = await fetch(url, {
-        method: isEditing ? 'PUT' : 'POST',
-        headers,
-        body: JSON.stringify({ ...form, ownerId: currentUserId }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error guardando equipo');
-      }
-      onSave();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido');
-    }
-    setLoading(false);
-  };
-
-  const initials = form.name ? form.name.substring(0, 2).toUpperCase() : '??';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 backdrop-blur-sm" style={{ backgroundColor: isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.4)' }} onClick={onClose} />
-      <div className="relative rounded-2xl shadow-2xl overflow-hidden"
-        style={{ backgroundColor: colors.bgCard, border: `1px solid ${colors.border}`, maxWidth: '800px', width: '100%' }}>
-        <div className="flex min-h-[520px]">
-
-          {/* Left Panel - Preview */}
-          <div className="w-72 p-8 flex-col items-center hidden md:flex"
-            style={{ background: isDark ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08))' : 'linear-gradient(135deg, rgba(0, 0, 0, 0.02), rgba(0, 0, 0, 0.05))', borderRight: `1px solid ${colors.border}` }}>
-            <div className="relative mb-6 mt-4">
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white text-2xl font-bold"
-                style={{ backgroundColor: form.color, boxShadow: `0 8px 24px ${form.color}40` }}>
-                {initials}
-              </div>
-            </div>
-            <div className="text-center mb-6">
-              <h3 className="font-semibold text-lg mb-1" style={{ color: colors.textPrimary }}>{form.name || 'Nuevo Equipo'}</h3>
-              <p className="text-sm mb-3" style={{ color: colors.textMuted }}>{form.description || 'Sin descripcion'}</p>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: 'rgba(0, 212, 179, 0.15)', color: '#00D4B3' }}>
-                {selectedVisibility?.icon} {selectedVisibility?.label || 'Privado'}
-              </span>
-            </div>
-            <div className="w-full space-y-2 text-sm">
-              <div className="flex items-center justify-between py-2" style={{ borderTop: `1px solid ${colors.border}` }}>
-                <span style={{ color: colors.textMuted }}>Color</span>
-                <div className="w-5 h-5 rounded" style={{ backgroundColor: form.color }} />
-              </div>
-              <div className="flex items-center justify-between py-2" style={{ borderTop: `1px solid ${colors.border}` }}>
-                <span style={{ color: colors.textMuted }}>Miembros</span>
-                <span style={{ color: colors.textSecondary }}>{team?.memberCount || 0}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Panel - Form */}
-          <div className="flex-1 flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: `1px solid ${colors.border}` }}>
-              <div>
-                <h2 className="text-xl font-semibold" style={{ color: colors.textPrimary }}>
-                  {isEditing ? 'Editar Equipo' : 'Crear Equipo'}
-                </h2>
-                <p className="text-sm" style={{ color: colors.textMuted }}>
-                  {isEditing ? 'Modifica la configuracion del equipo' : 'Configura los datos del nuevo equipo'}
-                </p>
-              </div>
-              <button onClick={onClose} className="p-2 rounded-lg transition-colors" style={{ color: colors.textMuted }}>
-                <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
-              </button>
-            </div>
-
-            <form onSubmit={submit} className="flex-1 flex flex-col">
-              <div className="flex-1 px-6 py-4 space-y-4 overflow-y-auto max-h-[360px]">
-                {error && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
-
-                <div className="space-y-3">
-                  <p className="text-xs font-medium uppercase tracking-wider" style={{ color: colors.textMuted }}>Informacion Basica</p>
-                  <div>
-                    <label className="block text-xs mb-1.5" style={{ color: colors.textMuted }}>Nombre del equipo</label>
-                    <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Marketing Digital" required
-                      className="w-full py-2.5 px-3 rounded-xl border text-sm focus:outline-none transition-colors"
-                      style={{ backgroundColor: isDark ? '#1E2329' : colors.bgSecondary, borderColor: colors.border, color: colors.textPrimary }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs mb-1.5" style={{ color: colors.textMuted }}>Descripcion</label>
-                    <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe el proposito del equipo..." rows={2}
-                      className="w-full py-2.5 px-3 rounded-xl border text-sm focus:outline-none transition-colors resize-none"
-                      style={{ backgroundColor: isDark ? '#1E2329' : colors.bgSecondary, borderColor: colors.border, color: colors.textPrimary }} />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <p className="text-xs font-medium uppercase tracking-wider" style={{ color: colors.textMuted }}>Apariencia</p>
-                  <div>
-                    <label className="block text-xs mb-2" style={{ color: colors.textMuted }}>Color del equipo</label>
-                    <div className="flex gap-2 flex-wrap">
-                      {colorOptions.map(color => (
-                        <button key={color} type="button" onClick={() => setForm(f => ({ ...f, color }))} className="w-8 h-8 rounded-lg transition-all"
-                          style={{ backgroundColor: color, transform: form.color === color ? 'scale(1.1)' : 'scale(1)', boxShadow: form.color === color ? `0 0 0 2px ${colors.bgCard}, 0 0 0 4px ${color}` : 'none' }} />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <p className="text-xs font-medium uppercase tracking-wider" style={{ color: colors.textMuted }}>Configuracion</p>
-                  <div>
-                    <label className="block text-xs mb-2" style={{ color: colors.textMuted }}>Visibilidad</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {visibilityOptions.map(opt => (
-                        <button key={opt.value} type="button" onClick={() => setForm(f => ({ ...f, visibility: opt.value as typeof form.visibility }))}
-                          className="py-2.5 px-3 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-2"
-                            style={{
-                              backgroundColor: form.visibility === opt.value ? 'rgba(0, 212, 179, 0.1)' : (isDark ? '#1E2329' : colors.bgSecondary),
-                              borderColor: form.visibility === opt.value ? '#00D4B3' : colors.border,
-                              color: form.visibility === opt.value ? '#00D4B3' : colors.textSecondary,
-                            }}>
-                          {opt.icon} {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3 px-6 py-4" style={{ borderTop: `1px solid ${colors.border}` }}>
-                <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl font-medium transition-colors"
-                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', color: colors.textSecondary }}>
-                  Cancelar
-                </button>
-                <button type="submit" disabled={loading || (!canManage && isEditing)}
-                  className="flex-1 py-2.5 rounded-xl font-semibold text-white transition-all disabled:opacity-50"
-                  style={{
-                    backgroundColor: isDark ? '#10B981' : '#0A2540',
-                    boxShadow: isDark ? '0 4px 15px rgba(16, 185, 129, 0.4)' : '0 4px 15px rgba(10, 37, 64, 0.4)'
-                  }}>
-                  {loading ? 'Guardando...' : isEditing ? 'Guardar cambios' : 'Crear equipo'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+function MemberModal({node,members,onClose,onSubmit}:{node:OrgNode;members:Member[];onClose:()=>void;onSubmit:(id:string)=>Promise<void>}){const[selected,setSelected]=useState('');const[search,setSearch]=useState('');const[saving,setSaving]=useState(false);const[error,setError]=useState('');const filtered=members.filter(m=>`${m.name} ${m.email}`.toLowerCase().includes(search.toLowerCase()));const submit=async()=>{if(!selected)return;setSaving(true);setError('');try{await onSubmit(selected)}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo asignar');setSaving(false)}};return <Modal title="Asignar persona" eyebrow={node.name} onClose={onClose}><div className={styles.memberModal}>{error&&<p className={styles.formError}>{error}</p>}<label className={styles.search}><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nombre o correo…"/></label><div className={styles.memberList}>{filtered.map(member=><button key={member.id} className={selected===member.id?styles.memberSelected:''} onClick={()=>setSelected(member.id)}><span className={styles.personAvatar}>{member.avatarUrl?<img src={member.avatarUrl} alt=""/>:member.name.slice(0,2).toUpperCase()}</span><span><strong>{member.name}</strong><small>{member.jobTitle||member.department||member.email}</small></span>{selected===member.id&&<Check size={17}/>}</button>)}{!filtered.length&&<p>No hay personas disponibles.</p>}</div><footer><button onClick={onClose}>Cancelar</button><button className={styles.submitButton} disabled={!selected||saving} onClick={submit}><UserPlus size={16}/>{saving?'Asignando…':'Asignar a este nivel'}</button></footer></div></Modal>}
+function Empty({icon,title,text,action}:{icon:React.ReactNode;title:string;text:string;action:React.ReactNode}){return <div className={styles.empty}><span>{icon}</span><h3>{title}</h3><p>{text}</p>{action}</div>}

@@ -334,17 +334,46 @@ interface WorkspaceMember {
 
 ---
 
-### 1.7 SOFIA Auth Service
+### 1.7 SOFIA Auth Service (Supabase Auth)
 
 **Archivo:** `lib/auth/sofia-auth.ts`
 
-| Funcion                          | Descripcion                                 | Parametros                | Retorno                      |
-| -------------------------------- | ------------------------------------------- | ------------------------- | ---------------------------- |
-| `isSofiaAuthEnabled()`           | Verifica si SOFIA esta configurado          | Ninguno                   | `boolean`                    |
-| `findSofiaUser(emailOrUsername)` | Busca usuario en SOFIA por email/username   | `emailOrUsername: string` | `Promise<SofiaUser \| null>` |
-| `findSofiaUserById(userId)`      | Busca usuario en SOFIA por ID               | `userId: string`          | `Promise<SofiaUser \| null>` |
-| `getSofiaUserOrgs(userId)`       | Obtiene organizaciones del usuario en SOFIA | `userId: string`          | `Promise<any[]>`             |
-| `recordSofiaLogin(userId)`       | Registra login exitoso en SOFIA             | `userId: string`          | `Promise<void>`              |
+> **IMPORTANTE:** SOFIA ya NO usa auth propio con hashes. `public.users` es solo el
+> PERFIL y su `id` es FK a `auth.users(id)`. Las credenciales viven en Supabase Auth
+> del proyecto SOFIA y se verifican con `auth.signInWithPassword`. La columna
+> `password_hash` fue eliminada de `public.users`.
+
+| Funcion                                                            | Descripcion                                                                                        | Parametros                                             | Retorno                      |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------- |
+| `isSofiaAuthEnabled()`                                             | Verifica si SOFIA esta configurado                                                                 | Ninguno                                                | `boolean`                    |
+| `authenticateSofiaUser(emailOrUsername, password)`                 | **Login contra Supabase Auth de SOFIA.** Resuelve username→email, valida, devuelve perfil + sesion | `emailOrUsername: string, password: string`            | `Promise<SofiaAuthResult>`   |
+| `changeSofiaPassword(emailOrUsername, currentPassword, newPassword)` | Cambia password via `auth.updateUser` (no requiere service role)                                   | `emailOrUsername, currentPassword, newPassword`        | `Promise<{success, error?}>` |
+| `findSofiaUser(emailOrUsername, accessToken?)`                     | Busca perfil en `public.users` por email/username                                                  | `emailOrUsername: string, accessToken?: string`        | `Promise<SofiaUser \| null>` |
+| `findSofiaUserById(userId, accessToken?)`                          | Busca perfil por id (= `auth.users.id`)                                                            | `userId: string, accessToken?: string`                 | `Promise<SofiaUser \| null>` |
+| `getSofiaUserOrgs(userId, accessToken?)`                           | Obtiene organizaciones del usuario en SOFIA                                                        | `userId: string, accessToken?: string`                 | `Promise<any[]>`             |
+| `recordSofiaLogin(userId, accessToken?)`                           | Registra login exitoso en SOFIA (`last_login_at`)                                                  | `userId: string, accessToken?: string`                 | `Promise<void>`              |
+| `mapPlatformRoleToPermission(platformRole)`                        | Mapea `platform_role` de SofLIA a `permission_level` de Project Hub                                | `platformRole?: string \| null`                        | `permission_level`           |
+| `normalizeAccountUsername(username, email)`                        | Ajusta el username al CHECK `^[A-Za-z0-9_-]{3,50}$` de `account_users`                             | `username: string \| null, email: string`              | `string`                     |
+| `SOFIA_MANAGED_PASSWORD_PLACEHOLDER`                               | Centinela para `account_users.password_hash` (NOT NULL) en cuentas gestionadas por SOFIA           | —                                                      | `string`                     |
+
+**Mapeo de columnas SofLIA `public.users` → Project Hub `account_users`:**
+
+| SofLIA (`public.users`)              | Project Hub (`account_users`)            |
+| ------------------------------------ | ---------------------------------------- |
+| `id` (FK a `auth.users`)             | `user_id`                                |
+| `last_name` (un solo campo)          | `last_name_paternal` + `last_name_maternal` (split por espacio) |
+| `platform_role` (Usuario/Instructor/Administrador/Business/Business User) | `permission_level` |
+| `profile_picture_url`                | `avatar_url`                             |
+| `email_verified`                     | `is_email_verified`                      |
+| `is_banned`                          | `account_status` (`suspended` / `active`) |
+| `phone`                              | `phone_number`                           |
+| `bio`                                | `company_role`                           |
+| `location`                           | `department`                             |
+| (no existe)                          | `password_hash` → centinela `supabase-auth:sofia` |
+
+**Notas de RLS:** las lecturas post-login se hacen con el `accessToken` del usuario
+(header `Authorization`) para satisfacer politicas basadas en `auth.uid()`. La
+resolucion username→email previa al login usa la anon key.
 
 ---
 

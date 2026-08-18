@@ -5,82 +5,41 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useAuthStore } from '@/core/stores/authStore';
+import shellStyles from './AdminShell.module.css';
+import {
+  Blocks,
+  BriefcaseBusiness,
+  ChartSpline,
+  ChevronRight,
+  Clock3,
+  ContactRound,
+  FileChartColumn,
+  FolderKanban,
+  House,
+  ListChecks,
+  LogOut,
+  Moon,
+  MoreVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Settings2,
+  SlidersHorizontal,
+  Sun,
+  UserRound,
+  UsersRound,
+} from 'lucide-react';
 
-// Iconos simulados con SVG inline
 const icons = {
-  dashboard: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1"/>
-      <rect x="14" y="3" width="7" height="7" rx="1"/>
-      <rect x="14" y="14" width="7" height="7" rx="1"/>
-      <rect x="3" y="14" width="7" height="7" rx="1"/>
-    </svg>
-  ),
-  users: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-      <circle cx="9" cy="7" r="4"/>
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-    </svg>
-  ),
-  projects: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-    </svg>
-  ),
-  teams: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-      <circle cx="9" cy="7" r="4"/>
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-    </svg>
-  ),
-  tasks: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 11l3 3L22 4"/>
-      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-    </svg>
-  ),
-
-  analytics: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="20" x2="18" y2="10"/>
-      <line x1="12" y1="20" x2="12" y2="4"/>
-      <line x1="6" y1="20" x2="6" y2="14"/>
-    </svg>
-  ),
-  settings: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3"/>
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-    </svg>
-  ),
-  reports: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-      <polyline points="14 2 14 8 20 8"/>
-      <line x1="16" y1="13" x2="8" y2="13"/>
-      <line x1="16" y1="17" x2="8" y2="17"/>
-      <polyline points="10 9 9 9 8 9"/>
-    </svg>
-  ),
-  tools: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z"/>
-    </svg>
-  ),
-  chevronLeft: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6"/>
-    </svg>
-  ),
-  chevronRight: (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="9 18 15 12 9 6"/>
-    </svg>
-  ),
+  dashboard: <House size={19} strokeWidth={1.8} />,
+  users: <ContactRound size={19} strokeWidth={1.8} />,
+  projects: <BriefcaseBusiness size={19} strokeWidth={1.8} />,
+  teams: <UsersRound size={19} strokeWidth={1.8} />,
+  tasks: <ListChecks size={19} strokeWidth={1.8} />,
+  analytics: <ChartSpline size={19} strokeWidth={1.8} />,
+  settings: <SlidersHorizontal size={19} strokeWidth={1.8} />,
+  reports: <FileChartColumn size={19} strokeWidth={1.8} />,
+  tools: <Blocks size={19} strokeWidth={1.8} />,
 };
 
 interface MenuItem {
@@ -90,14 +49,6 @@ interface MenuItem {
   path: string; // relative path (e.g. '' for dashboard, '/users', '/teams')
   badge?: number;
 }
-
-// Icon for profile (used in member menu)
-const profileIcon = (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-    <circle cx="12" cy="7" r="4"/>
-  </svg>
-);
 
 // Menu items per role
 const ownerMenuItems: MenuItem[] = [
@@ -163,17 +114,6 @@ function getMenuForRole(role: string | undefined, isOrgContext: boolean): MenuIt
   }
 }
 
-function getBasePath(orgSlug: string | undefined, role: string | undefined): string {
-  if (!orgSlug) return '/admin';
-  switch (role) {
-    case 'owner':
-    case 'admin': return `/${orgSlug}/admin`;
-    case 'manager':
-    case 'leader': return `/${orgSlug}`;
-    default: return `/${orgSlug}`;
-  }
-}
-
 // Teams Dropdown Component - Similar to Linear
 interface Team {
   id: string;
@@ -187,57 +127,31 @@ const TEAM_SUBOPTIONS = [
   { 
     id: 'issues', 
     label: 'Tareas', 
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M12 6v6l4 2"/>
-      </svg>
-    ),
+    icon: <ListChecks size={16} strokeWidth={1.8} />,
     href: (basePath: string, teamId: string) => `${basePath}/teams/${teamId}/tasks`
   },
   {
     id: 'cycles',
     label: 'Cycles',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10"/>
-        <polyline points="12 6 12 12 16 14"/>
-      </svg>
-    ),
+    icon: <Clock3 size={16} strokeWidth={1.8} />,
     href: (basePath: string, teamId: string) => `${basePath}/teams/${teamId}/cycles`
   },
   {
     id: 'projects',
     label: 'Proyectos',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-      </svg>
-    ),
+    icon: <FolderKanban size={16} strokeWidth={1.8} />,
     href: (basePath: string, teamId: string) => `${basePath}/teams/${teamId}/projects`
   },
   {
     id: 'members',
     label: 'Miembros',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-        <circle cx="9" cy="7" r="4"/>
-        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-      </svg>
-    ),
+    icon: <UsersRound size={16} strokeWidth={1.8} />,
     href: (basePath: string, teamId: string) => `${basePath}/teams/${teamId}/members`
   },
   {
     id: 'settings',
     label: 'Configuración',
-    icon: (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
-    ),
+    icon: <Settings2 size={16} strokeWidth={1.8} />,
     href: (basePath: string, teamId: string) => `${basePath}/teams/${teamId}/settings`
   },
 ];
@@ -285,17 +199,12 @@ function TeamsDropdown({ basePath, teamsApiUrl }: { basePath: string; teamsApiUr
         style={{ color: colors.textMuted }}
       >
         <span>Tus Equipos</span>
-        <svg 
-          width="12" 
-          height="12" 
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="currentColor" 
-          strokeWidth="2"
-          className={`transition-transform duration-200 ${isOpen ? 'rotate-0' : '-rotate-90'}`}
-        >
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
+        <ChevronRight
+          size={14}
+          strokeWidth={1.8}
+          className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : 'rotate-0'}`}
+          aria-hidden="true"
+        />
       </button>
 
       {/* Teams List */}
@@ -327,18 +236,13 @@ function TeamsDropdown({ basePath, teamsApiUrl }: { basePath: string; teamsApiUr
                     onClick={(e) => toggleTeamExpand(team.id, e)}
                   >
                     {/* Expand Arrow */}
-                    <svg 
-                      width="12" 
-                      height="12" 
-                      viewBox="0 0 24 24" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      strokeWidth="2"
+                    <ChevronRight
+                      size={13}
+                      strokeWidth={1.8}
                       className={`transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
                       style={{ color: colors.textMuted }}
-                    >
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
+                      aria-hidden="true"
+                    />
 
                     {/* Team Color Badge */}
                     <div 
@@ -365,11 +269,7 @@ function TeamsDropdown({ basePath, teamsApiUrl }: { basePath: string; teamsApiUr
                       className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-all"
                       style={{ color: colors.textMuted }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                        <circle cx="12" cy="5" r="2"/>
-                        <circle cx="12" cy="12" r="2"/>
-                        <circle cx="12" cy="19" r="2"/>
-                      </svg>
+                      <MoreVertical size={14} aria-hidden="true" />
                     </button>
                   </div>
 
@@ -418,10 +318,7 @@ function TeamsDropdown({ basePath, teamsApiUrl }: { basePath: string; teamsApiUr
               className="w-5 h-5 rounded flex items-center justify-center"
               style={{ border: `1.5px dashed ${colors.textMuted}` }}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
+              <Plus size={12} strokeWidth={1.8} aria-hidden="true" />
             </div>
             <span className="text-sm group-hover:text-[#00D4B3] transition-colors">
               Ver equipos
@@ -465,11 +362,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
     href: item.path ? `${basePath}${item.path}` : `${basePath}/dashboard`,
   }));
 
-  // On mobile: sidebar is visible only when isMobileOpen is true
-  // On desktop: sidebar is always visible, toggling between collapsed/expanded
-  const sidebarVisible = isMobile ? isMobileOpen : true;
-  const sidebarWidth = isMobile ? 'w-[260px]' : (isCollapsed ? 'w-[72px]' : 'w-[260px]');
-
   // Auto-close sidebar on navigation in mobile
   const handleNavClick = () => {
     if (isMobile && onMobileClose) {
@@ -489,54 +381,44 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
       )}
 
       <aside
-        className={`
-          fixed left-0 top-0 h-screen z-50 flex flex-col
-          transition-all duration-300 ease-in-out overflow-visible
-          ${sidebarWidth}
-        `}
+        className={`${shellStyles.sidebar} ${!isMobile && isCollapsed ? shellStyles.sidebarCollapsed : ''}`}
         style={{
-          background: isDark
-            ? 'linear-gradient(180deg, #0A0D12 0%, #0F1419 100%)'
-            : `linear-gradient(180deg, ${colors.bgPrimary} 0%, ${colors.bgSecondary} 100%)`,
-          borderRight: `1px solid ${colors.border}`,
           transform: isMobile
-            ? (isMobileOpen ? 'translateX(0)' : 'translateX(-100%)')
+            ? (isMobileOpen ? 'translateX(0)' : 'translateX(calc(-100% - 1rem))')
             : 'translateX(0)',
         }}
       >
-        {/* Logo Section */}
-        <div className="h-16 flex items-center px-4 flex-shrink-0" style={{ borderBottom: `1px solid ${colors.border}` }}>
-          <Link href={`${basePath}/dashboard`} className="flex items-center gap-3" onClick={handleNavClick}>
-            {/* Logo Image */}
-            <div className="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0">
-              <img
-                src="/Logo.png"
-                alt="Project Hub Logo"
-                className="w-full h-full object-contain"
-              />
-            </div>
-            {(!isCollapsed || isMobile) && (
-              <span style={{ color: colors.textPrimary }} className="font-semibold text-xl tracking-tight truncate">Project Hub</span>
-            )}
-          </Link>
+        <div className={`${shellStyles.sidebarHeader} ${!isMobile && isCollapsed ? shellStyles.sidebarHeaderCollapsed : ''}`}>
+          {(!isCollapsed || isMobile) && (
+            <Link href={`${basePath}/dashboard`} className={shellStyles.brandLink} onClick={handleNavClick}>
+              <span className={shellStyles.brandLogo}>
+                <img src="/Logo.png" alt="" className="w-full h-full object-contain" />
+              </span>
+              <span style={{ color: colors.textPrimary }} className={shellStyles.brandName}>Project Hub</span>
+            </Link>
+          )}
 
-          {/* Collapse/Close Button */}
           <button
+            type="button"
             onClick={isMobile ? onMobileClose : onToggle}
-            className={`
-              ml-auto p-1.5 rounded-lg transition-all duration-200
-              ${(!isMobile && isCollapsed) ? 'absolute right-2' : ''}
-            `}
-            style={{ color: colors.textSecondary }}
+            className={`${shellStyles.sidebarToggle} ${!isMobile && isCollapsed ? shellStyles.sidebarToggleCollapsed : ''}`}
+            aria-label={isMobile || !isCollapsed ? 'Cerrar menú lateral' : 'Abrir menú lateral'}
+            title={isMobile || !isCollapsed ? 'Cerrar menú lateral' : 'Abrir menú lateral'}
           >
-            {isMobile ? icons.chevronLeft : (isCollapsed ? icons.chevronRight : icons.chevronLeft)}
+            {isMobile || !isCollapsed
+              ? <PanelLeftClose size={19} strokeWidth={1.8} aria-hidden="true" />
+              : <PanelLeftOpen size={20} strokeWidth={1.8} aria-hidden="true" />}
           </button>
         </div>
 
+        <div className={shellStyles.sidebarDivider} aria-hidden="true" />
+
         {/* Scrollable middle section */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+        <div
+          className={`flex-1 min-h-0 ${!isMobile && isCollapsed ? 'overflow-visible' : 'overflow-y-auto overflow-x-hidden'}`}
+        >
           {/* Navigation */}
-          <nav className="p-3 space-y-1 mt-2">
+          <nav className={shellStyles.sidebarNav} aria-label="Navegación principal">
             {menuItems.map((item) => {
               const isActive = item.id === 'dashboard'
                 ? pathname === `${basePath}/dashboard`
@@ -547,30 +429,22 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
                   key={item.id}
                   href={item.href}
                   onClick={handleNavClick}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative"
+                  className={`${shellStyles.navItem} ${!isMobile && isCollapsed ? shellStyles.navItemCollapsed : ''} group`}
                   style={{
                     background: isActive
-                      ? (isDark ? 'linear-gradient(to right, rgba(0,212,179,0.2), transparent)' : 'linear-gradient(to right, rgba(0,212,179,0.15), transparent)')
+                      ? 'linear-gradient(135deg, #0ad8bd 0%, #00c6ad 100%)'
                       : 'transparent',
-                    color: isActive ? colors.textPrimary : colors.textSecondary,
+                    color: isActive ? '#071512' : colors.textSecondary,
                   }}
                 >
-                  {/* Active indicator */}
-                  {isActive && (
-                    <div
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
-                      style={{ background: '#00D4B3' }}
-                    />
-                  )}
-
                   {/* Icon */}
-                  <span className={`${isActive ? 'text-[#00D4B3]' : 'group-hover:text-[#00D4B3]'} transition-colors`}>
+                  <span className={`${shellStyles.navIcon} ${isActive ? 'text-[#071512]' : 'group-hover:text-[#00D4B3]'}`}>
                     {icons[item.icon]}
                   </span>
 
                   {/* Label */}
                   {(!isCollapsed || isMobile) && (
-                    <span className="font-medium text-sm" style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}>
+                    <span className="font-medium text-sm" style={{ color: isActive ? '#071512' : colors.textSecondary }}>
                       {item.label}
                     </span>
                   )}
@@ -584,15 +458,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
 
                   {/* Tooltip for collapsed state - only on desktop */}
                   {!isMobile && isCollapsed && (
-                    <div className="
-                      absolute left-full ml-3 px-3 py-2 rounded-lg
-                      bg-[#1E2329] text-white text-sm font-medium
-                      opacity-0 invisible group-hover:opacity-100 group-hover:visible
-                      transition-all duration-200 whitespace-nowrap z-50
-                      shadow-lg
-                    ">
+                    <div className={shellStyles.navTooltip} role="tooltip">
                       {item.label}
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-[#1E2329] rotate-45" />
                     </div>
                   )}
                 </Link>
@@ -650,7 +517,7 @@ function UserProfileMenu({ isCollapsed, basePath }: { isCollapsed: boolean; base
   };
 
   return (
-    <div className="relative px-3 py-3" style={{ overflow: 'visible' }}>
+    <div className={`relative ${isCollapsed ? 'px-2 py-2' : 'px-3 py-3'}`} style={{ overflow: 'visible' }}>
       {/* User Menu Dropdown */}
       {isOpen && (
         <>
@@ -675,10 +542,7 @@ function UserProfileMenu({ isCollapsed, basePath }: { isCollapsed: boolean; base
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
+              <UserRound size={18} strokeWidth={1.8} aria-hidden="true" />
               <span className="text-sm">Editar perfil</span>
             </Link>
 
@@ -690,21 +554,9 @@ function UserProfileMenu({ isCollapsed, basePath }: { isCollapsed: boolean; base
             >
               <div className="flex items-center gap-3">
                 {isDark ? (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                  </svg>
+                  <Moon size={18} strokeWidth={1.8} aria-hidden="true" />
                 ) : (
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/>
-                    <line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                    <line x1="1" y1="12" x2="3" y2="12"/>
-                    <line x1="21" y1="12" x2="23" y2="12"/>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                  </svg>
+                  <Sun size={18} strokeWidth={1.8} aria-hidden="true" />
                 )}
                 <span className="text-sm">{isDark ? 'Modo oscuro' : 'Modo claro'}</span>
               </div>
@@ -726,11 +578,7 @@ function UserProfileMenu({ isCollapsed, basePath }: { isCollapsed: boolean; base
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors whitespace-nowrap"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
+              <LogOut size={18} strokeWidth={1.8} aria-hidden="true" />
               <span className="text-sm">Cerrar sesión</span>
             </button>
           </div>
@@ -740,7 +588,7 @@ function UserProfileMenu({ isCollapsed, basePath }: { isCollapsed: boolean; base
       {/* User Card */}
       <div 
         onClick={() => setIsOpen(!isOpen)}
-        className={`rounded-xl transition-all duration-200 cursor-pointer ${isCollapsed ? 'p-2' : 'p-3'}`}
+        className={`rounded-xl transition-all duration-200 cursor-pointer ${isCollapsed ? 'p-1.5' : 'p-3'}`}
         style={{
           backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
           border: `1px solid ${colors.border}`,
@@ -786,11 +634,7 @@ function UserProfileMenu({ isCollapsed, basePath }: { isCollapsed: boolean; base
                   backgroundColor: isOpen ? 'rgba(0,212,179,0.1)' : 'transparent'
                 }}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="1"/>
-                  <circle cx="12" cy="5" r="1"/>
-                  <circle cx="12" cy="19" r="1"/>
-                </svg>
+                <MoreVertical size={16} strokeWidth={1.8} aria-hidden="true" />
               </div>
             </>
           )}

@@ -1,21 +1,23 @@
 /**
  * API Route: POST /api/auth/login
- * 
+ *
  * Maneja el inicio de sesión con autenticación DUAL:
- * 
+ *
  * 1. Si SOFIA está configurado (isSofiaAuthEnabled):
- *    a) Busca el usuario en SOFIA (account_users)
- *    b) Verifica password contra el hash de SOFIA
- *    c) Sincroniza el usuario con Project Hub (crea o actualiza en la BD local)
+ *    a) Verifica credenciales con Supabase Auth de SOFIA (signInWithPassword).
+ *       Acepta email o username: el username se resuelve a email contra
+ *       `public.users` antes de llamar a Supabase Auth.
+ *    b) Lee el PERFIL desde `public.users` de SOFIA con el token del usuario
+ *    c) Sincroniza el usuario con Project Hub (crea o actualiza `account_users`)
  *    d) Genera JWT local y crea sesión en Project Hub
- * 
- * 2. Si SOFIA NO está configurado (fallback):
+ *
+ * 2. Fallback a autenticación local (solo si el usuario NO existe en SOFIA):
  *    a) Busca el usuario en Project Hub local (account_users)
  *    b) Verifica password contra el hash local
  *    c) Genera JWT y crea sesión
- * 
- * Esto permite que los usuarios con cuenta SOFIA puedan iniciar sesión
- * en Project Hub sin necesidad de crear una cuenta separada.
+ *
+ * NOTA: SOFIA migró a Supabase Auth. `public.users` ya no tiene `password_hash`
+ * y su `id` es FK a `auth.users(id)`. Ver `lib/auth/sofia-auth.ts`.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -24,10 +26,13 @@ import { verifyPassword } from '@/lib/auth/password';
 import { generateTokenPair, hashToken } from '@/lib/auth/jwt';
 import {
   isSofiaAuthEnabled,
-  findSofiaUser,
+  authenticateSofiaUser,
   recordSofiaLogin,
   getSofiaUserOrgs,
+  normalizeAccountUsername as normalizeUsername,
+  SOFIA_MANAGED_PASSWORD_PLACEHOLDER,
 } from '@/lib/auth/sofia-auth';
+import type { SofiaUser } from '@/lib/supabase/sofia-client';
 import { syncWorkspacesFromSofia } from '@/lib/services/workspace-service';
 
 // Forzar runtime de Node.js para compatibilidad con bcrypt
@@ -111,60 +116,52 @@ export async function POST(request: NextRequest) {
     // FLUJO 1: Intentar autenticación con SOFIA primero
     // ═══════════════════════════════════════════════════════════
     if (isSofiaAuthEnabled()) {
-      debugLogin('🔐 [LOGIN] Intentando autenticación con SOFIA...');
-      
-      const sofiaUser = await findSofiaUser(email);
-      
-      if (sofiaUser) {
-        debugLogin('✅ [LOGIN] Usuario encontrado en SOFIA:', sofiaUser.email);
-        
-        // Verificar estado de cuenta en SOFIA
-        if (sofiaUser.locked_until) {
-          const lockTime = new Date(sofiaUser.locked_until);
-          const now = new Date();
-          if (lockTime > now) {
-            const secondsLeft = Math.ceil((lockTime.getTime() - now.getTime()) / 1000);
-            await logLoginAttempt(email, request, 'account_locked', null);
-            return NextResponse.json(
-              { 
-                error: 'Cuenta bloqueada temporalmente. Intenta más tarde.',
-                lockoutSeconds: secondsLeft
-              },
-              { status: 423 }
-            );
-          }
-        }
+      debugLogin('🔐 [LOGIN] Intentando autenticación con SOFIA (Supabase Auth)...');
 
-        // Bloqueamos solo si hay evidencia explícita de cuenta inactiva.
-        // sofia-auth.ts ya normaliza account_status: si is_banned=true o status=banned/suspended/etc.
-        // lo marca como no-'active'. Usuarios nuevos o con status desconocido quedan como 'active'.
-        const BLOCKED_STATUSES = new Set(['banned', 'suspended', 'deleted', 'inactive', 'disabled', 'deactivated', 'blocked']);
-        if (BLOCKED_STATUSES.has(sofiaUser.account_status)) {
-          await logLoginAttempt(email, request, 'account_suspended', null);
-          return NextResponse.json(
-            { error: `Cuenta ${sofiaUser.account_status}. Contacta al administrador.` },
-            { status: 403 }
-          );
-        }
+      const sofiaAuth = await authenticateSofiaUser(email, password);
 
-        // Verificar contraseña contra SOFIA
-        const isPasswordValid = await verifyPassword(password, sofiaUser.password_hash);
-        
-        if (!isPasswordValid) {
-          await logLoginAttempt(email, request, 'failed_password', sofiaUser.user_id);
-          return NextResponse.json(
-            { error: 'Credenciales inválidas' },
-            { status: 401 }
-          );
-        }
+      // Solo caemos al flujo local si el usuario no existe en SOFIA.
+      // Un password incorrecto NO debe reintentarse contra la BD local.
+      if (!sofiaAuth.success && sofiaAuth.errorCode !== 'USER_NOT_FOUND') {
+        const statusByCode: Record<string, number> = {
+          ACCOUNT_LOCKED: 423,
+          ACCOUNT_INACTIVE: 403,
+          EMAIL_NOT_CONFIRMED: 403,
+          INVALID_PASSWORD: 401,
+          SOFIA_NOT_CONFIGURED: 503,
+          INTERNAL_ERROR: 500,
+        };
+        const logStatusByCode: Record<string, string> = {
+          ACCOUNT_LOCKED: 'account_locked',
+          ACCOUNT_INACTIVE: 'account_suspended',
+          EMAIL_NOT_CONFIRMED: 'email_not_confirmed',
+          INVALID_PASSWORD: 'failed_password',
+        };
+
+        await logLoginAttempt(
+          email,
+          request,
+          logStatusByCode[sofiaAuth.errorCode || ''] || 'failed_sofia',
+          null
+        );
+
+        return NextResponse.json(
+          { error: sofiaAuth.error || 'Credenciales inválidas' },
+          { status: statusByCode[sofiaAuth.errorCode || ''] || 401 }
+        );
+      }
+
+      if (sofiaAuth.success && sofiaAuth.user) {
+        const sofiaUser = sofiaAuth.user;
+        const sofiaAccessToken = sofiaAuth.session?.accessToken;
 
         // ✅ Autenticación SOFIA exitosa - Sincronizar con IRIS
-        debugLogin('✅ [LOGIN] Password verificado con SOFIA, sincronizando con IRIS...');
-        
+        debugLogin('✅ [LOGIN] Credenciales verificadas con SOFIA, sincronizando con IRIS...');
+
         const irisUser = await syncSofiaUserToIris(sofiaUser);
-        
-        // Obtener organizaciones del usuario desde SOFIA
-        const sofiaOrgs = await getSofiaUserOrgs(sofiaUser.user_id);
+
+        // Obtener organizaciones del usuario desde SOFIA (con el token del usuario para pasar RLS)
+        const sofiaOrgs = await getSofiaUserOrgs(sofiaUser.user_id, sofiaAccessToken);
 
         // Sincronizar organizaciones de SOFIA con workspaces en IRIS BD
         const syncedWorkspaces = await syncWorkspacesFromSofia(irisUser.user_id, sofiaOrgs);
@@ -186,7 +183,7 @@ export async function POST(request: NextRequest) {
 
         // Registrar login exitoso en ambos sistemas
         await logLoginAttempt(email, request, 'success', irisUser.user_id);
-        await recordSofiaLogin(sofiaUser.user_id);
+        await recordSofiaLogin(sofiaUser.user_id, sofiaAccessToken);
 
         // Resetear intentos fallidos
         try {
@@ -370,13 +367,39 @@ export async function POST(request: NextRequest) {
  * Si el usuario ya existe (por email), lo actualiza
  * Si no existe, lo crea
  */
-async function syncSofiaUserToIris(sofiaUser: any): Promise<AccountUser> {
-  // Buscar si el usuario ya existe en IRIS (por email)
-  const { data: existingUser } = await supabaseAdmin
+async function syncSofiaUserToIris(sofiaUser: SofiaUser): Promise<AccountUser> {
+  if (!sofiaUser.email) {
+    throw new Error('El usuario de SOFIA no tiene email; no se puede sincronizar con Project Hub');
+  }
+
+  const desiredUsername = normalizeUsername(sofiaUser.username, sofiaUser.email);
+
+  // Buscar la fila espejo existente. NO basta con el email: una cuenta puede
+  // haberse creado antes con otro correo (p.ej. @pulsehub.mx) y el mismo
+  // username, y entonces el INSERT chocaba contra UNIQUE(username).
+  // Se consultan las tres claves candidatas (user_id, email, username) de una vez.
+  const { data: candidates } = await supabaseAdmin
     .from('account_users')
     .select('*')
-    .eq('email', sofiaUser.email)
-    .single();
+    .or(
+      [
+        `user_id.eq.${sofiaUser.user_id}`,
+        `email.ilike.${sofiaUser.email}`,
+        `username.ilike.${desiredUsername}`,
+      ].join(',')
+    );
+
+  const rows = (candidates || []) as AccountUser[];
+  const matchById = rows.find((row) => row.user_id === sofiaUser.user_id);
+  const matchByEmail = rows.find(
+    (row) => row.email?.toLowerCase() === sofiaUser.email.toLowerCase()
+  );
+  const matchByUsername = rows.find(
+    (row) => row.username?.toLowerCase() === desiredUsername.toLowerCase()
+  );
+
+  // Prioridad: el id de SOFIA es la identidad más fuerte, luego el email.
+  const existingUser = matchById || matchByEmail || matchByUsername;
 
   if (existingUser) {
     // Actualizar datos del usuario existente con los de SOFIA
@@ -385,11 +408,27 @@ async function syncSofiaUserToIris(sofiaUser: any): Promise<AccountUser> {
       last_name_paternal: sofiaUser.last_name_paternal,
       last_name_maternal: sofiaUser.last_name_maternal,
       display_name: sofiaUser.display_name || `${sofiaUser.first_name} ${sofiaUser.last_name_paternal}`,
-      username: sofiaUser.username || existingUser.username,
       last_login_at: new Date().toISOString(),
       last_activity_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+
+    // email y username son UNIQUE: solo se sincronizan si nadie más los tiene.
+    if (!matchByEmail || matchByEmail.user_id === existingUser.user_id) {
+      updateData.email = sofiaUser.email;
+    } else {
+      console.warn(
+        `⚠️ [SYNC] El email ${sofiaUser.email} ya pertenece a otro usuario de Project Hub; se conserva ${existingUser.email}`
+      );
+    }
+
+    if (!matchByUsername || matchByUsername.user_id === existingUser.user_id) {
+      updateData.username = desiredUsername;
+    } else {
+      console.warn(
+        `⚠️ [SYNC] El username ${desiredUsername} ya pertenece a otro usuario de Project Hub; se conserva ${existingUser.username}`
+      );
+    }
 
     // Sincronizar campos opcionales solo si SOFIA los tiene
     if (sofiaUser.company_role) updateData.company_role = sofiaUser.company_role;
@@ -404,27 +443,36 @@ async function syncSofiaUserToIris(sofiaUser: any): Promise<AccountUser> {
       debugLogin('🖼️ [SYNC] SOFIA no tiene avatar, manteniendo el existente:', existingUser.avatar_url ? 'tiene' : 'vacío');
     }
 
-    const { data: updatedUser } = await supabaseAdmin
+    const { data: updatedUser, error: updateError } = await supabaseAdmin
       .from('account_users')
       .update(updateData)
       .eq('user_id', existingUser.user_id)
       .select()
       .single();
 
+    if (updateError) {
+      // No bloquea el login: seguimos con los datos que ya teníamos localmente.
+      console.error('⚠️ [SYNC] Error actualizando usuario espejo en Project Hub:', updateError);
+    }
+
     return (updatedUser || existingUser) as AccountUser;
   }
 
-  // Crear usuario nuevo en IRIS basado en los datos de SOFIA
+  // Crear usuario nuevo en IRIS basado en los datos de SOFIA.
+  // user_id = id de SOFIA (auth.users) para que coincida con el que usa
+  // syncAllOrgMembers al poblar workspace_members.
   const { data: newUser, error } = await supabaseAdmin
     .from('account_users')
     .insert({
+      user_id: sofiaUser.user_id,
       first_name: sofiaUser.first_name,
       last_name_paternal: sofiaUser.last_name_paternal,
       last_name_maternal: sofiaUser.last_name_maternal || null,
       display_name: sofiaUser.display_name || `${sofiaUser.first_name} ${sofiaUser.last_name_paternal}`,
-      username: sofiaUser.username,
+      username: desiredUsername,
       email: sofiaUser.email,
-      password_hash: sofiaUser.password_hash, // Copiar el hash, NO la password
+      // SOFIA ya no expone hashes: las credenciales viven en su Supabase Auth.
+      password_hash: SOFIA_MANAGED_PASSWORD_PLACEHOLDER,
       permission_level: sofiaUser.permission_level || 'user',
       company_role: sofiaUser.company_role || null,
       department: sofiaUser.department || null,
@@ -441,7 +489,9 @@ async function syncSofiaUserToIris(sofiaUser: any): Promise<AccountUser> {
 
   if (error || !newUser) {
     console.error('❌ [SYNC] Error creando usuario en Project Hub:', error);
-    throw new Error('Error al sincronizar usuario con Project Hub');
+    throw new Error(
+      `Error al sincronizar usuario con Project Hub${error?.details ? `: ${error.details}` : ''}`
+    );
   }
 
   debugLogin('✅ [SYNC] Usuario sincronizado de SOFIA a Project Hub:', newUser.email);

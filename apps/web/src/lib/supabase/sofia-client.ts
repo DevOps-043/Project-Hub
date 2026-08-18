@@ -1,14 +1,16 @@
 /**
  * Cliente Supabase para SOFIA (Autenticación principal)
- * 
- * SOFIA es el "auth master": las credenciales de los usuarios se verifican
- * contra la tabla `account_users` en SOFIA Supabase.
- * 
+ *
+ * SOFIA es el "auth master", pero desde la migración a Supabase Auth las
+ * credenciales viven en `auth.users` del proyecto SOFIA, NO en una tabla
+ * propia con `password_hash`. `public.users` es solo el perfil y su `id`
+ * es FK a `auth.users(id)`.
+ *
  * Flujo:
- * 1. Usuario ingresa email + password
- * 2. Se verifica contra SOFIA (account_users)
- * 3. Si éxito, se sincroniza sesión con Project Hub
- * 4. El usuario queda autenticado en ambos sistemas
+ * 1. Usuario ingresa email (o username) + password
+ * 2. Se verifica con `auth.signInWithPassword` contra SOFIA
+ * 3. Se lee el perfil de `public.users` con el token del usuario
+ * 4. Se sincroniza el espejo en Project Hub (`account_users`) y se emite el JWT propio
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -16,6 +18,11 @@ import { SOFIA_SUPABASE, isValidUrl } from './config';
 
 // ── Tipos para tablas de SOFIA ──
 
+/**
+ * Perfil de SOFIA normalizado al vocabulario de Project Hub.
+ * Ver `lib/auth/sofia-auth.ts` para el mapeo desde las columnas reales
+ * de `public.users` (last_name, platform_role, profile_picture_url, ...).
+ */
 export interface SofiaUser {
   user_id: string;
   first_name: string;
@@ -24,11 +31,13 @@ export interface SofiaUser {
   display_name: string | null;
   username: string;
   email: string;
-  password_hash: string;
+  /** Valor crudo de `public.users.platform_role` en SofLIA */
+  platform_role: string | null;
   permission_level: 'super_admin' | 'admin' | 'manager' | 'user' | 'viewer' | 'guest';
   company_role: string | null;
   department: string | null;
   account_status: 'active' | 'inactive' | 'suspended' | 'pending_verification' | 'deleted';
+  is_banned: boolean;
   is_email_verified: boolean;
   email_verified_at: string | null;
   avatar_url: string | null;
@@ -37,8 +46,6 @@ export interface SofiaUser {
   locale: string;
   last_login_at: string | null;
   last_activity_at: string | null;
-  failed_login_attempts: number;
-  locked_until: string | null;
   created_at: string;
   updated_at: string;
 }

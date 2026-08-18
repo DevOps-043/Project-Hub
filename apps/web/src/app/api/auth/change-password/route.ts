@@ -2,16 +2,18 @@
  * API Route: POST /api/auth/change-password
  * Cambia la contrasena del usuario autenticado.
  *
- * SOFIA es la fuente primaria del perfil y credenciales. Project Hub conserva
- * el hash local solo como espejo para mantener compatible el login actual.
+ * SOFIA es la fuente primaria de credenciales, y desde la migracion a Supabase
+ * Auth el cambio se hace con `auth.updateUser` contra el proyecto SOFIA.
+ * Project Hub ya no guarda un espejo del hash: `account_users.password_hash`
+ * queda con el centinela SOFIA_MANAGED_PASSWORD_PLACEHOLDER.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
-import { hashBcryptPassword, hashPassword, verifyPassword } from '@/lib/auth/password';
-import { findSofiaUser } from '@/lib/auth/sofia-auth';
-import { getSofiaServiceRoleClient, isSofiaConfigured } from '@/lib/supabase/sofia-client';
+import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import { changeSofiaPassword, SOFIA_MANAGED_PASSWORD_PLACEHOLDER } from '@/lib/auth/sofia-auth';
+import { isSofiaConfigured } from '@/lib/supabase/sofia-client';
 
 export const runtime = 'nodejs';
 
@@ -53,6 +55,10 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    if (currentPassword === newPassword) {
+      return NextResponse.json({ error: 'La nueva contrasena debe ser diferente a la actual' }, { status: 400 });
+    }
+
     const { data: user, error: userError } = await supabaseAdmin
       .from('account_users')
       .select('user_id, email, username, password_hash')
@@ -67,51 +73,27 @@ export async function POST(request: NextRequest) {
     let changedInSofia = false;
 
     if (isSofiaConfigured()) {
-      const sofiaUser = await findSofiaUser(user.email || user.username);
+      const result = await changeSofiaPassword(
+        user.email || user.username,
+        currentPassword,
+        newPassword
+      );
 
-      if (!sofiaUser?.password_hash) {
-        return NextResponse.json({
-          error: 'No se encontro el usuario en SOFIA para cambiar la contrasena',
-        }, { status: 404 });
+      if (!result.success) {
+        const statusByCode: Record<string, number> = {
+          USER_NOT_FOUND: 404,
+          INVALID_PASSWORD: 400,
+          SOFIA_NOT_CONFIGURED: 503,
+          INTERNAL_ERROR: 500,
+        };
+        return NextResponse.json(
+          { error: result.error || 'No se pudo actualizar la contrasena en SOFIA' },
+          { status: statusByCode[result.errorCode || ''] || 500 }
+        );
       }
 
-      const isCurrentPasswordValid = await verifyPassword(currentPassword, sofiaUser.password_hash);
-      if (!isCurrentPasswordValid) {
-        return NextResponse.json({ error: 'La contrasena actual es incorrecta' }, { status: 400 });
-      }
-
-      const isSamePassword = await verifyPassword(newPassword, sofiaUser.password_hash);
-      if (isSamePassword) {
-        return NextResponse.json({ error: 'La nueva contrasena debe ser diferente a la actual' }, { status: 400 });
-      }
-
-      const sofia = getSofiaServiceRoleClient();
-      if (!sofia) {
-        return NextResponse.json({
-          error: 'SOFIA_SUPABASE_SERVICE_ROLE_KEY no esta disponible en el runtime de apps/web. La contrasena no se actualizo.',
-        }, { status: 503 });
-      }
-
-      const newSofiaPasswordHash = await hashBcryptPassword(newPassword);
-      const { data: updatedSofiaUser, error: sofiaUpdateError } = await sofia
-        .from('users')
-        .update({
-          password_hash: newSofiaPasswordHash,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', sofiaUser.user_id)
-        .select('id')
-        .maybeSingle();
-
-      if (sofiaUpdateError || !updatedSofiaUser) {
-        console.error('Error actualizando contrasena en SOFIA:', sofiaUpdateError);
-        return NextResponse.json({
-          error: 'SOFIA no permitio actualizar la contrasena. Verifica que la service role pertenezca al proyecto SOFIA y que el usuario exista.',
-          details: sofiaUpdateError?.message,
-        }, { status: sofiaUpdateError ? 500 : 404 });
-      }
-
-      passwordHashForLocalMirror = newSofiaPasswordHash;
+      // La credencial vive en auth.users de SOFIA; localmente solo el centinela.
+      passwordHashForLocalMirror = SOFIA_MANAGED_PASSWORD_PLACEHOLDER;
       changedInSofia = true;
     }
 

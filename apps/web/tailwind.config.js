@@ -38,7 +38,9 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sans: ['var(--font-system-ui)', 'Arial', 'sans-serif'],
+        display: ['var(--font-system-display)', 'Georgia', 'serif'],
+        label: ['var(--font-system-label)', 'Arial', 'sans-serif'],
       },
       fontSize: {
         'xs': ['0.75rem', { lineHeight: '1.4' }],      // 12px

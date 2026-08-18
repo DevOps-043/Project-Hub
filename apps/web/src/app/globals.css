@@ -31,7 +31,10 @@
   /* ============================================
      TIPOGRAFÍA
      ============================================ */
-  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-system-display: var(--font-newsreader), Newsreader, Georgia, serif;
+  --font-system-ui: var(--font-inter-tight), "Inter Tight", Inter, Arial, sans-serif;
+  --font-system-label: var(--font-ibm-plex), "IBM Plex Sans", Arial, sans-serif;
+  --font-family: var(--font-system-ui);
   
   /* Sizes */
   --text-xs: 0.75rem;    /* 12px */
@@ -117,6 +120,30 @@ body {
   line-height: var(--leading-normal);
   color: var(--color-gray-900);
   background-color: var(--color-white);
+  font-synthesis: none;
+}
+
+h1,
+h2 {
+  font-family: var(--font-system-display);
+  font-weight: 300;
+  letter-spacing: -0.025em;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-system-display);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 /* ============================================

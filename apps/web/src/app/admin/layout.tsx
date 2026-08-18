@@ -3,11 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { AdminNavbar } from "@/components/admin/AdminNavbar";
-import { useTheme, themeColors } from "@/contexts/ThemeContext";
 import { AuthGuard } from "@/components/auth/AuthGuard";
-import { ARIAProvider } from "@/contexts/ARIAContext";
-import { ARIAFloatingButton } from "@/features/lia";
-import { useAuthStore } from "@/core/stores/authStore";
+import shellStyles from "@/components/admin/AdminShell.module.css";
 
 const MOBILE_BREAKPOINT = 1024;
 
@@ -19,9 +16,6 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const { isDark } = useTheme();
-  const colors = isDark ? themeColors.dark : themeColors.light;
-  const user = useAuthStore((state) => state.user);
 
   // Detect mobile breakpoint
   useEffect(() => {
@@ -57,15 +51,7 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
   }, []);
 
   return (
-    <ARIAProvider>
-      <div
-        className="min-h-screen transition-colors duration-300"
-        style={{
-          background: isDark
-            ? "linear-gradient(135deg, #0F1419 0%, #0A0D12 50%, #0F1419 100%)"
-            : `linear-gradient(135deg, ${colors.bgSecondary} 0%, ${colors.bgPrimary} 50%, ${colors.bgSecondary} 100%)`,
-        }}
-      >
+    <div className={shellStyles.shell}>
         {/* Sidebar - Fijo a la izquierda */}
         <AdminSidebar
           isCollapsed={isMobile ? false : sidebarCollapsed}
@@ -84,21 +70,12 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
 
         {/* Main Content */}
         <main
-          className="pt-16 min-h-screen transition-all duration-300 ease-in-out"
-          style={{
-            paddingLeft: isMobile ? "0px" : sidebarCollapsed ? "72px" : "260px",
-          }}
+          className={`${shellStyles.main} ${!isMobile && sidebarCollapsed ? shellStyles.mainCollapsed : ""}`}
         >
-          <div className="p-6">{children}</div>
+          <div className={shellStyles.content}>{children}</div>
         </main>
 
-        <ARIAFloatingButton
-          userName={user?.name || user?.firstName}
-          userRole={user?.permissionLevel || user?.role}
-          userId={user?.id}
-        />
-      </div>
-    </ARIAProvider>
+    </div>
   );
 }
 
