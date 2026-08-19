@@ -331,6 +331,67 @@ export interface SofiaAuthResult {
 }
 
 /**
+ * Resuelve el perfil de `public.users` para un `auth.users` ya autenticado
+ * (por password o por SSO) y aplica el chequeo de baneo. Compartido por
+ * `authenticateSofiaUser` (password) y `authenticateSofiaSsoSession` (SSO de
+ * Learning) para no duplicar el fallback de perfil ni la regla de baneo.
+ */
+async function resolveProfileAfterSofiaAuth(
+  user: { id: string; email?: string | null; created_at?: string; updated_at?: string; email_confirmed_at?: string | null; user_metadata?: Record<string, any> | null },
+  accessToken: string
+): Promise<SofiaAuthResult> {
+  // El perfil se lee con el token del usuario para pasar la RLS de public.users
+  let profile = await findSofiaUserById(user.id, accessToken);
+
+  // Fallback: si aun no existe la fila de perfil, construimos lo mínimo
+  // a partir de auth.users para no bloquear el login.
+  if (!profile) {
+    debugSofiaAuth('[SOFIA AUTH] Sin fila en public.users, usando metadata de auth.users');
+    const metadata = (user.user_metadata || {}) as Record<string, any>;
+    profile = mapSofiaUserRow({
+      id: user.id,
+      email: user.email,
+      username: metadata.username || (user.email || '').split('@')[0],
+      first_name: metadata.first_name || metadata.full_name || null,
+      last_name: metadata.last_name || null,
+      display_name: metadata.display_name || metadata.full_name || null,
+      platform_role: metadata.platform_role || null,
+      profile_picture_url: metadata.avatar_url || metadata.picture || null,
+      email_verified: Boolean(user.email_confirmed_at),
+      email_verified_at: user.email_confirmed_at || null,
+      is_banned: false,
+      created_at: user.created_at || new Date().toISOString(),
+      updated_at: user.updated_at || new Date().toISOString(),
+    });
+  }
+
+  if (profile.is_banned) {
+    return {
+      success: false,
+      errorCode: 'ACCOUNT_INACTIVE',
+      error: 'Cuenta suspendida. Contacta al administrador.',
+    };
+  }
+
+  return { success: true, user: profile };
+}
+
+/**
+ * Cliente SOFIA dedicado con anon key, sin autenticar por defecto — mínimo
+ * privilegio para operaciones que solo necesitan validar un token de usuario
+ * (`auth.getUser`, `auth.verifyOtp`), nunca service role.
+ */
+function getSofiaAnonClient(): SupabaseClient | null {
+  const sofiaUrl = isValidUrl(SOFIA_SUPABASE.URL) ? SOFIA_SUPABASE.URL : '';
+  const anonKey = SOFIA_SUPABASE.ANON_KEY || '';
+  if (!sofiaUrl || !anonKey) return null;
+
+  return createClient(sofiaUrl, anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+/**
  * Autentica un usuario contra Supabase Auth de SOFIA.
  *
  * Acepta email o username: si se recibe un username se resuelve primero a
@@ -412,43 +473,12 @@ export async function authenticateSofiaUser(
     }
 
     const accessToken = data.session.access_token;
-
-    // El perfil se lee con el token del usuario para pasar la RLS de public.users
-    let profile = await findSofiaUserById(data.user.id, accessToken);
-
-    // Fallback: si aun no existe la fila de perfil, construimos lo mínimo
-    // a partir de auth.users para no bloquear el login.
-    if (!profile) {
-      debugSofiaAuth('[SOFIA AUTH] Sin fila en public.users, usando metadata de auth.users');
-      const metadata = (data.user.user_metadata || {}) as Record<string, any>;
-      profile = mapSofiaUserRow({
-        id: data.user.id,
-        email: data.user.email,
-        username: metadata.username || (data.user.email || '').split('@')[0],
-        first_name: metadata.first_name || metadata.full_name || null,
-        last_name: metadata.last_name || null,
-        display_name: metadata.display_name || metadata.full_name || null,
-        platform_role: metadata.platform_role || null,
-        profile_picture_url: metadata.avatar_url || metadata.picture || null,
-        email_verified: Boolean(data.user.email_confirmed_at),
-        email_verified_at: data.user.email_confirmed_at || null,
-        is_banned: false,
-        created_at: data.user.created_at,
-        updated_at: data.user.updated_at,
-      });
-    }
-
-    if (profile.is_banned) {
-      return {
-        success: false,
-        errorCode: 'ACCOUNT_INACTIVE',
-        error: 'Cuenta suspendida. Contacta al administrador.',
-      };
-    }
+    const resolved = await resolveProfileAfterSofiaAuth(data.user, accessToken);
+    if (!resolved.success) return resolved;
 
     return {
       success: true,
-      user: profile,
+      user: resolved.user,
       session: {
         accessToken,
         refreshToken: data.session.refresh_token,
@@ -461,6 +491,88 @@ export async function authenticateSofiaUser(
       success: false,
       errorCode: 'INTERNAL_ERROR',
       error: 'Error interno autenticando con SOFIA',
+    };
+  }
+}
+
+/**
+ * Canjea un `tokenHash` de magic link (emitido por Learning tras validar el
+ * ticket SSO) por una sesion real de Supabase Auth en SOFIA. Usa el cliente
+ * anon dedicado — mismo principio de minimo privilegio que el resto del
+ * flujo SSO.
+ */
+export async function exchangeSofiaMagicLink(tokenHash: string): Promise<string | null> {
+  const sofia = getSofiaAnonClient();
+  if (!sofia) return null;
+
+  try {
+    const { data, error } = await sofia.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' });
+    if (error || !data?.session?.access_token) {
+      debugSofiaAuth('[SOFIA AUTH] verifyOtp fallo:', error?.message);
+      return null;
+    }
+    return data.session.access_token;
+  } catch (err) {
+    console.error('[SOFIA AUTH] Error canjeando magic link SSO:', err);
+    return null;
+  }
+}
+
+/**
+ * Autentica una sesion SSO de SofLIA Learning: recibe el `access_token` de
+ * SOFIA que resulto de canjear el ticket de Learning + `verifyOtp` (ver
+ * `app/api/auth/callback/learning/route.ts`), lo valida contra SOFIA con
+ * `auth.getUser` (nunca decodifica el JWT sin verificar) y reutiliza la
+ * misma resolucion de perfil + chequeo de baneo que el login por password.
+ */
+export async function authenticateSofiaSsoSession(sofiaAccessToken: string): Promise<SofiaAuthResult> {
+  if (!isSofiaAuthEnabled()) {
+    return {
+      success: false,
+      errorCode: 'SOFIA_NOT_CONFIGURED',
+      error: 'SOFIA Supabase no esta configurado',
+    };
+  }
+
+  const sofia = getSofiaAnonClient();
+  if (!sofia) {
+    return {
+      success: false,
+      errorCode: 'SOFIA_NOT_CONFIGURED',
+      error: 'SOFIA Supabase no esta configurado',
+    };
+  }
+
+  try {
+    const { data, error } = await sofia.auth.getUser(sofiaAccessToken);
+
+    if (error || !data?.user) {
+      debugSofiaAuth('[SOFIA AUTH] Token SSO invalido:', error?.message);
+      return {
+        success: false,
+        errorCode: 'USER_NOT_FOUND',
+        error: 'Sesion SSO invalida',
+      };
+    }
+
+    const resolved = await resolveProfileAfterSofiaAuth(data.user, sofiaAccessToken);
+    if (!resolved.success) return resolved;
+
+    return {
+      success: true,
+      user: resolved.user,
+      session: {
+        accessToken: sofiaAccessToken,
+        refreshToken: '',
+        expiresAt: null,
+      },
+    };
+  } catch (err) {
+    console.error('[SOFIA AUTH] Error autenticando sesion SSO:', err);
+    return {
+      success: false,
+      errorCode: 'INTERNAL_ERROR',
+      error: 'Error interno autenticando sesion SSO',
     };
   }
 }

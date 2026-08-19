@@ -17,7 +17,9 @@
       "Bash(xargs ls -la)",
       "Bash(npx next lint --file apps/web/src/app/admin/teams/[teamId]/tasks/[issueId]/page.tsx)",
       "Bash(npm view *)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(npx tsc *)",
+      "Bash(npx eslint *)"
     ]
   }
 }

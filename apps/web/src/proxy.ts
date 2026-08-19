@@ -40,6 +40,8 @@ const PUBLIC_PATHS = [
   '/api/auth/refresh',
   '/api/auth/reset-test-user', // Solo desarrollo
   '/api/auth/callback/google', // OAuth Google callback (validado internamente via state)
+  '/api/auth/learning/start',    // SSO Learning: inicia el flujo (usuario aun sin sesion)
+  '/api/auth/callback/learning', // SSO Learning: callback (validado internamente via state)
   '/api/ai',              // AI Services (Agile Advisor, etc)
   '/api/focus',           // Focus Mode
   '/api/search',          // Global Search
