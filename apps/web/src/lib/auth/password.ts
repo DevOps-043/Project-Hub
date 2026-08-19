@@ -49,7 +49,6 @@ export async function hashPassword(password: string): Promise<string> {
  * Genera un hash bcrypt compatible con la tabla users de SofLIA Learning.
  */
 export async function hashBcryptPassword(password: string): Promise<string> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const bcrypt = require('bcryptjs');
   return bcrypt.hash(password, 12);
 }
@@ -130,7 +129,6 @@ async function verifyPbkdf2Password(password: string, storedHash: string): Promi
 async function verifyBcryptPassword(password: string, storedHash: string): Promise<boolean> {
   // Importación dinámica de bcryptjs (solo funciona en Node.js runtime)
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const bcrypt = require('bcryptjs');
     return await bcrypt.compare(password, storedHash);
   } catch {

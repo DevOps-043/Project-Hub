@@ -1,412 +1,38 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Children } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { createPortal } from 'react-dom';
 import { Loader2, Plus, X } from 'lucide-react';
 import { useGoogleConnection } from '@/shared/hooks/useGoogleConnection';
+import { api } from '@/lib/api/client';
 import { GoogleDrivePicker } from '@/components/google/GoogleDrivePicker';
 import type { PickedFile } from '@/components/google/GoogleDrivePicker';
 import { classifyGoogleFile, parseGoogleUrl, uploadFileToDrive } from '@/lib/google/document-utils';
-
-// Types
-interface Status {
-  status_id: string;
-  name: string;
-  status_type: string;
-  color: string;
-  icon: string;
-}
-
-interface Priority {
-  priority_id: string;
-  name: string;
-  level: number;
-  color: string;
-}
-
-interface Label {
-  label_id: string;
-  name: string;
-  color: string;
-}
-
-interface Member {
-  user_id: string;
-  display_name: string;
-  avatar_url: string | null;
-}
-
-interface Cycle {
-  cycle_id: string;
-  name: string;
-  status: string;
-}
-
-interface Project {
-  project_id: string;
-  project_name: string;
-}
+import type { Status, Priority, Label, Member, Cycle, Project, ProjectDocument, PendingDocument } from './create-issue-types';
+import { StatusIcon, PriorityIcon } from './IssueStatusPriorityIcons';
+import { ESTIMATE_OPTIONS, DEFAULT_PRIORITIES, DEFAULT_STATUSES } from './create-issue-constants';
+import { PortalDropdown } from './PortalDropdown';
+import { PortalCalendar } from './PortalCalendar';
 
 interface CreateIssueModalProps {
   isOpen: boolean;
   onClose: () => void;
   teamId: string;
   projectId?: string;
+  // Los 3 consumidores de este modal (TeamTasksContent, ProjectIssuesView,
+  // admin/teams/[teamId]/tasks) cada uno define su propio tipo local `Issue`
+  // con formas distintas — tipar esto de forma estricta rompe la asignación
+  // en al menos uno de los tres. Se deja `any` a propósito hasta unificar
+  // esos tipos duplicados (deuda separada, fuera de este cambio).
+   
   onIssueCreated: (issue: any) => void;
   initialStatus?: string;
   workspaceSlug?: string;
-}
-
-interface PendingDocument {
-  file: PickedFile;
-  source: 'picker' | 'upload' | 'url';
-}
-
-// Status Icon Component
-const StatusIcon = ({ type, color, size = 16 }: { type: string; color: string; size?: number }) => {
-  const style = { color };
-  switch (type) {
-    case 'backlog':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={style}>
-          <circle cx="12" cy="12" r="10" strokeDasharray="4 4"/>
-        </svg>
-      );
-    case 'todo':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={style}>
-          <circle cx="12" cy="12" r="10"/>
-        </svg>
-      );
-    case 'in_progress':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={style}>
-          <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
-          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" fill="none"/>
-        </svg>
-      );
-    case 'done':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={style}>
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M9 12l2 2 4-4" stroke="white" strokeWidth="2" fill="none"/>
-        </svg>
-      );
-    case 'cancelled':
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={style}>
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M15 9l-6 6M9 9l6 6" stroke="white" strokeWidth="2"/>
-        </svg>
-      );
-    default:
-      return (
-        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={style}>
-          <circle cx="12" cy="12" r="10"/>
-        </svg>
-      );
-  }
-};
-
-// Priority Icon Component
-const PriorityIcon = ({ level, color, size = 16 }: { level: number; color: string; size?: number }) => {
-  return (
-    <div 
-      className="rounded flex items-center justify-center"
-      style={{ 
-        width: size, 
-        height: size, 
-        backgroundColor: `${color}20`, 
-        color 
-      }}
-    >
-      {level === 0 && <span style={{ fontSize: size * 0.625 }}>—</span>}
-      {level === 1 && <span style={{ fontSize: size * 0.625, fontWeight: 'bold' }}>!</span>}
-      {level === 2 && <span style={{ fontSize: size * 0.625, fontWeight: 'bold' }}>↑</span>}
-      {level === 3 && <span style={{ fontSize: size * 0.625, fontWeight: 'bold' }}>=</span>}
-      {level === 4 && <span style={{ fontSize: size * 0.625, fontWeight: 'bold' }}>↓</span>}
-    </div>
-  );
-};
-
-// Estimation Options (0-10)
-const ESTIMATE_OPTIONS = [
-  { value: '', label: 'Sin estimación', icon: '–' },
-  { value: '0', label: '0 puntos', icon: '0' },
-  { value: '1', label: '1 punto', icon: '1' },
-  { value: '2', label: '2 puntos', icon: '2' },
-  { value: '3', label: '3 puntos', icon: '3' },
-  { value: '4', label: '4 puntos', icon: '4' },
-  { value: '5', label: '5 puntos', icon: '5' },
-  { value: '6', label: '6 puntos', icon: '6' },
-  { value: '7', label: '7 puntos', icon: '7' },
-  { value: '8', label: '8 puntos', icon: '8' },
-  { value: '9', label: '9 puntos', icon: '9' },
-  { value: '10', label: '10 puntos', icon: '10' },
-];
-
-// Portal Dropdown Component
-interface PortalDropdownProps {
-  isOpen: boolean;
-  onClose: () => void;
-  triggerRef: React.RefObject<HTMLButtonElement>;
-  children: React.ReactNode;
-  isDark: boolean;
-  colors: any;
-  width?: number;
-}
-
-function PortalDropdown({ isOpen, onClose, triggerRef, children, isDark, colors, width = 200 }: PortalDropdownProps) {
-  const [position, setPosition] = useState({ top: 0, left: 0, placement: 'bottom' as 'top' | 'bottom' });
-
-  useEffect(() => {
-    if (isOpen && triggerRef.current) {
-      const updatePosition = () => {
-        if (!triggerRef.current) return;
-        const rect = triggerRef.current.getBoundingClientRect();
-        const dropdownHeight = 260; // Slightly more for safety
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const shouldShowAbove = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
-
-        // Prevent horizontal overflow
-        let left = rect.left;
-        if (left + width > window.innerWidth) {
-          left = window.innerWidth - width - 12; // 12px margin
-        }
-        if (left < 12) left = 12;
-
-        setPosition({
-          top: shouldShowAbove ? rect.top - 8 : rect.bottom + 4,
-          left,
-          placement: shouldShowAbove ? 'top' : 'bottom'
-        });
-      };
-
-      updatePosition();
-      // Use capture for scroll to catch it from any parent
-      window.addEventListener('scroll', updatePosition, true);
-      window.addEventListener('resize', updatePosition);
-      return () => {
-        window.removeEventListener('scroll', updatePosition, true);
-        window.removeEventListener('resize', updatePosition);
-      };
-    }
-  }, [isOpen, triggerRef]);
-
-  if (!isOpen) return null;
-
-  const hasChildren = Children.count(children) > 0;
-
-  return createPortal(
-    <>
-      <div className="fixed inset-0" style={{ zIndex: 100000 }} onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, y: position.placement === 'bottom' ? -10 : 10, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="fixed py-1 rounded-xl border shadow-2xl overflow-y-auto max-h-[300px]"
-        style={{ 
-          zIndex: 100001,
-          top: position.placement === 'top' ? undefined : position.top,
-          bottom: position.placement === 'top' ? (window.innerHeight - position.top) : undefined,
-          left: position.left,
-          width: width,
-          maxHeight: '220px',
-          backgroundColor: isDark ? '#1E2329' : '#ffffff', 
-          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-          boxShadow: '0 10px 40px -10px rgba(0,0,0,0.5)'
-        }}
-      >
-        {hasChildren ? children : (
-          <div className="px-4 py-6 text-xs text-center flex flex-col items-center gap-2" style={{ color: colors.textMuted }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-20">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            No hay opciones disponibles
-          </div>
-        )}
-      </motion.div>
-    </>,
-    document.body
-  );
-}
-
-// Portal Calendar Component
-interface PortalCalendarProps {
-  isOpen: boolean;
-  onClose: () => void;
-  triggerRef: React.RefObject<HTMLButtonElement>;
-  value: string;
-  onChange: (date: string) => void;
-  isDark: boolean;
-  colors: any;
-  accentColor: string;
-}
-
-function PortalCalendar({ isOpen, onClose, triggerRef, value, onChange, isDark, colors, accentColor }: PortalCalendarProps) {
-  const [currentMonth, setCurrentMonth] = useState(value ? new Date(value) : new Date());
-  const [position, setPosition] = useState({ top: 0, left: 0, placement: 'bottom' as 'top' | 'bottom' });
-
-  useEffect(() => {
-    if (value) setCurrentMonth(new Date(value));
-  }, [value]);
-
-  useEffect(() => {
-    if (isOpen && triggerRef.current) {
-      const updatePosition = () => {
-        if (!triggerRef.current) return;
-        const rect = triggerRef.current.getBoundingClientRect();
-        const calendarHeight = 340; 
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const shouldShowAbove = spaceBelow < calendarHeight && rect.top > calendarHeight;
-
-        setPosition({
-          top: shouldShowAbove ? rect.top - 8 : rect.bottom + 4,
-          left: rect.left,
-          placement: shouldShowAbove ? 'top' : 'bottom'
-        });
-      };
-
-      updatePosition();
-      window.addEventListener('scroll', updatePosition, true);
-      window.addEventListener('resize', updatePosition);
-      return () => {
-        window.removeEventListener('scroll', updatePosition, true);
-        window.removeEventListener('resize', updatePosition);
-      };
-    }
-  }, [isOpen, triggerRef]);
-
-  const handleDateClick = (date: Date) => {
-    onChange(format(date, 'yyyy-MM-dd'));
-    onClose();
-  };
-
-  // Calendar generation
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const endDate = endOfWeek(monthEnd, { weekStartsOn: 0 });
-  const days = eachDayOfInterval({ start: startDate, end: endDate });
-  const weekDays = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'];
-
-  if (!isOpen) return null;
-
-  return createPortal(
-    <>
-      <div className="fixed inset-0" style={{ zIndex: 100000 }} onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, y: position.placement === 'bottom' ? -10 : 10, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="fixed p-4 rounded-xl border shadow-2xl"
-        style={{ 
-          zIndex: 100001,
-          top: position.placement === 'top' ? undefined : position.top,
-          bottom: position.placement === 'top' ? (window.innerHeight - position.top) : undefined,
-          left: position.left,
-          width: 280,
-          backgroundColor: isDark ? '#1E2329' : '#ffffff', 
-          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' 
-        }}
-      >
-        {/* Header */}
-        <div className="flex justify-between items-center mb-4">
-          <span className="font-semibold capitalize text-sm" style={{ color: colors.textPrimary }}>
-            {format(currentMonth, 'MMMM yyyy', { locale: es })}
-          </span>
-          <div className="flex gap-1">
-            <button 
-              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-              type="button"
-              className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-              style={{ color: colors.textMuted }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 18l-6-6 6-6"/>
-              </svg>
-            </button>
-            <button 
-              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-              type="button"
-              className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-              style={{ color: colors.textMuted }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 18l6-6-6-6"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Week days */}
-        <div className="grid grid-cols-7 mb-2">
-          {weekDays.map(d => (
-            <div key={d} className="text-center text-xs font-medium py-1" style={{ color: colors.textMuted }}>
-              {d}
-            </div>
-          ))}
-        </div>
-
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((dayItem, i) => {
-            const isSelected = value ? isSameDay(dayItem, new Date(value)) : false;
-            const isCurrentMonth = isSameMonth(dayItem, monthStart);
-            const isTodayDate = isToday(dayItem);
-
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => handleDateClick(dayItem)}
-                className={`
-                  h-8 w-8 rounded-lg flex items-center justify-center text-sm transition-all relative
-                  ${!isCurrentMonth ? 'opacity-30' : ''}
-                  ${isSelected ? 'font-bold shadow-lg' : 'hover:bg-white/10'}
-                `}
-                style={{ 
-                  color: isSelected ? '#FFFFFF' : colors.textPrimary,
-                  backgroundColor: isSelected ? accentColor : undefined,
-                  border: isTodayDate && !isSelected ? `1px solid ${accentColor}` : 'none'
-                }}
-              >
-                {format(dayItem, 'd')}
-              </button>
-            );
-          })}
-        </div>
-        
-        {/* Footer */}
-        <div className="mt-4 pt-3 border-t flex justify-between text-xs" style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }}>
-          <button 
-            type="button"
-            onClick={() => { onChange(''); onClose(); }}
-            className="hover:underline opacity-70 hover:opacity-100 transition-opacity"
-            style={{ color: colors.textSecondary }}
-          >
-            Borrar
-          </button>
-          <button 
-            type="button"
-            onClick={() => { onChange(format(new Date(), 'yyyy-MM-dd')); onClose(); }}
-            className="font-medium hover:underline"
-            style={{ color: accentColor }}
-          >
-            Hoy
-          </button>
-        </div>
-      </motion.div>
-    </>,
-    document.body
-  );
 }
 
 export default function CreateIssueModal({
@@ -452,7 +78,7 @@ export default function CreateIssueModal({
   const [dueDate, setDueDate] = useState<string>('');
   const [estimatePoints, setEstimatePoints] = useState<string>('');
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
-  const [projectDocuments, setProjectDocuments] = useState<any[]>([]);
+  const [projectDocuments, setProjectDocuments] = useState<ProjectDocument[]>([]);
   const [selectedProjectDocs, setSelectedProjectDocs] = useState<string[]>([]);
 
   // Data State
@@ -479,23 +105,6 @@ export default function CreateIssueModal({
   const [docLinkingUrl, setDocLinkingUrl] = useState(false);
   const docFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fallback priorities if fetch fails
-  const DEFAULT_PRIORITIES: Priority[] = [
-    { priority_id: 'none', name: 'Sin prioridad', color: '#94a3b8', level: 0 },
-    { priority_id: 'urgent', name: 'Urgente', color: '#ef4444', level: 1 },
-    { priority_id: 'high', name: 'Alta', color: '#f97316', level: 2 },
-    { priority_id: 'medium', name: 'Media', color: '#3b82f6', level: 3 },
-    { priority_id: 'low', name: 'Baja', color: '#22c55e', level: 4 }
-  ];
-
-  // Fallback statuses if fetch fails or empty
-  const DEFAULT_STATUSES: Status[] = [
-    { status_id: 'backlog', name: 'Backlog', status_type: 'backlog', color: '#64748b', icon: '' },
-    { status_id: 'todo', name: 'Por hacer', status_type: 'todo', color: '#3b82f6', icon: '' },
-    { status_id: 'in_progress', name: 'En progreso', status_type: 'in_progress', color: '#f59e0b', icon: '' },
-    { status_id: 'done', name: 'Hecho', status_type: 'done', color: '#10b981', icon: '' }
-  ];
-
   // Get selected items for display
   const selectedStatus = statuses.find(s => s.status_id === statusId);
   const selectedPriority = priorities.find(p => p.priority_id === priorityId) || DEFAULT_PRIORITIES.find(p => p.priority_id === priorityId);
@@ -508,38 +117,36 @@ export default function CreateIssueModal({
   // Fetch data
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-    const fetchHeaders: HeadersInit = token ? { 'Authorization': `Bearer ${token}` } : {};
 
     try {
       // 1. Fetch project documents and details if we have a projectId (independent of team)
       const targetProjectId = initialProjectId || projectId;
       if (targetProjectId && targetProjectId !== lastResolvedId.current) {
         console.log(`[CreateIssueModal] Fetching docs for project: ${targetProjectId}`);
-        
+
         // Determinar URL base (Workspace o Admin)
-        const projectApiBase = workspaceSlug 
+        const projectApiBase = workspaceSlug
           ? `/api/workspaces/${workspaceSlug}/projects/${targetProjectId}`
           : `/api/admin/projects/${targetProjectId}`;
 
         // Paralelo: documentos y el proyecto específico
-        const [docRes, pInfoRes] = await Promise.all([
-          fetch(`${projectApiBase}/documents`, { headers: fetchHeaders }).catch(() => null),
-          fetch(projectApiBase, { headers: fetchHeaders }).catch(() => null)
+        const [docResult, pInfoResult] = await Promise.all([
+          api.get<{ documents?: ProjectDocument[] }>(`${projectApiBase}/documents`),
+          api.get<{ project?: Project }>(projectApiBase)
         ]);
 
-        if (docRes?.ok) {
-          const data = await docRes.json();
+        if (!docResult.error && docResult.data) {
+          const data = docResult.data;
           console.log(`[CreateIssueModal] Found ${data.documents?.length || 0} docs for project ${targetProjectId}`);
           setProjectDocuments(data.documents || []);
         }
 
-        if (pInfoRes?.ok) {
-          const data = await pInfoRes.json();
+        if (!pInfoResult.error && pInfoResult.data) {
+          const data = pInfoResult.data;
           if (data.project) {
              const proj = data.project;
              setProjects(prev => prev.some(p => p.project_id === proj.project_id) ? prev : [...prev, proj]);
-             
+
              // Si el ID que tenemos es un slug/key, lo actualizamos al UUID real
              // Pero sin disparar un re-fetch infinito
              if (targetProjectId !== proj.project_id) {
@@ -554,22 +161,29 @@ export default function CreateIssueModal({
       // 2. Fetch team-specific data if we have a teamId
       if (teamId) {
         console.log(`[CreateIssueModal] Fetching team data for: ${teamId}`);
-        
-        const [statusRes, priorityRes, labelRes, memberRes, cycleRes, projectRes] = await Promise.all([
-          fetch(`/api/admin/teams/${teamId}/statuses`, { headers: fetchHeaders }).catch(err => { console.error('Status fetch error:', err); return null; }),
-          fetch(`/api/admin/priorities`, { headers: fetchHeaders }).catch(err => { console.error('Priority fetch error:', err); return null; }),
-          fetch(`/api/admin/teams/${teamId}/labels`, { headers: fetchHeaders }).catch(err => { console.error('Label fetch error:', err); return null; }),
-          fetch(`/api/admin/teams/${teamId}/members`, { headers: fetchHeaders }).catch(err => { console.error('Member fetch error:', err); return null; }),
-          fetch(`/api/admin/teams/${teamId}/cycles`, { headers: fetchHeaders }).catch(err => { console.error('Cycle fetch error:', err); return null; }),
-          fetch(`/api/admin/projects?team_id=${teamId}`, { headers: fetchHeaders }).catch(err => { console.error('Project fetch error:', err); return null; })
+
+        const [statusResult, priorityResult, labelResult, memberResult, cycleResult, projectResult] = await Promise.all([
+          api.get<{ statuses?: Status[] }>(`/api/admin/teams/${teamId}/statuses`),
+          api.get<{ priorities?: Priority[] }>(`/api/admin/priorities`),
+          api.get<{ labels?: Label[] }>(`/api/admin/teams/${teamId}/labels`),
+          api.get<{ members?: Member[] }>(`/api/admin/teams/${teamId}/members`),
+          api.get<{ cycles?: Cycle[] }>(`/api/admin/teams/${teamId}/cycles`),
+          api.get<{ projects?: Project[] }>(`/api/admin/projects?team_id=${teamId}`)
         ]);
 
-        if (statusRes && statusRes.ok) {
-          const data = await statusRes.json();
+        if (statusResult.error) console.error('Status fetch error:', statusResult.error);
+        if (priorityResult.error) console.error('Priority fetch error:', priorityResult.error);
+        if (labelResult.error) console.error('Label fetch error:', labelResult.error);
+        if (memberResult.error) console.error('Member fetch error:', memberResult.error);
+        if (cycleResult.error) console.error('Cycle fetch error:', cycleResult.error);
+        if (projectResult.error) console.error('Project fetch error:', projectResult.error);
+
+        if (!statusResult.error && statusResult.data) {
+          const data = statusResult.data;
           const fetchedStatuses = data.statuses || [];
           const finalStatuses = fetchedStatuses.length > 0 ? fetchedStatuses : DEFAULT_STATUSES;
           setStatuses(finalStatuses);
-          
+
           if (!statusId && finalStatuses.length > 0) {
             const defaultStatus = finalStatuses.find((s: Status) => s.status_type === 'backlog') || finalStatuses[0];
             setStatusId(initialStatus || defaultStatus?.status_id || '');
@@ -579,11 +193,11 @@ export default function CreateIssueModal({
           if (!statusId) setStatusId(initialStatus || 'backlog');
         }
 
-        if (priorityRes && priorityRes.ok) {
-          const data = await priorityRes.json();
+        if (!priorityResult.error && priorityResult.data) {
+          const data = priorityResult.data;
           const fetchedPriorities = data.priorities || [];
           setPriorities(fetchedPriorities.length > 0 ? fetchedPriorities : DEFAULT_PRIORITIES);
-          
+
           if (!priorityId) {
             const list = fetchedPriorities.length > 0 ? fetchedPriorities : DEFAULT_PRIORITIES;
             const medium = list.find((p: Priority) => p.name.toLowerCase().includes('media') || p.level === 3);
@@ -591,28 +205,25 @@ export default function CreateIssueModal({
           }
         }
 
-        if (labelRes && labelRes.ok) {
-          const data = await labelRes.json();
-          setLabels(data.labels || []);
+        if (!labelResult.error && labelResult.data) {
+          setLabels(labelResult.data.labels || []);
         }
 
-        if (memberRes && memberRes.ok) {
-          const data = await memberRes.json();
-          setMembers(data.members || []);
+        if (!memberResult.error && memberResult.data) {
+          setMembers(memberResult.data.members || []);
         }
 
-        if (cycleRes && cycleRes.ok) {
-          const data = await cycleRes.json();
-          setCycles(data.cycles || []);
+        if (!cycleResult.error && cycleResult.data) {
+          setCycles(cycleResult.data.cycles || []);
         }
 
-        if (projectRes && projectRes.ok) {
-          const data = await projectRes.json();
+        if (!projectResult.error && projectResult.data) {
+          const data = projectResult.data;
           setProjects(prev => {
-            const fetched = data.projects || [];
+            const fetched: Project[] = data.projects || [];
              // Combinar con los existentes sin duplicados
              const combined = [...prev];
-             fetched.forEach((fp: any) => {
+             fetched.forEach((fp) => {
                if (!combined.some(p => p.project_id === fp.project_id)) {
                  combined.push(fp);
                }
@@ -626,7 +237,11 @@ export default function CreateIssueModal({
     } finally {
       setLoading(false);
     }
-  }, [teamId, initialStatus, initialProjectId, projectId]);
+    // statusId/priorityId are intentionally omitted: they're read only as "set default
+    // once" guards, and including them would re-trigger this fetch every time those
+    // defaults get set, causing a redundant duplicate fetch on every modal open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamId, initialStatus, initialProjectId, projectId, workspaceSlug]);
 
   useEffect(() => {
     if (isOpen) {
@@ -666,12 +281,21 @@ export default function CreateIssueModal({
 
     setCreating(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      
       // Validate that IDs are real UUIDs before sending (fallback IDs like 'backlog' are not valid)
       const isValidUUID = (id: string | null) => id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       
-      const payload: Record<string, any> = {
+      const payload: {
+        title: string;
+        description: string | null;
+        status_id: string | null;
+        priority_id: string | null;
+        assignee_id: string | null;
+        project_id: string | null;
+        cycle_id: string | null;
+        due_date: string | null;
+        estimate_points: number | null;
+        labels: string[];
+      } = {
         title: title.trim(),
         description: description.trim() || null,
         status_id: isValidUUID(statusId) ? statusId : null,
@@ -684,18 +308,12 @@ export default function CreateIssueModal({
         labels: selectedLabels.filter(id => isValidUUID(id))
       };
 
-      const res = await fetch(`/api/admin/teams/${teamId}/issues`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
+      const { data, error, status } = await api.post<{ issue?: { issue_id: string; [key: string]: unknown } }>(
+        `/api/admin/teams/${teamId}/issues`,
+        payload
+      );
 
-      if (res.ok) {
-        const data = await res.json();
-
+      if (!error && data) {
         // Vincular documentos pendientes a la issue creada
         if (pendingDocuments.length > 0 && data.issue?.issue_id) {
           const docApiBase = workspaceSlug
@@ -705,21 +323,14 @@ export default function CreateIssueModal({
           for (const pending of pendingDocuments) {
             const { provider, docType } = classifyGoogleFile(pending.file.mimeType);
             try {
-              await fetch(docApiBase, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
-                body: JSON.stringify({
-                  name: pending.file.name,
-                  provider,
-                  external_id: pending.file.id,
-                  external_url: pending.file.url,
-                  doc_type: docType,
-                  mime_type: pending.file.mimeType,
-                  thumbnail_url: pending.file.iconUrl || null,
-                }),
+              await api.post(docApiBase, {
+                name: pending.file.name,
+                provider,
+                external_id: pending.file.id,
+                external_url: pending.file.url,
+                doc_type: docType,
+                mime_type: pending.file.mimeType,
+                thumbnail_url: pending.file.iconUrl || null,
               });
             } catch (docError) {
               console.error('Error vinculando documento:', docError);
@@ -736,23 +347,16 @@ export default function CreateIssueModal({
           for (const docId of selectedProjectDocs) {
             const projectDoc = projectDocuments.find(d => d.id === docId);
             if (!projectDoc) continue;
-            
+
             try {
-              await fetch(docApiBase, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
-                body: JSON.stringify({
-                  name: projectDoc.name,
-                  provider: projectDoc.provider || 'google',
-                  external_id: projectDoc.external_id,
-                  external_url: projectDoc.external_url,
-                  doc_type: projectDoc.doc_type,
-                  mime_type: projectDoc.mime_type,
-                  thumbnail_url: projectDoc.thumbnail_url || null,
-                }),
+              await api.post(docApiBase, {
+                name: projectDoc.name,
+                provider: projectDoc.provider || 'google',
+                external_id: projectDoc.external_id,
+                external_url: projectDoc.external_url,
+                doc_type: projectDoc.doc_type,
+                mime_type: projectDoc.mime_type,
+                thumbnail_url: projectDoc.thumbnail_url || null,
               });
             } catch (docError) {
               console.error('Error vinculando documento de proyecto:', docError);
@@ -764,9 +368,8 @@ export default function CreateIssueModal({
         handleClose();
       } else {
         // Surface error to user
-        const errData = await res.json().catch(() => ({ error: 'Error desconocido del servidor' }));
-        console.error('Error creating issue:', res.status, errData);
-        alert(`Error al crear la tarea: ${errData.error || 'Error interno del servidor'}`);
+        console.error('Error creating issue:', status, error);
+        alert(`Error al crear la tarea: ${error || 'Error interno del servidor'}`);
       }
     } catch (error) {
       console.error('Error creating issue:', error);
@@ -806,12 +409,9 @@ export default function CreateIssueModal({
     if (!file) return;
     setDocUploading(true);
     try {
-      const tokenFromStorage = localStorage.getItem('accessToken');
-      const tokenRes = await fetch('/api/auth/google/token', {
-        headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-      });
-      if (!tokenRes.ok) { alert('No se pudo acceder a Google. Reconecta tu cuenta.'); return; }
-      const { accessToken } = await tokenRes.json();
+      const { data: tokenData, error: tokenError } = await api.get<{ accessToken: string }>('/api/auth/google/token');
+      if (tokenError || !tokenData) { alert('No se pudo acceder a Google. Reconecta tu cuenta.'); return; }
+      const { accessToken } = tokenData;
       const uploaded = await uploadFileToDrive(file, accessToken);
       if (!uploaded) { alert('Error al subir el archivo a Drive.'); return; }
       const pickedFile: PickedFile = {
@@ -838,12 +438,9 @@ export default function CreateIssueModal({
       let fileName = 'Documento de Google';
       let mimeType = parsed.mimeType;
       try {
-        const tokenFromStorage = localStorage.getItem('accessToken');
-        const tokenRes = await fetch('/api/auth/google/token', {
-          headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-        });
-        if (tokenRes.ok) {
-          const { accessToken } = await tokenRes.json();
+        const { data: tokenData, error: tokenError } = await api.get<{ accessToken: string }>('/api/auth/google/token');
+        if (!tokenError && tokenData) {
+          const { accessToken } = tokenData;
           const metaRes = await fetch(
             `https://www.googleapis.com/drive/v3/files/${parsed.fileId}?fields=name,mimeType`,
             { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -1343,7 +940,7 @@ export default function CreateIssueModal({
                                     backgroundColor: isSelected ? `${accentColor}10` : isDark ? '#0F1419' : '#F9FAFB'
                                   }}
                                 >
-                                  <div className="p-2 rounded-lg bg-white/5 flex-shrink-0">
+                                  <div className="p-2 rounded-lg bg-white/5 shrink-0">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isSelected ? accentColor : colors.textMuted} strokeWidth="2">
                                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                                     </svg>

@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
+interface IssuePriorityRef {
+  level?: number | null;
+}
+
+function getPriorityLevel(priority: IssuePriorityRef | IssuePriorityRef[] | null | undefined): number | undefined {
+  const p = Array.isArray(priority) ? priority[0] : priority;
+  return p?.level ?? undefined;
+}
+
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     // Get date ranges
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -48,8 +61,8 @@ export async function GET(request: NextRequest) {
     const openIssues = issues?.filter(i => i.completed_at === null) || [];
     
     // Issues by priority
-    const highPriorityIssues = issues?.filter(i => (i.priority as any)?.level >= 3) || [];
-    const urgentIssues = issues?.filter(i => (i.priority as any)?.level === 4) || [];
+    const highPriorityIssues = issues?.filter(i => (getPriorityLevel(i.priority) ?? 0) >= 3) || [];
+    const urgentIssues = issues?.filter(i => getPriorityLevel(i.priority) === 4) || [];
 
     // Overdue issues
     const overdueIssues = issues?.filter(i => {
@@ -100,7 +113,7 @@ export async function GET(request: NextRequest) {
       .slice(0, 5)
       .map(([id]) => id);
 
-    let topContributors: any[] = [];
+    let topContributors: Array<{ user_id: string; name: string; completed: number }> = [];
     if (topContributorIds.length > 0) {
       const { data: users } = await supabaseAdmin
         .from('account_users')

@@ -9,13 +9,13 @@ import {
   CalendarDays,
   FolderKanban,
   Loader2,
-  Settings,
   ShieldCheck,
   Users,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getPanelPathForRole, useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuthStore } from '@/core/stores/authStore';
+import { api } from '@/lib/api/client';
 import styles from './DashboardContent.module.css';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -43,16 +43,14 @@ export function DashboardContent() {
       setLoadingStats(true);
       try {
         const [teamsRes, membersRes, analyticsRes] = await Promise.all([
-          fetch(`/api/workspaces/${workspace.slug}/teams?limit=1`),
-          fetch(`/api/workspaces/${workspace.slug}/members?limit=1`),
-          fetch(`/api/workspaces/${workspace.slug}/analytics`),
+          api.get<{ pagination?: { total: number }; teams?: unknown[] }>(`/api/workspaces/${workspace.slug}/teams?limit=1`),
+          api.get<{ pagination?: { total: number }; users?: unknown[] }>(`/api/workspaces/${workspace.slug}/members?limit=1`),
+          api.get<{ projects?: { total: number } }>(`/api/workspaces/${workspace.slug}/analytics`),
         ]);
 
-        const [teamsData, membersData, analyticsData] = await Promise.all([
-          teamsRes.ok ? teamsRes.json() : null,
-          membersRes.ok ? membersRes.json() : null,
-          analyticsRes.ok ? analyticsRes.json() : null,
-        ]);
+        const teamsData = teamsRes.data;
+        const membersData = membersRes.data;
+        const analyticsData = analyticsRes.data;
 
         setStats({
           projects: analyticsData?.projects?.total ?? 0,
@@ -87,9 +85,6 @@ export function DashboardContent() {
       : []),
     ...(permissions.viewAnalytics
       ? [{ label: 'Ver analítica', description: 'Revisa avance, carga y rendimiento.', icon: BarChart3, href: `${panelBase}/analytics` }]
-      : []),
-    ...(permissions.manageWorkspace
-      ? [{ label: 'Configuración', description: 'Personaliza permisos y preferencias.', icon: Settings, href: `${panelBase}/settings` }]
       : []),
   ];
 

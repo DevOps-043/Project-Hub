@@ -122,7 +122,7 @@ export default function SignUpPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-center gap-3 p-4 rounded-lg bg-red-50 border border-red-200"
               >
-                <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
+                <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center shrink-0">
                   <span className="text-white text-xs font-bold">!</span>
                 </div>
                 <p className="text-sm text-red-700">{localError}</p>

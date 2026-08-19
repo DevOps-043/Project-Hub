@@ -1,6 +1,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export async function GET(
   request: NextRequest,
@@ -11,6 +12,9 @@ export async function GET(
   const { teamId, memberId } = resolvedParams;
 
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     // 1. Get Member Details & Role
     const { data: memberData, error: memberError } = await supabase
       .from('team_members')
@@ -126,15 +130,16 @@ export async function GET(
         joined_at: memberData.joined_at
       },
       tasks: tasksData || [],
-      projects: rawProjects?.map((p: any) => ({
+      projects: (rawProjects as unknown as Array<{ project: Record<string, unknown> | null; project_role: string; joined_at: string }> | null)?.map((p) => ({
         ...p.project,
         role: p.project_role,
         joined_at: p.joined_at
       })) || []
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching member details:', error);
-    return NextResponse.json({ error: error.message || 'Server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Server error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

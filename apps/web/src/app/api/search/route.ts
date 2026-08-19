@@ -1,19 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { requireAuth } from '@/lib/auth/require-role';
+import { sanitizeSearchTerm } from '@/lib/http/sanitize';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+interface TeamResult { team_id: string; name: string }
+interface ProjectResult { project_id: string; project_name: string; project_key: string }
+interface TaskResult { issue_id: string; title: string; issue_number: number; project_id: string }
+interface UserResult {
+    user_id: string;
+    first_name: string | null;
+    last_name_paternal: string | null;
+    display_name: string | null;
+    email: string;
+    avatar_url: string | null;
+}
+
 export async function GET(request: NextRequest) {
     try {
+        // Antes era pública (ver PUBLIC_PATHS en proxy.ts): cualquiera sin
+        // sesión podía buscar y recibir emails/nombres de usuarios y títulos
+        // de tareas/proyectos. La ruta sigue siendo pública a nivel de proxy
+        // (por eso el chequeo va aquí adentro), pero ahora exige sesión.
+        const auth = await requireAuth(request);
+        if (!auth.ok) return auth.response;
+
         const { searchParams } = new URL(request.url);
-        const query = searchParams.get('q');
+        const rawQuery = searchParams.get('q');
         const limit = 5;
 
-        if (!query || query.length < 2) {
+        if (!rawQuery || rawQuery.length < 2) {
             return NextResponse.json([]);
         }
 
+        const query = sanitizeSearchTerm(rawQuery);
         const supabase = getSupabaseAdmin();
         const searchTerm = `%${query}%`;
 
@@ -25,7 +47,7 @@ export async function GET(request: NextRequest) {
                 .select('project_id, project_name, project_key')
                 .or(`project_name.ilike.${searchTerm},project_key.ilike.${searchTerm}`)
                 .limit(limit),
-            
+
             // 2. Tareas
             supabase
                 .from('task_issues')
@@ -44,22 +66,22 @@ export async function GET(request: NextRequest) {
             supabase
                 .from('teams')
                 .select('team_id, name')
-                .or(`name.ilike.%${query}%,description.ilike.%${query}%`)
+                .or(`name.ilike.${searchTerm},description.ilike.${searchTerm}`)
                 .limit(limit)
         ]);
 
         const results = [];
 
         // Helper para extraer datos seguros
-        const getResult = (index: number) => {
+        function getResult<T>(index: number): T[] {
             const res = resultsSettled[index];
-            return res.status === 'fulfilled' && res.value.data ? res.value.data : [];
-        };
+            return res.status === 'fulfilled' && res.value.data ? (res.value.data as T[]) : [];
+        }
 
-        const projects = getResult(0);
-        const tasks = getResult(1);
-        const users = getResult(2);
-        const teams = getResult(3);
+        const projects = getResult<ProjectResult>(0);
+        const tasks = getResult<TaskResult>(1);
+        const users = getResult<UserResult>(2);
+        const teams = getResult<TeamResult>(3);
 
         // Debug logging for failures
         resultsSettled.forEach((res, i) => {
@@ -71,7 +93,7 @@ export async function GET(request: NextRequest) {
 
         // Equipos
         if (teams.length) {
-            results.push(...teams.map((t: any) => ({
+            results.push(...teams.map((t) => ({
                 id: t.team_id,
                 type: 'team',
                 title: t.name,
@@ -83,7 +105,7 @@ export async function GET(request: NextRequest) {
 
         // Proyectos
         if (projects.length) {
-            results.push(...projects.map((p: any) => ({
+            results.push(...projects.map((p) => ({
                 id: p.project_id,
                 type: 'project',
                 title: p.project_name,
@@ -95,7 +117,7 @@ export async function GET(request: NextRequest) {
 
         // Tareas
         if (tasks.length) {
-            results.push(...tasks.map((t: any) => ({
+            results.push(...tasks.map((t) => ({
                 id: t.issue_id,
                 type: 'task',
                 title: t.title,
@@ -107,7 +129,7 @@ export async function GET(request: NextRequest) {
 
         // Usuarios
         if (users.length) {
-            results.push(...users.map((u: any) => ({
+            results.push(...users.map((u) => ({
                 id: u.user_id,
                 type: 'user',
                 title: u.display_name || `${u.first_name || ''} ${u.last_name_paternal || ''}`.trim(),
@@ -120,8 +142,9 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json(results);
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('Search API Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

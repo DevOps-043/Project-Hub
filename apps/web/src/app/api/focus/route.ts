@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { requireAuth } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -7,16 +8,13 @@ export const dynamic = 'force-dynamic';
 // GET: Check if current user is under an active focus session
 export async function GET(request: NextRequest) {
     try {
-        const userId = request.headers.get('x-user-id'); // In real app, get from auth session
-        // For development/demo, we might need to rely on query param or assume user context is handled via middleware
-        // But since we are building simple, let's look for GLOBAL sessions or assume we pass a user_id param for check.
-        
-        const { searchParams } = new URL(request.url);
-        const checkUserId = searchParams.get('userId');
+        // Antes era pública y sin auth (ver PUBLIC_PATHS en proxy.ts): cualquiera
+        // podía consultar el estado de foco de cualquier userId arbitrario.
+        const auth = await requireAuth(request);
+        if (!auth.ok) return auth.response;
 
-        if (!checkUserId) {
-            return NextResponse.json({ activeSession: null });
-        }
+        const { searchParams } = new URL(request.url);
+        const checkUserId = searchParams.get('userId') || auth.payload.sub;
 
         const supabase = getSupabaseAdmin();
         const now = new Date().toISOString();
@@ -46,19 +44,29 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({ activeSession: activeSession || null });
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('Focus API Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
 
 // POST: Start a new Focus Session
 export async function POST(request: NextRequest) {
     try {
-        const body = await request.json();
-        const { createdBy, durationMinutes, taskName, targetType, targetIds } = body;
+        // Antes era pública y sin auth: cualquiera podía iniciar una sesión
+        // global (bloquea a todos los usuarios) o dirigida a userIds
+        // arbitrarios, e insertar notificaciones a nombre de quien fuera.
+        const auth = await requireAuth(request);
+        if (!auth.ok) return auth.response;
 
-        if (!createdBy || !durationMinutes) {
+        const body = await request.json();
+        const { durationMinutes, taskName, targetType, targetIds } = body;
+        // createdBy sale siempre del token, nunca del body: si no, cualquier
+        // usuario autenticado podía atribuirle la sesión a otra persona.
+        const createdBy = auth.payload.sub;
+
+        if (!durationMinutes) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
@@ -104,8 +112,9 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ success: true, session: data });
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('Focus Start API Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

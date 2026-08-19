@@ -4,6 +4,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import DiagramGeneratorTool from '@/components/tools/DiagramGeneratorTool';
+import { api } from '@/lib/api/client';
+
+declare global {
+    interface Window {
+        webkitAudioContext?: typeof AudioContext;
+    }
+}
+
+interface AgileAdvisorResult {
+    methodology: string;
+    confidence: number;
+    reasoning: string;
+    pros: string[];
+    cons: string[];
+    tips: string[];
+}
 
 // --- ICONS ---
 const Icons = {
@@ -41,18 +57,14 @@ const FocusTimer = () => {
         if (!isActive) {
             if (isTeamMode) {
                 try {
-                    const res = await fetch('/api/focus', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            createdBy: '00000000-0000-0000-0000-000000000000',
-                            durationMinutes: MODES[mode].min,
-                            taskName: taskName || 'Sesión de Equipo',
-                            targetType: 'global',
-                            targetIds: []
-                        })
+                    const { error } = await api.post('/api/focus', {
+                        createdBy: '00000000-0000-0000-0000-000000000000',
+                        durationMinutes: MODES[mode].min,
+                        taskName: taskName || 'Sesión de Equipo',
+                        targetType: 'global',
+                        targetIds: []
                     });
-                    if (res.ok) setIsActive(true);
+                    if (!error) setIsActive(true);
                     else alert('Error iniciando sesión de equipo');
                 } catch (e) { console.error(e); }
             } else {
@@ -65,7 +77,7 @@ const FocusTimer = () => {
 
     const playBeep = () => {
         try {
-            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.connect(gain);
@@ -154,7 +166,7 @@ const AgileAdvisor = () => {
     const [input, setInput] = useState('');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [analyzing, setAnalyzing] = useState(false);
-    const [result, setResult] = useState<any>(null);
+    const [result, setResult] = useState<AgileAdvisorResult | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -174,14 +186,9 @@ const AgileAdvisor = () => {
         try {
             let fileData = null, mimeType = null;
             if (selectedFile) { fileData = await convertToBase64(selectedFile); mimeType = selectedFile.type; }
-            const res = await fetch('/api/ai/agile-advisor', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: input, fileData, mimeType })
-            });
-            const data = await res.json();
-            if (res.ok) setResult(data);
-            else alert('Error al analizar. ' + (data.error || ''));
+            const { data, error } = await api.post<AgileAdvisorResult>('/api/ai/agile-advisor', { content: input, fileData, mimeType });
+            if (!error && data) setResult(data);
+            else alert('Error al analizar. ' + (error || ''));
         } catch (e) { console.error(e); alert('Error de conexión.'); } finally { setAnalyzing(false); }
     };
 

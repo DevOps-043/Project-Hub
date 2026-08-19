@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from '@/lib/api/client';
 
 const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || '';
 
@@ -117,21 +118,14 @@ export function GoogleDrivePicker({ isOpen, onSelect, onCancel, onError, filterM
     let accessTokenForFallback: string | null = null;
 
     try {
-      const tokenFromStorage = localStorage.getItem('accessToken');
-      const tokenRes = await fetch('/api/auth/google/token', {
-        headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-      });
+      const { data: tokenData, error: tokenError } = await api.get<{ accessToken?: string }>('/api/auth/google/token');
 
-      if (!tokenRes.ok) {
+      if (tokenError || !tokenData?.accessToken) {
         failPicker('No se pudo acceder a Google Drive. Reconecta tu cuenta de Google.');
         return;
       }
 
-      const { accessToken } = await tokenRes.json();
-      if (!accessToken) {
-        failPicker('No se pudo acceder a Google Drive. Reconecta tu cuenta de Google.');
-        return;
-      }
+      const { accessToken } = tokenData;
 
       accessTokenForFallback = accessToken;
 
@@ -149,7 +143,7 @@ export function GoogleDrivePicker({ isOpen, onSelect, onCancel, onError, filterM
       const picker = new window.google.picker.PickerBuilder()
         .setOAuthToken(accessToken)
         .setDeveloperKey(GOOGLE_API_KEY)
-        .setCallback((data: any) => {
+        .setCallback((data: GooglePickerCallbackData) => {
           if (data.action === window.google.picker.Action.PICKED) {
             const doc = data.docs[0];
             onSelect({
@@ -321,15 +315,48 @@ export function GoogleDrivePicker({ isOpen, onSelect, onCancel, onError, filterM
 
 export { GOOGLE_MIME_TYPES };
 
+interface GooglePickerDoc {
+  id: string;
+  name: string;
+  url?: string;
+  embedUrl?: string;
+  mimeType: string;
+  iconUrl?: string;
+}
+
+interface GooglePickerCallbackData {
+  action: string;
+  docs: GooglePickerDoc[];
+}
+
+interface GooglePickerView {
+  setMimeTypes(mimeTypes: string): GooglePickerView;
+  setMode(mode: unknown): GooglePickerView;
+  setIncludeFolders(include: boolean): GooglePickerView;
+  setLabel(label: string): GooglePickerView;
+}
+
+interface GooglePickerBuilder {
+  setOAuthToken(token: string): GooglePickerBuilder;
+  setDeveloperKey(key: string): GooglePickerBuilder;
+  setCallback(cb: (data: GooglePickerCallbackData) => void): GooglePickerBuilder;
+  addView(view: GooglePickerView): GooglePickerBuilder;
+  setTitle(title: string): GooglePickerBuilder;
+  setLocale(locale: string): GooglePickerBuilder;
+  build(): { setVisible(visible: boolean): void };
+}
+
 declare global {
   interface Window {
-    gapi: any;
+    gapi: {
+      load: (api: string, options: { callback: () => void; onerror: (err: unknown) => void }) => void;
+    };
     google: {
       picker: {
-        PickerBuilder: any;
-        DocsView: any;
-        DocsViewMode: any;
-        DocsUploadView: any;
+        PickerBuilder: new () => GooglePickerBuilder;
+        DocsView: new () => GooglePickerView;
+        DocsViewMode: { LIST: unknown };
+        DocsUploadView: new () => GooglePickerView;
         Action: {
           PICKED: string;
           CANCEL: string;

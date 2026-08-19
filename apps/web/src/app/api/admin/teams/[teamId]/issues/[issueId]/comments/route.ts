@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
@@ -17,16 +17,9 @@ export async function GET(
 ) {
   try {
     const { issueId } = await params;
-    
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
     const { data: comments, error } = await supabaseAdmin
       .from('task_issue_comments')
@@ -65,16 +58,10 @@ export async function POST(
 ) {
   try {
     const { issueId } = await params;
-    
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const { content, parent_comment_id } = body;

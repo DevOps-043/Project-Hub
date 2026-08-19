@@ -1,12 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth/jwt';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { getSofiaAdmin, getSofiaServiceRoleClient } from '@/lib/supabase/sofia-client';
-import { getUserWorkspaceRole, getWorkspaceBySlug } from '@/lib/services/workspace-service';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 
 const MANAGER_ROLES = ['owner', 'admin'] as const;
 const NODE_TYPES = ['organization', 'area', 'region', 'zone', 'team', 'custom'] as const;
 type NodeType = typeof NODE_TYPES[number];
+
+// Tipos evidenciados por los .select() de este archivo contra la instancia
+// SOFIA (organization_nodes/organization_node_users no tienen types generados
+// aquí) — cubren solo los campos que este archivo realmente lee.
+interface OrgNode {
+  id: string;
+  depth: number;
+  position: number;
+  manager_id: string | null;
+  properties: Record<string, unknown> | null;
+  type: string;
+  parent_id: string | null;
+}
+
+interface OrgNodeAssignment {
+  id: string;
+  node_id: string;
+  user_id: string;
+  role: string;
+  is_primary: boolean;
+}
+
+interface AccountUserProfile {
+  display_name: string | null;
+  first_name: string | null;
+  last_name_paternal: string | null;
+  email: string;
+  avatar_url: string | null;
+  company_role: string | null;
+  department: string | null;
+}
+
+interface WorkspaceMemberHierarchyRow {
+  user_id: string;
+  iris_role: string;
+  account_users: AccountUserProfile | AccountUserProfile[] | null;
+}
+
+interface LocalTeamRow {
+  team_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  color: string;
+  status: string;
+  visibility: string;
+  owner_id: string;
+  team_members: { count: number }[];
+}
 
 function cleanText(value: unknown, maxLength: number): string | null {
   if (typeof value !== 'string') return null;
@@ -24,18 +72,10 @@ function slugify(value: string): string {
 }
 
 async function authorize(request: NextRequest, slug: string, requireAdmin = false) {
-  const token = request.cookies.get('accessToken')?.value
-    || request.headers.get('authorization')?.replace('Bearer ', '');
-  if (!token) return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) };
+  const auth = await requireWorkspaceMember(request, slug);
+  if (!auth.ok) return { error: auth.response };
+  const { payload, workspace, member } = auth;
 
-  const payload = await verifyToken(token);
-  if (!payload) return { error: NextResponse.json({ error: 'Token inválido' }, { status: 401 }) };
-
-  const workspace = await getWorkspaceBySlug(slug);
-  if (!workspace) return { error: NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 }) };
-
-  const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-  if (!member) return { error: NextResponse.json({ error: 'Sin acceso' }, { status: 403 }) };
   if (requireAdmin && !MANAGER_ROLES.includes(member.iris_role as typeof MANAGER_ROLES[number])) {
     return { error: NextResponse.json({ error: 'Solo propietarios y administradores pueden modificar la estructura' }, { status: 403 }) };
   }
@@ -141,8 +181,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       || structures[0]
       || null;
 
-    let nodes: any[] = [];
-    let assignments: any[] = [];
+    let nodes: OrgNode[] = [];
+    let assignments: OrgNodeAssignment[] = [];
     if (activeStructure) {
       const nodesResult = await sofia
         .from('organization_nodes')
@@ -152,18 +192,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .order('depth')
         .order('position');
       if (nodesResult.error) return NextResponse.json({ error: 'No se pudieron leer los niveles organizacionales' }, { status: 502 });
-      nodes = nodesResult.data || [];
+      nodes = (nodesResult.data || []) as OrgNode[];
 
       if (nodes.length) {
         const assignmentsResult = await sofia
           .from('organization_node_users')
           .select('id, node_id, user_id, role, is_primary')
           .in('node_id', nodes.map((node) => node.id));
-        assignments = assignmentsResult.data || [];
+        assignments = (assignmentsResult.data || []) as OrgNodeAssignment[];
       }
     }
 
-    const memberById = new Map((membersResult.data || []).map((row: any) => {
+    const memberById = new Map((membersResult.data || []).map((row: WorkspaceMemberHierarchyRow) => {
       const profile = Array.isArray(row.account_users) ? row.account_users[0] : row.account_users;
       return [row.user_id, {
         id: row.user_id,
@@ -176,11 +216,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }];
     }));
 
-    const teamById = new Map((localTeamsResult.data || []).map((team: any) => [team.team_id, team]));
+    const teamById = new Map((localTeamsResult.data || []).map((team: LocalTeamRow) => [team.team_id, team]));
     const enrichedNodes = nodes.map((node) => {
       const nodeAssignments = assignments.filter((assignment) => assignment.node_id === node.id);
       const properties = node.properties && typeof node.properties === 'object' ? node.properties : {};
-      const localTeam = properties.project_hub_team_id ? teamById.get(properties.project_hub_team_id) : null;
+      const localTeamId = typeof properties.project_hub_team_id === 'string' ? properties.project_hub_team_id : null;
+      const localTeam = localTeamId ? teamById.get(localTeamId) : null;
       return {
         ...node,
         properties,
@@ -201,7 +242,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       };
     });
 
-    const localTeams = (localTeamsResult.data || []).map((team: any) => ({
+    const localTeams = (localTeamsResult.data || []).map((team: LocalTeamRow) => ({
       id: team.team_id,
       name: team.name,
       slug: team.slug,

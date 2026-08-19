@@ -3,13 +3,22 @@
 import React, { useEffect, useState } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
     Radar, RadarChart, PolarGrid, PolarAngleAxis,
 } from 'recharts';
 
-const StatCard = ({ title, value, sub, icon, color }: any) => (
+interface StatCardProps {
+    title: string;
+    value: React.ReactNode;
+    sub?: string;
+    icon: React.ReactNode;
+    color?: string;
+}
+
+const StatCard = ({ title, value, sub, icon, color }: StatCardProps) => (
     <div className="p-6 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/5 shadow-sm">
         <div className="flex justify-between items-start mb-4">
             <div>
@@ -74,8 +83,20 @@ const ActivityHeatmap = ({ data }: { data: { date: string, count: number }[] }) 
     );
 };
 
+interface WorkspaceAnalyticsData {
+    summary: {
+        avgCycleTime: number;
+        completionRate?: number;
+        compilationRate?: number;
+        projectHealth?: { on_track: number; at_risk: number; off_track: number; none: number };
+    };
+    velocity?: Array<{ name: string; points: number }>;
+    workload?: Array<{ name: string; tasks: number }>;
+    heatmap: Array<{ date: string; count: number }>;
+}
+
 export default function WorkspaceAnalyticsPage() {
-    const [data, setData] = useState<any>(null);
+    const [data, setData] = useState<WorkspaceAnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
     const { isDark } = useTheme();
     const { workspace } = useWorkspace();
@@ -83,12 +104,8 @@ export default function WorkspaceAnalyticsPage() {
     useEffect(() => {
         const fetchAnalytics = async () => {
             try {
-                const token = localStorage.getItem('accessToken');
-                const res = await fetch(`/api/workspaces/${workspace.slug}/analytics`, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
-                });
-                if (res.ok) {
-                    const json = await res.json();
+                const { data: json, error } = await api.get<WorkspaceAnalyticsData>(`/api/workspaces/${workspace.slug}/analytics`);
+                if (!error && json) {
                     setData(json);
                 }
             } catch (e) { console.error(e); }
@@ -162,7 +179,7 @@ export default function WorkspaceAnalyticsPage() {
                                 <YAxis axisLine={false} tickLine={false} fontSize={12} opacity={0.6} />
                                 <Tooltip contentStyle={{ background: isDark ? '#1f2937' : '#fff', borderRadius: '8px', border: 'none' }} />
                                 <Bar dataKey="points" radius={[4, 4, 0, 0]}>
-                                    {velocityData.map((_:any, index:number) => (
+                                    {velocityData.map((_, index: number) => (
                                         <Cell key={`cell-${index}`} fill={index === velocityData.length - 1 ? '#00D4B3' : '#3B82F6'} fillOpacity={0.8} />
                                     ))}
                                 </Bar>

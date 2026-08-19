@@ -4,20 +4,22 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/core/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { api } from '@/lib/api/client';
 
-async function readApiJson(response: Response): Promise<any> {
-  const text = await response.text().catch(() => '');
-  if (!text) return {};
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {
-      error: response.ok
-        ? 'Respuesta inesperada del servidor'
-        : 'Respuesta no valida del servidor. Intenta nuevamente o revisa el tamano del archivo.',
-    };
-  }
+interface FullProfileResponse {
+  firstNameRaw?: string;
+  firstName?: string;
+  lastNamePaternal?: string;
+  lastName?: string;
+  lastNameMaternal?: string;
+  name?: string;
+  username?: string;
+  phoneNumber?: string;
+  companyRole?: string;
+  department?: string;
+  timezone?: string;
+  locale?: string;
+  avatar?: string;
 }
 
 export default function ProfilePage() {
@@ -53,11 +55,6 @@ export default function ProfilePage() {
 
   const [showPasswordSection, setShowPasswordSection] = useState(false);
 
-  // Cargar datos iniciales al montar el componente
-  useEffect(() => {
-    loadFullProfile();
-  }, []);
-
   // También actualizar si el user del store cambia
   useEffect(() => {
     if (user && !formData.first_name) {
@@ -73,19 +70,16 @@ export default function ProfilePage() {
         avatar_url: user.avatar || '',
       }));
     }
+    // formData.first_name is read only as a "populate once" guard; including it
+    // would re-run this effect every time it's set, without changing the outcome.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const loadFullProfile = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
+      const { data: fullUser, error } = await api.get<FullProfileResponse>('/api/auth/me');
 
-      const res = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (res.ok) {
-        const fullUser = await res.json();
+      if (!error && fullUser) {
         setFormData({
           first_name: fullUser.firstNameRaw || fullUser.firstName || '',
           last_name_paternal: fullUser.lastNamePaternal || fullUser.lastName?.split(' ')[0] || '', 
@@ -104,6 +98,11 @@ export default function ProfilePage() {
       console.error('Error cargando perfil completo:', error);
     }
   };
+
+  // Cargar datos iniciales al montar el componente
+  useEffect(() => {
+    loadFullProfile();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -141,23 +140,13 @@ export default function ProfilePage() {
     setErrorMessage(null);
 
     try {
-      const token = localStorage.getItem('accessToken');
       // Excluir avatar_url del submit ya que se maneja por separado
       const { avatar_url, ...dataToSend } = formData;
-      
-      const res = await fetch('/api/auth/me', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(dataToSend)
-      });
 
-      const data = await readApiJson(res);
+      const { error } = await api.patch('/api/auth/me', dataToSend);
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al actualizar perfil');
+      if (error) {
+        throw new Error(error || 'Error al actualizar perfil');
       }
 
       setSuccessMessage('Perfil actualizado correctamente');
@@ -165,8 +154,8 @@ export default function ProfilePage() {
       
       setTimeout(() => setSuccessMessage(null), 3000);
 
-    } catch (err: any) {
-      setErrorMessage(err.message);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
     } finally {
       setLoading(false);
     }
@@ -184,21 +173,10 @@ export default function ProfilePage() {
     setChangingPassword(true);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      
-      const res = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(passwordData)
-      });
+      const { error } = await api.post('/api/auth/change-password', passwordData);
 
-      const data = await readApiJson(res);
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al cambiar contraseña');
+      if (error) {
+        throw new Error(error || 'Error al cambiar contraseña');
       }
 
       setSuccessMessage('Contraseña actualizada correctamente');
@@ -207,8 +185,8 @@ export default function ProfilePage() {
       
       setTimeout(() => setSuccessMessage(null), 3000);
 
-    } catch (err: any) {
-      setErrorMessage(err.message);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
     } finally {
       setChangingPassword(false);
     }
@@ -236,30 +214,23 @@ export default function ProfilePage() {
     setErrorMessage(null);
 
     try {
-      const token = localStorage.getItem('accessToken');
       const formDataUpload = new FormData();
       formDataUpload.append('file', file);
 
-      const res = await fetch('/api/upload/avatar', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formDataUpload
-      });
+      const { data, error } = await api.post<{ avatarUrl?: string }>('/api/upload/avatar', formDataUpload);
 
-      const data = await readApiJson(res);
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al subir la imagen');
+      if (error) {
+        throw new Error(error || 'Error al subir la imagen');
       }
 
-      setFormData(prev => ({ ...prev, avatar_url: data.avatarUrl }));
+      setFormData(prev => ({ ...prev, avatar_url: data?.avatarUrl || prev.avatar_url }));
       setSuccessMessage('Imagen de perfil actualizada');
       await fetchCurrentUser();
       
       setTimeout(() => setSuccessMessage(null), 3000);
 
-    } catch (err: any) {
-      setErrorMessage(err.message);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
     } finally {
       setUploadingAvatar(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -274,16 +245,10 @@ export default function ProfilePage() {
     setErrorMessage(null);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/upload/avatar', {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const { error } = await api.delete('/api/upload/avatar');
 
-      const data = await readApiJson(res);
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Error al eliminar la imagen');
+      if (error) {
+        throw new Error(error || 'Error al eliminar la imagen');
       }
 
       setFormData(prev => ({ ...prev, avatar_url: '' }));
@@ -292,8 +257,8 @@ export default function ProfilePage() {
       
       setTimeout(() => setSuccessMessage(null), 3000);
 
-    } catch (err: any) {
-      setErrorMessage(err.message);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
     } finally {
       setUploadingAvatar(false);
     }

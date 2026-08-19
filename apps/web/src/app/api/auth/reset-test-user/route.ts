@@ -27,9 +27,10 @@ export async function POST(request: NextRequest) {
     // Generar hash con PBKDF2
     const passwordHash = await hashPassword(password);
 
+    // No se loguea la contraseña en texto plano ni el hash completo:
+    // esto es un endpoint solo-desarrollo, pero los logs pueden terminar
+    // en un agregador compartido incluso en entornos no productivos.
     console.log('🔐 Generando hash para:', email);
-    console.log('   Password:', password);
-    console.log('   Hash generado:', passwordHash.substring(0, 50) + '...');
 
     // Verificar si el usuario existe
     const { data: existingUser } = await supabaseAdmin

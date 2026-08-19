@@ -1,21 +1,25 @@
 // ======================
 // USER TYPES
 // ======================
+// Espejo de `AccountUser` (apps/web/src/lib/supabase/server.ts), la fuente de
+// verdad real del usuario en Project Hub. El shape anterior de este archivo
+// (id/email/name/role genéricos) no correspondía al dominio real — nadie lo
+// importaba, así que no había ningún consumidor que romper al corregirlo.
+
+export type PermissionLevel = 'super_admin' | 'admin' | 'manager' | 'user' | 'viewer' | 'guest';
 
 export interface User {
     id: string;
     email: string;
-    name: string;
-    role: UserRole;
-    avatar?: string;
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-export enum UserRole {
-    ADMIN = 'admin',
-    USER = 'user',
-    GUEST = 'guest',
+    username: string;
+    displayName: string | null;
+    firstName: string;
+    lastNamePaternal: string;
+    lastNameMaternal: string | null;
+    permissionLevel: PermissionLevel;
+    avatarUrl: string | null;
+    createdAt: string;
+    updatedAt: string;
 }
 
 // ======================
@@ -44,6 +48,9 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
 // ======================
 // AUTH TYPES
 // ======================
+// El login real acepta email O username (ver `authenticateSofiaUser` en
+// apps/web/src/lib/auth/sofia-auth.ts) — SOFIA es la fuente de verdad de auth,
+// no un login por email puro.
 
 export interface AuthTokens {
     accessToken: string;
@@ -51,13 +58,7 @@ export interface AuthTokens {
 }
 
 export interface LoginCredentials {
-    email: string;
-    password: string;
-}
-
-export interface RegisterData {
-    name: string;
-    email: string;
+    emailOrUsername: string;
     password: string;
 }
 

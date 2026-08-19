@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
@@ -18,16 +18,9 @@ export async function GET(
 ) {
   try {
     const { teamId, issueId } = await params;
-    
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
     // Get issue with relations
     const { data: issue, error: issueError } = await supabaseAdmin
@@ -179,7 +172,7 @@ export async function GET(
       issue: {
         ...issue,
         identifier,
-        labels: issue.labels?.map((l: any) => l.label) || [],
+        labels: issue.labels?.map((l: { label: unknown }) => l.label) || [],
         parent: parentIssue,
         project
       },
@@ -207,16 +200,10 @@ export async function PATCH(
 ) {
   try {
     const { teamId, issueId } = await params;
-    
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const allowedFields = [
@@ -238,8 +225,8 @@ export async function PATCH(
     }
 
     // Build update object and history records
-    const updateData: any = { updated_at: new Date().toISOString() };
-    const historyRecords: any[] = [];
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const historyRecords: Record<string, unknown>[] = [];
 
     // Helper to get name from ID
     const getStatusName = async (statusId: string | null) => {
@@ -365,16 +352,9 @@ export async function DELETE(
 ) {
   try {
     const { teamId, issueId } = await params;
-    
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
     // Soft delete (archive)
     const { error } = await supabaseAdmin

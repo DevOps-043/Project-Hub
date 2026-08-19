@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
+import { api } from '@/lib/api/client';
 
 interface TeamSummary {
   id: string;
@@ -43,18 +44,14 @@ export default function TasksLandingContent({ globalAdmin = false }: { globalAdm
       setError(null);
 
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch(apiUrl, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = await res.json().catch(() => ({}));
+        const { data, error } = await api.get<{ teams?: TeamSummary[] }>(apiUrl);
 
-        if (!res.ok) {
-          throw new Error(data.error || 'No se pudieron cargar los equipos');
+        if (error) {
+          throw new Error(error || 'No se pudieron cargar los equipos');
         }
 
         if (!cancelled) {
-          setTeams(data.teams || []);
+          setTeams(data?.teams || []);
         }
       } catch (err) {
         if (!cancelled) {

@@ -264,12 +264,18 @@
 
 .avatar {
   position: relative;
-  display: grid;
   width: 3.25rem;
   height: 3.25rem;
   flex: 0 0 auto;
-  place-items: center;
-  overflow: visible;
+}
+
+.avatarImage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
   border-radius: 0.9rem;
   background: color-mix(in srgb, var(--accent) 9%, transparent);
@@ -279,8 +285,24 @@
   font-weight: 600;
 }
 
-.avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
-.avatar > span { position: absolute; right: -0.2rem; bottom: -0.2rem; width: 0.72rem; height: 0.72rem; border: 2px solid var(--surface-strong); border-radius: 50%; }
+.avatarImage img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar > span {
+  position: absolute;
+  right: -0.2rem;
+  bottom: -0.2rem;
+  width: 0.72rem;
+  height: 0.72rem;
+  border: 2px solid var(--surface-strong);
+  border-radius: 50%;
+  z-index: 2;
+}
 .online { background: #10b981; }
 .offline { background: #64748b; }
 
@@ -518,12 +540,18 @@
 
 .modalAvatar {
   position: relative;
-  display: grid;
   width: 5.3rem;
   height: 5.3rem;
   flex: 0 0 auto;
-  place-items: center;
-  overflow: visible;
+}
+
+.modalAvatarImage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   border: 3px solid rgb(0 212 179 / 0.7);
   border-radius: 1.5rem;
   background: linear-gradient(145deg, #14dabb, #00a78d);
@@ -534,8 +562,25 @@
   font-weight: 700;
 }
 
-.modalAvatar img { width: 100%; height: 100%; border-radius: 1.25rem; object-fit: cover; }
-.modalAvatar > span { position: absolute; right: -0.25rem; bottom: -0.25rem; width: 1rem; height: 1rem; border: 3px solid var(--surface-strong); border-radius: 50%; background: #10b981; }
+.modalAvatarImage img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
+}
+
+.modalAvatar > span {
+  position: absolute;
+  right: -0.25rem;
+  bottom: -0.25rem;
+  width: 1rem;
+  height: 1rem;
+  border: 3px solid var(--surface-strong);
+  border-radius: 50%;
+  background: #10b981;
+  z-index: 2;
+}
 .modalIdentity { min-width: 0; }
 .modalIdentity h2 { overflow: hidden; margin: 0.12rem 0 0; color: var(--text); font-family: var(--font-system-display); font-size: clamp(2rem, 4vw, 2.6rem); font-weight: 300; line-height: 1; letter-spacing: -0.03em; text-overflow: ellipsis; white-space: nowrap; }
 .modalIdentity > p { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.5rem; color: var(--modal-heading); font-size: 0.75rem; }
@@ -672,8 +717,8 @@
   .modalBackdrop { padding: 0.75rem; }
   .modal { height: calc(100dvh - 1.5rem); max-height: calc(100dvh - 1.5rem); }
   .modalProfileHeader { min-height: auto; align-items: flex-start; padding: 1.25rem; }
-  .modalAvatar { width: 4.2rem; height: 4.2rem; border-radius: 1.2rem; font-size: 1.1rem; }
-  .modalAvatar img { border-radius: 1rem; }
+  .modalAvatar { width: 4.2rem; height: 4.2rem; font-size: 1.1rem; }
+  .modalAvatarImage { border-radius: 1.2rem; }
   .modalIdentity h2 { max-width: calc(100vw - 9.5rem); font-size: 1.7rem; }
   .modalIdentity > p { max-width: calc(100vw - 9.5rem); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .modalHeaderRole { display: none; }

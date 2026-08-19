@@ -2,7 +2,7 @@
 
 import { createContext, useContext, ReactNode } from 'react';
 
-export type IrisRole = 'owner' | 'admin' | 'manager' | 'leader' | 'member';
+export type WorkspaceRole = 'owner' | 'admin' | 'manager' | 'leader' | 'member';
 
 export interface WorkspacePermissions {
   manageWorkspace: boolean;
@@ -15,7 +15,7 @@ export interface WorkspacePermissions {
   viewAllMembers: boolean;
 }
 
-const ROLE_PERMISSIONS: Record<IrisRole, WorkspacePermissions> = {
+const ROLE_PERMISSIONS: Record<WorkspaceRole, WorkspacePermissions> = {
   owner:   { manageWorkspace: true,  manageMembers: true,  manageRoles: true,  manageProjects: true,  manageTeams: true,  viewAnalytics: true,  viewReports: true,  viewAllMembers: true  },
   admin:   { manageWorkspace: false, manageMembers: true,  manageRoles: true,  manageProjects: true,  manageTeams: true,  viewAnalytics: true,  viewReports: true,  viewAllMembers: true  },
   manager: { manageWorkspace: false, manageMembers: false, manageRoles: false, manageProjects: true,  manageTeams: true,  viewAnalytics: false, viewReports: false, viewAllMembers: false },
@@ -35,7 +35,7 @@ export interface WorkspaceData {
 
 export interface WorkspaceContextType {
   workspace: WorkspaceData;
-  userRole: IrisRole;
+  userRole: WorkspaceRole;
   permissions: WorkspacePermissions;
   isOwner: boolean;
   isAdmin: boolean;
@@ -50,7 +50,7 @@ const WorkspaceContext = createContext<WorkspaceContextType | null>(null);
 interface WorkspaceProviderProps {
   children: ReactNode;
   workspace: WorkspaceData;
-  userRole: IrisRole;
+  userRole: WorkspaceRole;
 }
 
 export function WorkspaceProvider({ children, workspace, userRole }: WorkspaceProviderProps) {
@@ -83,14 +83,14 @@ export function useWorkspace(): WorkspaceContextType {
   return context;
 }
 
-export function getPermissionsForRole(role: IrisRole): WorkspacePermissions {
+export function getPermissionsForRole(role: WorkspaceRole): WorkspacePermissions {
   return ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.member;
 }
 
 /**
  * Returns the base panel path for a given role within a workspace.
  */
-export function getPanelPathForRole(orgSlug: string, role: IrisRole): string {
+export function getPanelPathForRole(orgSlug: string, role: WorkspaceRole): string {
   switch (role) {
     case 'owner':
     case 'admin':   return `/${orgSlug}/admin`;

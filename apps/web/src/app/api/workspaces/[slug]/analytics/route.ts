@@ -1,10 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 import { getMemoryCache, setMemoryCache } from '@/lib/cache/memory-cache';
 
 export const dynamic = 'force-dynamic';
+
+interface TaskRow {
+  status_id: string;
+  completed_at: string | null;
+  started_at: string | null;
+  assignee_id: string | null;
+  issue_id: string;
+  created_at: string;
+  cycle_id: string | null;
+  estimate_points: number | null;
+}
+
+interface TaskStatusRow {
+  status_id: string;
+  status_type: string;
+  name: string;
+  color: string;
+}
+
+interface CycleRow {
+  cycle_id: string;
+  name: string;
+  start_date: string;
+}
+
+interface WorkloadEntry {
+  name: string;
+  tasks: number;
+  points: number;
+}
+
+interface LeaderboardEntry {
+  count: number;
+  user: {
+    user_id: string;
+    full_name: string;
+    email: string;
+    avatar_url: string | null;
+  };
+}
 const configuredAnalyticsCacheTtl = Number.parseInt(process.env.ANALYTICS_CACHE_TTL_SECONDS || '30', 10);
 const configuredAnalyticsLookbackDays = Number.parseInt(process.env.ANALYTICS_LOOKBACK_DAYS || '90', 10);
 const ANALYTICS_CACHE_TTL_SECONDS = Number.isFinite(configuredAnalyticsCacheTtl)
@@ -46,21 +85,12 @@ function emptyAnalyticsPayload() {
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 });
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { workspace } = auth;
 
     const cacheKey = `workspace-analytics:${workspace.workspace_id}`;
-    const cachedPayload = getMemoryCache<Record<string, any>>(cacheKey);
+    const cachedPayload = getMemoryCache<Record<string, unknown>>(cacheKey);
     if (cachedPayload) {
       return NextResponse.json(cachedPayload, {
         headers: {
@@ -87,7 +117,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const projectIds = (wsProjects || []).map(p => p.project_id);
 
     // Tasks scoped to workspace teams OR projects
-    let tasks: any[] = [];
+    let tasks: TaskRow[] = [];
     const orFilters: string[] = [];
     if (teamIds.length > 0) orFilters.push(`team_id.in.(${teamIds.join(',')})`);
     if (projectIds.length > 0) orFilters.push(`project_id.in.(${projectIds.join(',')})`);
@@ -97,12 +127,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .from('task_issues')
         .select('status_id, completed_at, started_at, assignee_id, issue_id, created_at, cycle_id, estimate_points')
         .or(orFilters.join(','));
-      tasks = data || [];
+      tasks = (data || []) as TaskRow[];
     }
 
     // Status mapping
     const { data: statuses } = await supabase.from('task_statuses').select('status_id, status_type, name, color');
-    const statusMap = (statuses || []).reduce((acc: any, s) => { acc[s.status_id] = s; return acc; }, {});
+    const statusMap = (statuses || []).reduce<Record<string, TaskStatusRow>>((acc, s) => { acc[s.status_id] = s; return acc; }, {});
 
     // Members of the workspace (to filter AI usage)
     const allMembersQuery = supabase
@@ -114,7 +144,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const memberIds = Array.from(new Set((members || []).map(m => m.user_id)));
 
     // AI Usage scoped to members
-    let ariaUsage: any[] = [];
+    let ariaUsage: Array<{ date: string; tokens: number }> = [];
     if (memberIds.length > 0) {
       const usageSince = new Date(
         Date.now() - ANALYTICS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000
@@ -155,22 +185,26 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // --- PROCESAMIENTO REAL ---
     
     // 1. Salud de Proyectos
-    const projectHealth = projects.reduce((acc: any, p) => {
+    const projectHealth = projects.reduce<Record<string, number>>((acc, p) => {
       const health = p.health_status || 'none';
       acc[health] = (acc[health] || 0) + 1;
       return acc;
     }, { on_track: 0, at_risk: 0, off_track: 0, none: 0 });
 
     // 2. Velocidad (Puntos por Ciclo - Últimos 5 ciclos)
-    let cycles: any[] = [];
+    let cycles: CycleRow[] = [];
     if (teamIds.length > 0) {
       const { data } = await supabase
         .from('task_cycles')
-        .select('cycle_id, name, start_date, number')
+        // `number` no existe en el esquema real (es `cycle_number`, ver
+        // apps/database/migrations/021_reconcile_task_cycles_schema.sql) —
+        // seleccionarlo hacía fallar la query silenciosamente y dejaba
+        // "Velocidad" siempre vacío.
+        .select('cycle_id, name, start_date')
         .eq('team_id', teamIds[0]) // Simplificado al primer equipo para el demo/contexto
         .order('start_date', { ascending: false })
         .limit(5);
-      cycles = data || [];
+      cycles = (data || []) as CycleRow[];
     }
 
     const velocityData = cycles.reverse().map(cycle => {
@@ -182,7 +216,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // 3. Cycle Time Promedio (Días)
     const completedTasks = tasks.filter(t => t.completed_at && t.started_at);
     const totalCycleTime = completedTasks.reduce((sum, t) => {
-      const start = new Date(t.started_at).getTime();
+      const start = new Date(t.started_at!).getTime();
       const end = new Date(t.completed_at!).getTime();
       return sum + (end - start);
     }, 0);
@@ -202,7 +236,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Resolve user info for workload
     const workloadUserIds = Object.keys(workloadMap);
-    let workloadData: any[] = [];
+    let workloadData: WorkloadEntry[] = [];
     if (workloadUserIds.length > 0) {
       const { data: users } = await supabase.from('account_users').select('user_id, first_name, display_name').in('user_id', workloadUserIds);
       workloadData = (users || []).map(u => ({
@@ -224,7 +258,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Task Distribution
     const typeLabelMap: Record<string, string> = { done: 'Completadas', completed: 'Completadas', in_progress: 'En Progreso', todo: 'Por Hacer', backlog: 'Backlog', cancelled: 'Canceladas', in_review: 'En Revision' };
-    const taskStatusCounts = tasks.reduce((acc: any, t) => { const type = statusMap[t.status_id]?.status_type || 'backlog'; acc[type] = (acc[type] || 0) + 1; return acc; }, {});
+    const taskStatusCounts = tasks.reduce<Record<string, number>>((acc, t) => { const type = statusMap[t.status_id]?.status_type || 'backlog'; acc[type] = (acc[type] || 0) + 1; return acc; }, {});
     const distribution = tasks.length > 0 ? Object.entries(taskStatusCounts).map(([type, count]) => ({
       name: typeLabelMap[type] || type, value: count,
       color: isDoneStatus(type) ? '#10B981' : type === 'in_progress' ? '#3B82F6' : type === 'todo' ? '#F59E0B' : type === 'cancelled' ? '#EF4444' : '#6B7280',
@@ -240,7 +274,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([userId]) => userId);
-    let leaderboard: any[] = [];
+    let leaderboard: LeaderboardEntry[] = [];
     if (leaderboardUserIds.length > 0) {
       const { data: users } = await supabase
         .from('account_users')
@@ -294,8 +328,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         'X-Project-Hub-Cache': 'MISS',
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Workspace analytics error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

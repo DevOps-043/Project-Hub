@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday } from 'date-fns';
-import { es } from 'date-fns/locale';
 import { useGoogleConnection } from '@/shared/hooks/useGoogleConnection';
 import { GoogleDrivePicker } from '@/components/google/GoogleDrivePicker';
 import type { PickedFile } from '@/components/google/GoogleDrivePicker';
 import { classifyGoogleFile, parseGoogleUrl, uploadFileToDrive } from '@/lib/google/document-utils';
+import { api } from '@/lib/api/client';
+import { CustomDatePicker } from './CustomDatePicker';
+import { ICONS, ICON_COLORS, PRIORITY_OPTIONS, STATUS_OPTIONS, IconSVGs } from './create-project-constants';
 
 // ============================================
 // TYPES
@@ -29,6 +30,19 @@ interface User {
   email: string;
 }
 
+interface Milestone {
+  name: string;
+  description: string;
+}
+
+interface GeneratedIssue {
+  issue_id?: string;
+  identifier?: string;
+  title: string;
+  priority?: { color?: string } | null;
+  assignee?: { display_name?: string; first_name?: string } | null;
+}
+
 interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -36,228 +50,6 @@ interface CreateProjectModalProps {
   initialTeamId?: string;
   initialStatus?: string;
   workspaceSlug?: string;
-}
-
-// ============================================
-// CONSTANTS
-// ============================================
-const ICONS = [
-  { name: 'folder', label: 'Folder' },
-  { name: 'rocket', label: 'Rocket' },
-  { name: 'target', label: 'Target' },
-  { name: 'zap', label: 'Zap' },
-  { name: 'code', label: 'Code' },
-  { name: 'lightbulb', label: 'Lightbulb' },
-];
-
-const ICON_COLORS = [
-  '#3B82F6', '#8B5CF6', '#EC4899', '#EF4444', 
-  '#F59E0B', '#10B981', '#06B6D4', '#00D4B3'
-];
-
-const PRIORITY_OPTIONS = [
-  { value: 'none', label: 'Sin prioridad', icon: '···' },
-  { value: 'low', label: 'Baja', color: '#6B7280' },
-  { value: 'medium', label: 'Media', color: '#3B82F6' },
-  { value: 'high', label: 'Alta', color: '#F59E0B' },
-  { value: 'urgent', label: 'Urgente', color: '#EF4444' },
-];
-
-const STATUS_OPTIONS = [
-  { value: 'planning', label: 'Planificación' },
-  { value: 'active', label: 'Activo' },
-  { value: 'active', label: 'Activo' },
-  { value: 'on_hold', label: 'En pausa' },
-];
-
-const handleAddMilestone = (milestones: any[], setMilestones: any, name: string, desc: string, setName: any, setDesc: any, setForm: any) => {
-  if (name.trim()) {
-      setMilestones([...milestones, { name, description: desc }]);
-      setName('');
-      setDesc('');
-      setForm(false);
-  }
-};
-
-// ============================================
-// ICON COMPONENTS
-// ============================================
-const IconSVGs: Record<string, React.ReactNode> = {
-  folder: <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />,
-  rocket: <><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" /><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" /></>,
-  target: <><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" /></>,
-  zap: <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />,
-  code: <><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></>,
-  lightbulb: <><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></>,
-};
-
-// ============================================
-// CUSTOM DATE PICKER COMPONENT
-// ============================================
-interface CustomDatePickerProps {
-  label: string;
-  value: string;
-  onChange: (date: string) => void;
-  icon?: React.ReactNode;
-  isDark: boolean;
-  colors: any;
-}
-
-function CustomDatePicker({ label, value, onChange, icon, isDark, colors }: CustomDatePickerProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(value ? new Date(value) : new Date());
-
-  // Reset calendar view when value changes
-  useEffect(() => {
-    if (value) setCurrentMonth(new Date(value));
-  }, [value]);
-
-  const toggleOpen = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsOpen(!isOpen);
-  };
-
-  const nextMonth = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentMonth(addMonths(currentMonth, 1));
-  };
-
-  const prevMonth = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentMonth(subMonths(currentMonth, 1));
-  };
-
-  const handleDateClick = (e: React.MouseEvent, date: Date) => {
-    e.stopPropagation();
-    onChange(format(date, 'yyyy-MM-dd'));
-    setIsOpen(false);
-  };
-
-  // Calendar generation logic
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(monthStart);
-  const startDate = startOfWeek(monthStart, { weekStartsOn: 0 }); // Sunday start
-  const endDate = endOfWeek(monthEnd, { weekStartsOn: 0 });
-
-  const dateFormat = "d";
-  const days = eachDayOfInterval({ start: startDate, end: endDate });
-
-  const weeks = [];
-  let daysInWeek = [];
-  let day = startDate;
-  let formattedDate = "";
-
-  const weekDays = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'];
-
-  return (
-    <div className="relative">
-      <button 
-        onClick={toggleOpen}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-all duration-200 hover:bg-white/10 border border-transparent hover:border-white/10 w-full text-left"
-        style={{ 
-          color: value ? (isDark ? '#E5E7EB' : '#374151') : (isDark ? '#9CA3AF' : '#6B7280'),
-          backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'
-        }}
-      >
-        {icon}
-        <span className="font-medium whitespace-nowrap overflow-hidden text-ellipsis">
-          {value ? format(new Date(value), 'dd MMM yyyy', { locale: es }) : label}
-        </span>
-      </button>
-
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="absolute top-full left-0 mt-2 p-4 rounded-xl shadow-2xl border z-50 w-[280px]"
-            style={{ 
-              backgroundColor: isDark ? '#1E2329' : '#FFFFFF', 
-              borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' 
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex justify-between items-center mb-4">
-              <span className="font-semibold capitalize text-sm" style={{ color: colors.textPrimary }}>
-                {format(currentMonth, 'MMMM yyyy', { locale: es })}
-              </span>
-              <div className="flex gap-1">
-                <button onClick={prevMonth} className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
-                </button>
-                <button onClick={nextMonth} className="p-1 hover:bg-white/10 rounded text-gray-400 hover:text-white">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Week days */}
-            <div className="grid grid-cols-7 mb-2">
-              {weekDays.map(d => (
-                <div key={d} className="text-center text-xs font-medium opacity-50 py-1" style={{ color: colors.textSecondary }}>
-                  {d}
-                </div>
-              ))}
-            </div>
-
-            {/* Calendar Grid */}
-            <div className="grid grid-cols-7 gap-1">
-              {days.map((dayItem, i) => {
-                const isSelected = value ? isSameDay(dayItem, new Date(value)) : false;
-                const isCurrentMonth = isSameMonth(dayItem, monthStart);
-                const isTodayDate = isToday(dayItem);
-
-                return (
-                  <button
-                    key={i}
-                    onClick={(e) => handleDateClick(e, dayItem)}
-                    className={`
-                      h-8 w-8 rounded-lg flex items-center justify-center text-sm transition-colors relative
-                      ${!isCurrentMonth ? 'opacity-30' : ''}
-                      ${isSelected ? 'bg-blue-600 text-white font-bold shadow-lg' : 'hover:bg-white/10'}
-                    `}
-                    style={{ 
-                      color: isSelected ? '#FFFFFF' : (isDark ? '#E5E7EB' : '#374151'),
-                      backgroundColor: isSelected ? '#3B82F6' : undefined,
-                      border: isTodayDate && !isSelected ? `1px solid ${colors.primary}` : 'none'
-                    }}
-                  >
-                    {format(dayItem, 'd')}
-                  </button>
-                );
-              })}
-            </div>
-            
-            {/* Footer */}
-            <div className="mt-4 pt-3 border-t flex justify-between text-xs" style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }}>
-              <button 
-                onClick={(e) => { e.stopPropagation(); onChange(''); setIsOpen(false); }}
-                className="hover:underline opacity-70 hover:opacity-100 transition-opacity"
-                style={{ color: colors.textSecondary }}
-              >
-                Borrar
-              </button>
-              <button 
-                onClick={(e) => { e.stopPropagation(); onChange(format(new Date(), 'yyyy-MM-dd')); setIsOpen(false); }}
-                className="font-medium hover:underline"
-                style={{ color: '#3B82F6' }}
-              >
-                Hoy
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Backdrop for closing */}
-      {isOpen && (
-        <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-      )}
-    </div>
-  );
 }
 
 export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, initialStatus, workspaceSlug }: CreateProjectModalProps) {
@@ -280,10 +72,18 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
   const [newLabel, setNewLabel] = useState('');
   
   // Milestones State
-  const [milestones, setMilestones] = useState<{name: string, description: string}[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [showMilestoneForm, setShowMilestoneForm] = useState(false);
   const [newMilestoneName, setNewMilestoneName] = useState('');
   const [newMilestoneDesc, setNewMilestoneDesc] = useState('');
+
+  const addMilestone = () => {
+    if (!newMilestoneName.trim()) return;
+    setMilestones((prev) => [...prev, { name: newMilestoneName, description: newMilestoneDesc }]);
+    setNewMilestoneName('');
+    setNewMilestoneDesc('');
+    setShowMilestoneForm(false);
+  };
   
   // Initialize teamId if provided
   useEffect(() => {
@@ -326,8 +126,32 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
   // AI auto-generation state
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [aiProgress, setAiProgress] = useState('');
-  const [aiResult, setAiResult] = useState<{ count: number; issues: any[] } | null>(null);
+  const [aiResult, setAiResult] = useState<{ count: number; issues: GeneratedIssue[] } | null>(null);
   const [showAiResult, setShowAiResult] = useState(false);
+
+  const fetchTeams = useCallback(async () => {
+    try {
+      const url = workspaceSlug ? `/api/workspaces/${workspaceSlug}/teams?limit=50` : '/api/admin/teams';
+      const { data, error } = await api.get<{ teams: Team[] }>(url);
+      if (!error && data) {
+        setTeams(data.teams || []);
+      }
+    } catch (err) {
+      console.error('Error fetching teams:', err);
+    }
+  }, [workspaceSlug]);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const url = workspaceSlug ? `/api/workspaces/${workspaceSlug}/members` : '/api/admin/users';
+      const { data, error } = await api.get<{ users: User[] }>(url);
+      if (!error && data) {
+        setUsers(data.users || []);
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    }
+  }, [workspaceSlug]);
 
   // Fetch teams and users
   useEffect(() => {
@@ -335,39 +159,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
       fetchTeams();
       fetchUsers();
     }
-  }, [isOpen]);
-
-  const fetchTeams = async () => {
-    try {
-      const url = workspaceSlug ? `/api/workspaces/${workspaceSlug}/teams?limit=50` : '/api/admin/teams';
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setTeams(data.teams || []);
-      }
-    } catch (err) {
-      console.error('Error fetching teams:', err);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const url = workspaceSlug ? `/api/workspaces/${workspaceSlug}/members` : '/api/admin/users';
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data.users || []);
-      }
-    } catch (err) {
-      console.error('Error fetching users:', err);
-    }
-  };
+  }, [isOpen, fetchTeams, fetchUsers]);
 
   const handleSubmit = async () => {
     if (!projectName.trim()) {
@@ -383,31 +175,27 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
       const currentUserId = users[0]?.id; // Fallback for demo
 
       const projectUrl = workspaceSlug ? `/api/workspaces/${workspaceSlug}/projects` : '/api/admin/projects';
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(projectUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({
-          project_name: projectName,
-          project_description: description || summary,
-          icon_name: selectedIcon,
-          icon_color: selectedColor,
-          priority_level: priority,
-          project_status: status,
-          lead_user_id: leadId,
-          team_id: teamId,
-          start_date: startDate || null,
-          target_date: targetDate || null,
-          created_by_user_id: currentUserId,
-          tags: labels,
-          milestones: milestones
-        })
+      const { data: resData, error: createError } = await api.post<{
+        project?: { project_id?: string };
+        project_id?: string;
+      }>(projectUrl, {
+        project_name: projectName,
+        project_description: description || summary,
+        icon_name: selectedIcon,
+        icon_color: selectedColor,
+        priority_level: priority,
+        project_status: status,
+        lead_user_id: leadId,
+        team_id: teamId,
+        start_date: startDate || null,
+        target_date: targetDate || null,
+        created_by_user_id: currentUserId,
+        tags: labels,
+        milestones: milestones
       });
 
-      const resData = await res.json();
-
-      if (!res.ok) {
-        throw new Error(resData.error || 'Error al crear proyecto');
+      if (createError || !resData) {
+        throw new Error(createError || 'Error al crear proyecto');
       }
 
       const newProjectId = resData.project?.project_id || resData.project_id;
@@ -421,21 +209,14 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
         for (const file of pendingDocuments) {
           const { provider, docType } = classifyGoogleFile(file.mimeType);
           try {
-            await fetch(docApiBase, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              },
-              body: JSON.stringify({
-                name: file.name,
-                provider,
-                external_id: file.id,
-                external_url: file.url,
-                doc_type: docType,
-                mime_type: file.mimeType,
-                thumbnail_url: file.iconUrl || null,
-              }),
+            await api.post(docApiBase, {
+              name: file.name,
+              provider,
+              external_id: file.id,
+              external_url: file.url,
+              doc_type: docType,
+              mime_type: file.mimeType,
+              thumbnail_url: file.iconUrl || null,
             });
           } catch (docError) {
             console.error('Error vinculando documento al proyecto:', docError);
@@ -448,26 +229,21 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
           setAiAnalyzing(true);
           setAiProgress('Analizando documentos con IA...');
           try {
-            const analyzeRes = await fetch('/api/ai/analyze-documents', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
-              },
-              body: JSON.stringify({
-                projectId: newProjectId,
-                teamId: resolvedTeamId,
-                documents: pendingDocuments.map((d) => ({
-                  external_id: d.id,
-                  mime_type: d.mimeType,
-                  name: d.name,
-                })),
-              }),
+            const { data: analyzeData, error: analyzeError } = await api.post<{
+              count: number;
+              issues: GeneratedIssue[];
+              message?: string;
+            }>('/api/ai/analyze-documents', {
+              projectId: newProjectId,
+              teamId: resolvedTeamId,
+              documents: pendingDocuments.map((d) => ({
+                external_id: d.id,
+                mime_type: d.mimeType,
+                name: d.name,
+              })),
             });
 
-            const analyzeData = await analyzeRes.json();
-
-            if (analyzeRes.ok && analyzeData.count > 0) {
+            if (!analyzeError && analyzeData && analyzeData.count > 0) {
               setAiResult({ count: analyzeData.count, issues: analyzeData.issues || [] });
               setAiProgress(`Se crearon ${analyzeData.count} tareas automáticamente`);
               setShowAiResult(true);
@@ -475,7 +251,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
               onSuccess?.();
               return;
             } else {
-              setAiProgress(analyzeData.message || 'No se detectaron tareas en los documentos.');
+              setAiProgress(analyzeData?.message || 'No se detectaron tareas en los documentos.');
               // Auto-close after showing message
               setTimeout(() => {
                 setAiAnalyzing(false);
@@ -562,12 +338,9 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
     if (!file) return;
     setDocUploading(true);
     try {
-      const tokenFromStorage = localStorage.getItem('accessToken');
-      const tokenRes = await fetch('/api/auth/google/token', {
-        headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-      });
-      if (!tokenRes.ok) { alert('No se pudo acceder a Google. Reconecta tu cuenta.'); return; }
-      const { accessToken } = await tokenRes.json();
+      const { data: tokenData, error: tokenError } = await api.get<{ accessToken?: string }>('/api/auth/google/token');
+      if (tokenError || !tokenData?.accessToken) { alert('No se pudo acceder a Google. Reconecta tu cuenta.'); return; }
+      const { accessToken } = tokenData;
       const uploaded = await uploadFileToDrive(file, accessToken);
       if (!uploaded) { alert('Error al subir el archivo a Drive.'); return; }
       setPendingDocuments((prev) => [...prev, {
@@ -593,12 +366,9 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
       let fileName = 'Documento de Google';
       let mimeType = parsed.mimeType;
       try {
-        const tokenFromStorage = localStorage.getItem('accessToken');
-        const tokenRes = await fetch('/api/auth/google/token', {
-          headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-        });
-        if (tokenRes.ok) {
-          const { accessToken } = await tokenRes.json();
+        const { data: tokenData, error: tokenError } = await api.get<{ accessToken?: string }>('/api/auth/google/token');
+        if (!tokenError && tokenData?.accessToken) {
+          const { accessToken } = tokenData;
           const metaRes = await fetch(
             `https://www.googleapis.com/drive/v3/files/${parsed.fileId}?fields=name,mimeType`,
             { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -1027,7 +797,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                   style={{ borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }}
                  >
                   <span className="text-sm font-medium group-hover:opacity-100 transition-opacity opacity-70">Milestones</span>
-                  <div className="flex items-center gap-2 text-xs font-medium bg-white/5 px-2 py-1 rounded text-opacity-70 group-hover:text-opacity-100 transition-all">
+                  <div className="flex items-center gap-2 text-xs font-medium bg-white/5 px-2 py-1 rounded opacity-70 group-hover:opacity-100 transition-all">
                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
                      Add milestone
                   </div>
@@ -1070,7 +840,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                          Cancel
                        </button>
                        <button 
-                         onClick={() => handleAddMilestone(milestones, setMilestones, newMilestoneName, newMilestoneDesc, setNewMilestoneName, setNewMilestoneDesc, setShowMilestoneForm)}
+                         onClick={addMilestone}
                          disabled={!newMilestoneName.trim()}
                          className="px-3 py-1.5 text-xs font-medium rounded bg-[#6366F1] text-white hover:bg-[#5558DD] disabled:opacity-50 disabled:cursor-not-allowed"
                        >
@@ -1224,7 +994,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                 {showAiResult && aiResult && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" className="flex-shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" className="shrink-0">
                         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
                       </svg>
                       <p className="text-sm font-medium" style={{ color: '#10B981' }}>
@@ -1232,17 +1002,17 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                       </p>
                     </div>
                     <div className="max-h-[200px] overflow-y-auto space-y-1.5">
-                      {aiResult.issues.slice(0, 10).map((issue: any, idx: number) => (
+                      {aiResult.issues.slice(0, 10).map((issue, idx: number) => (
                         <div key={issue.issue_id || idx} className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }}>
                           <span className="font-mono text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', color: colors.textMuted }}>
                             {issue.identifier || `#${idx + 1}`}
                           </span>
                           <span className="truncate" style={{ color: colors.textPrimary }}>{issue.title}</span>
                           {issue.priority && (
-                            <span className="ml-auto flex-shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: issue.priority?.color || '#6B7280' }} />
+                            <span className="ml-auto shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: issue.priority?.color || '#6B7280' }} />
                           )}
                           {issue.assignee && (
-                            <span className="flex-shrink-0 text-[10px]" style={{ color: colors.textMuted }}>
+                            <span className="shrink-0 text-[10px]" style={{ color: colors.textMuted }}>
                               {issue.assignee.display_name || issue.assignee.first_name}
                             </span>
                           )}

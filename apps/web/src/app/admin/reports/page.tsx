@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { motion } from 'framer-motion';
 import { Document, Page, Text, View, StyleSheet, PDFDownloadLink } from '@react-pdf/renderer';
+import { api } from '@/lib/api/client';
 
 // --- STYLES FOR PDF ---
 const styles = StyleSheet.create({
@@ -33,8 +34,49 @@ const styles = StyleSheet.create({
   contributorValue: { width: 60, fontSize: 10, fontWeight: 'bold', color: '#00D4B3', textAlign: 'right' }
 });
 
+interface ReportData {
+  projects?: {
+    total?: number;
+    active?: number;
+    planning?: number;
+    completed?: number;
+    onHold?: number;
+    atRisk?: number;
+    atRiskList?: Array<{ name: string; targetDate: string }>;
+  };
+  tasks?: {
+    total?: number;
+    completionRate?: number;
+    overdue?: number;
+    open?: number;
+    completed?: number;
+    highPriority?: number;
+    urgent?: number;
+    completedThisWeek?: number;
+    completedThisMonth?: number;
+    avgCompletionDays?: number;
+    overdueList?: Array<{ title: string }>;
+  };
+  teams?: { total?: number; totalMembers?: number };
+  users?: { active?: number };
+  cycles?: { active?: number };
+  riskAnalysis?: {
+    level?: string;
+    factors?: string[];
+    recommendations?: string[];
+  };
+  topContributors?: Array<{ name: string; completed: number }>;
+}
+
+interface PredictiveAnalysis {
+  risk_level?: string;
+  risk_summary?: string;
+  predictions?: string[];
+  actions?: string[];
+}
+
 // --- ENHANCED PDF TEMPLATE: Executive Summary ---
-const ExecutiveReport = ({ data }: { data: any }) => {
+const ExecutiveReport = ({ data }: { data: ReportData | null }) => {
   const riskLevel = data?.riskAnalysis?.level || 'Bajo';
   const riskColor = riskLevel === 'Alto' ? '#EF4444' : riskLevel === 'Medio' ? '#F59E0B' : '#22C55E';
   
@@ -64,7 +106,7 @@ const ExecutiveReport = ({ data }: { data: any }) => {
               <Text style={styles.metricLabel}>Tasa de Finalización</Text>
             </View>
             <View style={styles.metricBox}>
-              <Text style={[styles.metricValue, { color: data?.tasks?.overdue > 5 ? '#EF4444' : '#0A2540' }]}>{data?.tasks?.overdue || 0}</Text>
+              <Text style={[styles.metricValue, { color: (data?.tasks?.overdue ?? 0) > 5 ? '#EF4444' : '#0A2540' }]}>{data?.tasks?.overdue || 0}</Text>
               <Text style={styles.metricLabel}>Tareas Vencidas</Text>
             </View>
           </View>
@@ -91,7 +133,7 @@ const ExecutiveReport = ({ data }: { data: any }) => {
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>En Riesgo (pasados de fecha)</Text>
-            <Text style={data?.projects?.atRisk > 0 ? styles.valueDanger : styles.value}>{data?.projects?.atRisk || 0}</Text>
+            <Text style={(data?.projects?.atRisk ?? 0) > 0 ? styles.valueDanger : styles.value}>{data?.projects?.atRisk || 0}</Text>
           </View>
         </View>
 
@@ -108,7 +150,7 @@ const ExecutiveReport = ({ data }: { data: any }) => {
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Prioridad Alta / Urgente</Text>
-            <Text style={data?.tasks?.urgent > 5 ? styles.valueWarning : styles.value}>
+            <Text style={(data?.tasks?.urgent ?? 0) > 5 ? styles.valueWarning : styles.value}>
               {data?.tasks?.highPriority || 0} / {data?.tasks?.urgent || 0}
             </Text>
           </View>
@@ -165,10 +207,10 @@ const ExecutiveReport = ({ data }: { data: any }) => {
             </View>
           </View>
           
-          {data?.riskAnalysis?.factors?.length > 0 ? (
+          {(data?.riskAnalysis?.factors?.length ?? 0) > 0 ? (
             <>
               <Text style={{ fontSize: 10, color: '#666', marginBottom: 8 }}>Factores identificados:</Text>
-              {data.riskAnalysis.factors.map((factor: string, i: number) => (
+              {data!.riskAnalysis!.factors!.map((factor, i) => (
                 <View key={i} style={styles.listItem}>
                   <Text style={styles.bullet}>•</Text>
                   <Text style={styles.listText}>{factor}</Text>
@@ -181,10 +223,10 @@ const ExecutiveReport = ({ data }: { data: any }) => {
         </View>
 
         {/* Recommendations */}
-        {data?.riskAnalysis?.recommendations?.length > 0 && (
+        {(data?.riskAnalysis?.recommendations?.length ?? 0) > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Recomendaciones</Text>
-            {data.riskAnalysis.recommendations.map((rec: string, i: number) => (
+            {data!.riskAnalysis!.recommendations!.map((rec, i) => (
               <View key={i} style={styles.listItem}>
                 <Text style={[styles.bullet, { color: '#0A2540', fontWeight: 'bold' }]}>{i + 1}.</Text>
                 <Text style={styles.listText}>{rec}</Text>
@@ -194,10 +236,10 @@ const ExecutiveReport = ({ data }: { data: any }) => {
         )}
 
         {/* Top Contributors */}
-        {data?.topContributors?.length > 0 && (
+        {(data?.topContributors?.length ?? 0) > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Top Contribuidores del Mes</Text>
-            {data.topContributors.map((contributor: any, i: number) => (
+            {data!.topContributors!.map((contributor, i) => (
               <View key={i} style={styles.contributorRow}>
                 <Text style={styles.contributorName}>{i + 1}. {contributor.name}</Text>
                 <Text style={styles.contributorValue}>{contributor.completed} tareas</Text>
@@ -207,10 +249,10 @@ const ExecutiveReport = ({ data }: { data: any }) => {
         )}
 
         {/* Projects at Risk */}
-        {data?.projects?.atRiskList?.length > 0 && (
+        {(data?.projects?.atRiskList?.length ?? 0) > 0 && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: '#EF4444' }]}>Proyectos que Requieren Atención</Text>
-            {data.projects.atRiskList.map((project: any, i: number) => (
+            {data!.projects!.atRiskList!.map((project, i) => (
               <View key={i} style={styles.listItem}>
                 <Text style={[styles.bullet, { color: '#EF4444' }]}>⚠</Text>
                 <Text style={styles.listText}>{project.name} - Vencido: {new Date(project.targetDate).toLocaleDateString()}</Text>
@@ -220,10 +262,10 @@ const ExecutiveReport = ({ data }: { data: any }) => {
         )}
 
         {/* Overdue Tasks */}
-        {data?.tasks?.overdueList?.length > 0 && (
+        {(data?.tasks?.overdueList?.length ?? 0) > 0 && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: '#F59E0B' }]}>Tareas Vencidas Destacadas</Text>
-            {data.tasks.overdueList.slice(0, 5).map((task: any, i: number) => (
+            {data!.tasks!.overdueList!.slice(0, 5).map((task, i) => (
               <View key={i} style={styles.listItem}>
                 <Text style={[styles.bullet, { color: '#F59E0B' }]}>!</Text>
                 <Text style={styles.listText}>{task.title}</Text>
@@ -239,7 +281,7 @@ const ExecutiveReport = ({ data }: { data: any }) => {
 };
 
 // --- PDF TEMPLATE: Predictive Report (AI) ---
-const PredictiveReport = ({ data, analysis }: { data: any, analysis: any }) => (
+const PredictiveReport = ({ analysis }: { data: ReportData | null, analysis: PredictiveAnalysis | null }) => (
   <Document>
     <Page size="A4" style={styles.page}>
         <View style={styles.header}>
@@ -283,7 +325,7 @@ const PredictiveReport = ({ data, analysis }: { data: any, analysis: any }) => (
 );
 
 // --- CSV GENERATOR ---
-const downloadCSV = (data: any[], filename: string) => {
+const downloadCSV = (data: Record<string, unknown>[], filename: string) => {
     if (!data || data.length === 0) {
         alert('No hay datos para exportar');
         return;
@@ -310,29 +352,19 @@ export default function ReportsPage() {
     const colors = isDark ? themeColors.dark : themeColors.light;
     const [isMounted, setIsMounted] = useState(false);
     
-    const [reportData, setReportData] = useState<any>(null);
+    const [reportData, setReportData] = useState<ReportData | null>(null);
     const [loadingData, setLoadingData] = useState(true);
     const [aiLoading, setAiLoading] = useState(false);
-    const [aiAnalysis, setAiAnalysis] = useState<any>(null);
-    const [tasksData, setTasksData] = useState<any[]>([]);
+    const [aiAnalysis, setAiAnalysis] = useState<PredictiveAnalysis | null>(null);
+    const [tasksData, setTasksData] = useState<Record<string, unknown>[]>([]);
     const [tasksLoading, setTasksLoading] = useState(true);
     const [tasksExportError, setTasksExportError] = useState<string | null>(null);
-
-    useEffect(() => {
-        setIsMounted(true);
-        fetchReportData();
-        fetchTasksForExport();
-    }, []);
 
     const fetchReportData = async () => {
         setLoadingData(true);
         try {
-            const token = localStorage.getItem('accessToken');
-            const res = await fetch('/api/admin/reports/executive-summary', {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-            if (res.ok) {
-                const data = await res.json();
+            const { data, error } = await api.get<ReportData>('/api/admin/reports/executive-summary');
+            if (!error && data) {
                 setReportData(data);
             }
         } catch (error) {
@@ -346,13 +378,9 @@ export default function ReportsPage() {
         setTasksLoading(true);
         setTasksExportError(null);
         try {
-            const token = localStorage.getItem('accessToken');
-            const res = await fetch('/api/admin/tasks/export?limit=5000', {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                throw new Error(data.error || 'No se pudieron cargar las tareas');
+            const { data, error } = await api.get<{ tasks?: Record<string, unknown>[] }>('/api/admin/tasks/export?limit=5000');
+            if (error || !data) {
+                throw new Error(error || 'No se pudieron cargar las tareas');
             }
             setTasksData(data.tasks || []);
         } catch (error) {
@@ -364,12 +392,17 @@ export default function ReportsPage() {
         }
     };
 
+    useEffect(() => {
+        setIsMounted(true);
+        fetchReportData();
+        fetchTasksForExport();
+    }, []);
+
     const generatePredictiveReport = async () => {
         setAiLoading(true);
         try {
-            const res = await fetch('/api/ai/predictive-report', { method: 'POST' });
-            if (res.ok) {
-                const json = await res.json();
+            const { data: json, error } = await api.post<PredictiveAnalysis>('/api/ai/predictive-report');
+            if (!error && json) {
                 setAiAnalysis(json);
             } else {
                 alert('No se pudo conectar con el servicio de IA.');
@@ -402,8 +435,8 @@ export default function ReportsPage() {
                         <p className="text-2xl font-bold" style={{ color: '#22C55E' }}>{reportData.tasks?.completionRate}%</p>
                         <p className="text-sm" style={{ color: colors.textMuted }}>Completado</p>
                     </div>
-                    <div className="p-4 rounded-xl" style={{ backgroundColor: reportData.tasks?.overdue > 5 ? (isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.05)') : (isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb'), border: `1px solid ${reportData.tasks?.overdue > 5 ? 'rgba(239,68,68,0.2)' : colors.border}` }}>
-                        <p className="text-2xl font-bold" style={{ color: reportData.tasks?.overdue > 5 ? '#EF4444' : colors.textPrimary }}>{reportData.tasks?.overdue}</p>
+                    <div className="p-4 rounded-xl" style={{ backgroundColor: (reportData.tasks?.overdue ?? 0) > 5 ? (isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.05)') : (isDark ? 'rgba(255,255,255,0.05)' : '#f9fafb'), border: `1px solid ${(reportData.tasks?.overdue ?? 0) > 5 ? 'rgba(239,68,68,0.2)' : colors.border}` }}>
+                        <p className="text-2xl font-bold" style={{ color: (reportData.tasks?.overdue ?? 0) > 5 ? '#EF4444' : colors.textPrimary }}>{reportData.tasks?.overdue}</p>
                         <p className="text-sm" style={{ color: colors.textMuted }}>Vencidas</p>
                     </div>
                 </div>

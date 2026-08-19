@@ -1,44 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { encryptToken } from '@/lib/auth/token-encryption';
+import { verifyOAuthState } from '@/lib/auth/oauth-state';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/callback/google';
-
-/**
- * Verifica la firma HMAC del state OAuth
- */
-async function verifyState(state: string): Promise<{ userId: string; returnUrl: string } | null> {
-  try {
-    const [stateB64, sigB64] = state.split('.');
-    if (!stateB64 || !sigB64) return null;
-
-    const secret = process.env.JWT_SECRET || 'iris-super-secret-key-change-in-production';
-    const encoder = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['verify']
-    );
-
-    const signatureBytes = Buffer.from(sigB64, 'base64url');
-    const valid = await crypto.subtle.verify('HMAC', key, signatureBytes, encoder.encode(stateB64));
-
-    if (!valid) return null;
-
-    const stateData = JSON.parse(Buffer.from(stateB64, 'base64url').toString('utf-8'));
-
-    // Verificar que no sea un state muy viejo (10 minutos max)
-    if (Date.now() - stateData.timestamp > 10 * 60 * 1000) return null;
-
-    return { userId: stateData.userId, returnUrl: stateData.returnUrl };
-  } catch {
-    return null;
-  }
-}
 
 /**
  * GET /api/auth/callback/google
@@ -61,7 +28,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verificar state anti-CSRF
-    const stateData = await verifyState(state);
+    const stateData = await verifyOAuthState(state);
     if (!stateData) {
       return NextResponse.redirect(new URL('/?google_error=invalid_state', request.url));
     }

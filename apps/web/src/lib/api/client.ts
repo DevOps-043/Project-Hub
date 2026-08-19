@@ -76,9 +76,11 @@ export async function apiClient<T = unknown>(
 ): Promise<ApiResponse<T>> {
   const { method = 'GET', body, headers = {}, skipAuth = false } = config;
 
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
   // Construir headers
   const requestHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...headers,
   };
 
@@ -97,7 +99,7 @@ export async function apiClient<T = unknown>(
   };
 
   if (body && method !== 'GET') {
-    requestOptions.body = JSON.stringify(body);
+    requestOptions.body = isFormData ? (body as FormData) : JSON.stringify(body);
   }
 
   try {
@@ -130,6 +132,9 @@ export async function apiClient<T = unknown>(
         clearTokens();
         // Redirigir a login si estamos en el cliente
         if (typeof window !== 'undefined') {
+          // Plain utility function, not a React component — useRouter() isn't
+          // available here. A hard redirect also fully resets client state.
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
           window.location.href = '/login';
         }
         return {

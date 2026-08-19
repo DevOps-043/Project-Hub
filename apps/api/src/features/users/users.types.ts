@@ -4,8 +4,8 @@ import { z } from 'zod';
 export const updateUserSchema = z.object({
     body: z.object({
         name: z.string().min(2, 'El nombre debe tener mínimo 2 caracteres').optional(),
-        email: z.string().email('Email inválido').optional(),
-        avatar: z.string().url('URL inválida').optional(),
+        email: z.email('Email inválido').optional(),
+        avatar: z.url('URL inválida').optional(),
     }),
     params: z.object({
         id: z.string().min(1, 'ID de usuario requerido'),

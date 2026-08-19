@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { hashPassword } from '@/lib/auth/password';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
@@ -16,6 +17,9 @@ interface RouteParams {
 // GET - Obtener usuario específico
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id } = await params;
 
     const { data: user, error } = await supabaseAdmin
@@ -65,6 +69,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PUT - Actualizar usuario
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id } = await params;
     const body = await request.json();
 
@@ -202,6 +209,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 // DELETE - Eliminar usuario (soft delete)
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id } = await params;
 
     // Verificar que el usuario existe

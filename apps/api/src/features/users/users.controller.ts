@@ -23,7 +23,7 @@ export class UsersController {
      * GET /users/:id
      */
     getById = asyncHandler(async (req: Request, res: Response) => {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const user = await usersService.getById(id);
 
         res.status(200).json({
@@ -36,7 +36,7 @@ export class UsersController {
      * PATCH /users/:id
      */
     update = asyncHandler(async (req: Request, res: Response) => {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const user = await usersService.update(id, req.body);
 
         res.status(200).json({
@@ -49,7 +49,7 @@ export class UsersController {
      * DELETE /users/:id
      */
     delete = asyncHandler(async (req: Request, res: Response) => {
-        const { id } = req.params;
+        const id = req.params.id as string;
         await usersService.delete(id);
 
         res.status(200).json({

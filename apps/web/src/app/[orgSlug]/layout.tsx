@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { AdminSidebar } from '@/components/admin/AdminSidebar';
 import { AdminNavbar } from '@/components/admin/AdminNavbar';
 import { AuthGuard } from '@/components/auth/AuthGuard';
-import { WorkspaceProvider, WorkspaceData, IrisRole } from '@/contexts/WorkspaceContext';
+import { WorkspaceProvider, WorkspaceData, WorkspaceRole } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import { Loader2 } from 'lucide-react';
 import shellStyles from '@/components/admin/AdminShell.module.css';
 
@@ -24,7 +25,7 @@ function WorkspaceLayoutContent({ children }: WorkspaceLayoutProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
-  const [userRole, setUserRole] = useState<IrisRole>('member');
+  const [userRole, setUserRole] = useState<WorkspaceRole>('member');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,32 +35,30 @@ function WorkspaceLayoutContent({ children }: WorkspaceLayoutProps) {
 
     const fetchWorkspace = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch(`/api/workspaces/${orgSlug}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const { data, status } = await api.get<{ workspace: WorkspaceData; userRole: WorkspaceRole }>(
+          `/api/workspaces/${orgSlug}`
+        );
 
-        if (res.status === 404) {
+        if (status === 404) {
           setError('not_found');
           setIsLoading(false);
           return;
         }
 
-        if (res.status === 403) {
+        if (status === 403) {
           setError('forbidden');
           setIsLoading(false);
           return;
         }
 
-        if (!res.ok) {
+        if (!data) {
           setError('error');
           setIsLoading(false);
           return;
         }
 
-        const data = await res.json();
         setWorkspace(data.workspace);
-        setUserRole(data.userRole as IrisRole);
+        setUserRole(data.userRole as WorkspaceRole);
         setIsLoading(false);
       } catch {
         setError('error');

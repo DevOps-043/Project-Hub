@@ -1,0 +1,41 @@
+name: apps/web CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'packages/**'
+      - '.github/workflows/web-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'packages/**'
+      - '.github/workflows/web-ci.yml'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        working-directory: .
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test

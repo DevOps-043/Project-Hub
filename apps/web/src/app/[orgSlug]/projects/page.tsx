@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import { FolderKanban, Search, Loader2 } from 'lucide-react';
 
 interface Project {
@@ -47,14 +48,10 @@ export default function MemberProjectsPage() {
   const fetchProjects = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
       const params = new URLSearchParams();
       if (search) params.append('search', search);
-      const res = await fetch(`/api/workspaces/${workspace.slug}/projects?${params}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json();
-      if (res.ok) {
+      const { data, error } = await api.get<{ projects?: Project[] }>(`/api/workspaces/${workspace.slug}/projects?${params}`);
+      if (!error && data) {
         setProjects(data.projects || []);
       }
     } catch (e) {
@@ -137,7 +134,7 @@ export default function MemberProjectsPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div
-                      className="w-11 h-11 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                      className="w-11 h-11 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
                       style={{ backgroundColor: project.icon_color || '#3B82F6' }}
                     >
                       {project.project_key?.substring(0, 2) || 'PR'}

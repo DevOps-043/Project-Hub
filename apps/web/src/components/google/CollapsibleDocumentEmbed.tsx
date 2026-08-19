@@ -76,7 +76,7 @@ export function CollapsibleDocumentEmbed({
       >
         {/* Icono de tipo */}
         <div
-          className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center"
+          className="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center"
           style={{ backgroundColor: `${iconColor}15` }}
         >
           <Icon size={20} style={{ color: iconColor }} />
@@ -89,7 +89,7 @@ export function CollapsibleDocumentEmbed({
               {doc.name}
             </span>
             <span
-              className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border"
+              className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border"
               style={{ color: colors.textSec, borderColor: colors.border }}
             >
               {PROVIDER_LABELS[doc.provider] || doc.provider}

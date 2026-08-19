@@ -1,13 +1,13 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { useWorkspace, IrisRole } from '@/contexts/WorkspaceContext';
+import { useWorkspace, WorkspaceRole } from '@/contexts/WorkspaceContext';
 import { hasMinRole, hasPermission, WorkspacePermissions } from '@/lib/permissions';
 
 interface RoleGuardProps {
   children: ReactNode;
   /** Rol mínimo requerido */
-  minRole?: IrisRole;
+  minRole?: WorkspaceRole;
   /** Permiso específico requerido */
   permission?: keyof WorkspacePermissions;
   /** Componente a mostrar si no tiene acceso (por defecto nada) */

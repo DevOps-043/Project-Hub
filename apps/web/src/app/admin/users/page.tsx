@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
+import { api } from '@/lib/api/client';
 
 interface User {
   id: string;
@@ -36,9 +37,8 @@ export default function UsersPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: '10' });
       if (search) params.append('search', search);
-      const res = await fetch(`/api/admin/users?${params}`);
-      const data = await res.json();
-      if (res.ok) {
+      const { data, error } = await api.get<{ users?: User[]; pagination?: { total?: number } }>(`/api/admin/users?${params}`);
+      if (!error && data) {
         setUsers(data.users || []);
         setTotal(data.pagination?.total || 0);
       }
@@ -49,17 +49,13 @@ export default function UsersPage() {
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
   const toggleStatus = async (u: User) => {
-    await fetch(`/api/admin/users/${u.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accountStatus: u.accountStatus === 'active' ? 'suspended' : 'active' }),
-    });
+    await api.put(`/api/admin/users/${u.id}`, { accountStatus: u.accountStatus === 'active' ? 'suspended' : 'active' });
     fetchUsers();
   };
 
   const deleteUser = async () => {
     if (!selectedUser) return;
-    await fetch(`/api/admin/users/${selectedUser.id}`, { method: 'DELETE' });
+    await api.delete(`/api/admin/users/${selectedUser.id}`);
     setShowDeleteConfirm(false);
     setSelectedUser(null);
     fetchUsers();
@@ -295,14 +291,11 @@ function UserFormModal({ user, onClose, onSave }: { user: User | null; onClose: 
     try {
       const body = { ...form };
       if (!form.password && user) delete (body as Record<string, unknown>).password;
-      const res = await fetch(user ? `/api/admin/users/${user.id}` : '/api/admin/users', {
-        method: user ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error');
+      const { error } = user
+        ? await api.put(`/api/admin/users/${user.id}`, body)
+        : await api.post('/api/admin/users', body);
+      if (error) {
+        throw new Error(error || 'Error');
       }
       onSave();
     } catch (err) {

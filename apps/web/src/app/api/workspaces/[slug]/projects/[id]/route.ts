@@ -1,9 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
+import { isUuid } from '@/lib/http/validation';
 
 type RouteParams = { params: Promise<{ slug: string; id: string }> };
+
+interface IssueWithStatusRow {
+  issue_id: string;
+  status_id: string;
+  task_statuses: { status_type: string; is_closed: boolean } | { status_type: string; is_closed: boolean }[] | null;
+}
+
+interface MilestoneRow {
+  milestone_id: string;
+  milestone_name: string;
+  milestone_status: string;
+  due_date: string | null;
+  progress_percentage: number | null;
+}
+
+function issueStatusType(issue: IssueWithStatusRow): string | undefined {
+  return Array.isArray(issue.task_statuses) ? issue.task_statuses[0]?.status_type : issue.task_statuses?.status_type;
+}
 
 /**
  * GET /api/workspaces/:slug/projects/:id
@@ -12,25 +30,15 @@ type RouteParams = { params: Promise<{ slug: string; id: string }> };
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug, id: projectId } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member) return NextResponse.json({ error: 'Sin acceso al workspace' }, { status: 403 });
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { payload, workspace, member } = auth;
 
     const supabase = getSupabaseAdmin();
 
     // Obtener proyecto con relaciones
     // Verificar si es UUID o Key de proyecto
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+    const isUUID = isUuid(projectId);
     
     let query = supabase
       .from('pm_projects')
@@ -106,7 +114,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           .select('team_id')
           .eq('user_id', payload.sub)
           .eq('is_active', true);
-        const userTeamIds = (userTeams || []).map((t: any) => t.team_id);
+        const userTeamIds = (userTeams || []).map((t) => t.team_id);
 
         // IMPORTANTE: usar project.project_id (UUID resuelto), no projectId del URL
         // ya que projectId podría ser un project_key (ej: "SOFL-001") y no un UUID
@@ -131,11 +139,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .select('issue_id, status_id, task_statuses!inner(status_type, is_closed)')
       .eq('project_id', project.project_id);
 
-    const allIssues = issuesWithStatus || [];
+    const allIssues = (issuesWithStatus || []) as unknown as IssueWithStatusRow[];
     const totalIssues = allIssues.length;
-    const doneIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'done').length;
-    const inProgressIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'in_progress').length;
-    const cancelledIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'cancelled').length;
+    const doneIssues = allIssues.filter((i) => issueStatusType(i) === 'done').length;
+    const inProgressIssues = allIssues.filter((i) => issueStatusType(i) === 'in_progress').length;
+    const cancelledIssues = allIssues.filter((i) => issueStatusType(i) === 'cancelled').length;
 
     // Porcentaje: issues completadas / total (excluyendo canceladas del denominador)
     const effectiveTotal = totalIssues - cancelledIssues;
@@ -144,10 +152,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       : 0;
 
     // Fallback a milestones si no hay issues
-    const milestones = project.milestones || [];
+    const milestones = (project.milestones || []) as MilestoneRow[];
     const totalMilestones = milestones.length;
-    const completedMilestones = milestones.filter((m: any) => m.milestone_status === 'completed').length;
-    const inProgressMilestones = milestones.filter((m: any) => m.milestone_status === 'in_progress').length;
+    const completedMilestones = milestones.filter((m) => m.milestone_status === 'completed').length;
+    const inProgressMilestones = milestones.filter((m) => m.milestone_status === 'in_progress').length;
 
     const useIssues = totalIssues > 0;
     const percentage = useIssues
@@ -196,19 +204,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug, id: projectId } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { workspace, member } = auth;
 
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member || !['owner', 'admin', 'manager', 'leader'].includes(member.iris_role)) {
+    if (!['owner', 'admin', 'manager', 'leader'].includes(member.iris_role)) {
       return NextResponse.json({ error: 'Sin permisos para editar proyectos' }, { status: 403 });
     }
 

@@ -7,7 +7,6 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 declare global {
   // Mantiene una sola instancia por proceso incluso con HMR en desarrollo.
-  // eslint-disable-next-line no-var
   var __projectHubSupabaseAdmin: SupabaseClient | undefined;
 }
 

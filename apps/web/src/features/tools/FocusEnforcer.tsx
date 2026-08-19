@@ -54,9 +54,9 @@ export default function FocusEnforcer() {
                     // API Error (e.g. 500 table missing): Backoff 60s
                     if (isMounted) timeoutId = setTimeout(checkFocus, 60000);
                 }
-            } catch (e: any) {
+            } catch (e) {
                 // Ignore abort errors (component unmounted)
-                if (e?.name === 'AbortError') return;
+                if (e instanceof Error && e.name === 'AbortError') return;
                 // Network Error: Backoff silently (120s)
                 console.warn('[FocusEnforcer] Polling paused – retrying in 120s');
                 if (isMounted) timeoutId = setTimeout(checkFocus, 120000);

@@ -51,19 +51,20 @@ export default function MermaidBlock({ code, className }: MermaidBlockProps) {
           containerRef.current.innerHTML = svg;
           setRendered(true);
         }
-      } catch (e: any) {
+      } catch (e) {
         console.error('MermaidBlock render error:', e);
         // Clean up any error elements mermaid may have inserted
         document.querySelectorAll(`#d${id}`).forEach(el => el.remove());
         if (!cancelled) {
-          setError(e?.message || e?.str || 'Error rendering diagram');
+          const message = e instanceof Error ? e.message : 'Error rendering diagram';
+          setError(message);
           if (containerRef.current) containerRef.current.innerHTML = '';
         }
       }
     })();
 
     return () => { cancelled = true; };
-  }, [code, isDark]);
+  }, [code, isDark, reactId]);
 
   if (error) {
     return (

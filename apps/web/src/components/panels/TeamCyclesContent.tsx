@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme, themeColors } from "@/contexts/ThemeContext";
-import { useWorkspace, getPanelPathForRole } from "@/contexts/WorkspaceContext";
+import { api } from "@/lib/api/client";
 import {
   format,
   formatDistanceToNow,
@@ -30,7 +30,7 @@ import {
 
 interface Cycle {
   cycle_id: string;
-  number: number;
+  cycle_number: number;
   name: string;
   description: string | null;
   status: "upcoming" | "active" | "completed" | "cancelled";
@@ -44,7 +44,7 @@ interface Cycle {
 }
 
 // Status badge component
-const StatusBadge = ({ status, colors }: { status: string; colors: any }) => {
+const StatusBadge = ({ status }: { status: string; colors?: typeof themeColors.dark }) => {
   const statusConfig: Record<
     string,
     { bg: string; text: string; label: string }
@@ -103,13 +103,14 @@ const ProgressBar = ({
   </div>
 );
 
-export function TeamCyclesContent() {
+interface TeamCyclesContentProps {
+  /** Ruta base del panel (p.ej. "/admin" o "/{orgSlug}/admin"). Default: "/admin". */
+  panelBase?: string;
+}
+
+export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentProps = {}) {
   const params = useParams();
   const teamId = params.teamId as string;
-  const orgSlug = params.orgSlug as string;
-
-  const { userRole } = useWorkspace();
-  const panelBase = getPanelPathForRole(orgSlug, userRole);
 
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
@@ -119,7 +120,7 @@ export function TeamCyclesContent() {
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [team, setTeam] = useState<any>(null);
+  const [team, setTeam] = useState<{ name?: string } | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -135,9 +136,8 @@ export function TeamCyclesContent() {
   const fetchCycles = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/teams/${teamId}/cycles`);
-      if (res.ok) {
-        const data = await res.json();
+      const { data, error } = await api.get<{ cycles?: Cycle[] }>(`/api/admin/teams/${teamId}/cycles`);
+      if (!error && data) {
         setCycles(data.cycles || []);
       }
     } catch (error) {
@@ -150,10 +150,9 @@ export function TeamCyclesContent() {
   // Fetch team info
   const fetchTeam = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/teams/${teamId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTeam(data.team);
+      const { data, error } = await api.get<{ team?: { name?: string } }>(`/api/admin/teams/${teamId}`);
+      if (!error && data) {
+        setTeam(data.team ?? null);
       }
     } catch (error) {
       console.error("Error fetching team:", error);
@@ -172,13 +171,9 @@ export function TeamCyclesContent() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/admin/teams/${teamId}/cycles`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      const { error } = await api.post(`/api/admin/teams/${teamId}/cycles`, formData);
 
-      if (res.ok) {
+      if (!error) {
         setShowCreateModal(false);
         setFormData({
           name: "",

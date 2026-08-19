@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 
 interface Member {
   id: string;
@@ -51,12 +52,8 @@ export default function WorkspaceMembersPage() {
     if (!workspace?.slug) return;
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/workspaces/${workspace.slug}/members`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json();
-      if (res.ok) {
+      const { data, error } = await api.get<{ users?: Member[] }>(`/api/workspaces/${workspace.slug}/members`);
+      if (!error && data) {
         setMembers(data.users || []);
       }
     } catch (e) { console.error(e); }
@@ -67,10 +64,7 @@ export default function WorkspaceMembersPage() {
     if (!workspace?.slug) return;
     setSyncing(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      await fetch(`/api/workspaces/${workspace.slug}/members?sync=true`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      await api.get(`/api/workspaces/${workspace.slug}/members?sync=true`);
       await fetchMembers();
     } catch (e) { console.error(e); }
     setSyncing(false);
@@ -80,17 +74,9 @@ export default function WorkspaceMembersPage() {
     if (!workspace?.slug) return;
     setSavingRole(userId);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/workspaces/${workspace.slug}/members`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ userId, irisRole: newRole }),
-      });
+      const { error } = await api.patch(`/api/workspaces/${workspace.slug}/members`, { userId, irisRole: newRole });
 
-      if (res.ok) {
+      if (!error) {
         setMembers(prev => prev.map(m =>
           m.id === userId ? { ...m, irisRole: newRole } : m
         ));
@@ -278,7 +264,7 @@ export default function WorkspaceMembersPage() {
                             }}
                           >
                             <span
-                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
                               style={{ backgroundColor: opt.color }}
                             />
                             <span className="font-medium">{opt.label}</span>

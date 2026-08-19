@@ -67,7 +67,7 @@ export function ProjectTimelineView({ projects, basePath = '/admin' }: ProjectTi
       {/* 1. Header Row (Sticky Titles) */}
       <div className={`flex border-b ${borderColor} ${bgHeader} z-10`}>
         {/* Project Column Header */}
-        <div className={`w-64 flex-shrink-0 p-3 text-xs font-semibold uppercase tracking-wider ${subTextColor} border-r ${borderColor} flex items-center ${bgHeader} z-20 shadow-[4px_0_24px_rgba(0,0,0,0.05)]`}>
+        <div className={`w-64 shrink-0 p-3 text-xs font-semibold uppercase tracking-wider ${subTextColor} border-r ${borderColor} flex items-center ${bgHeader} z-20 shadow-[4px_0_24px_rgba(0,0,0,0.05)]`}>
             Active Projects
         </div>
         
@@ -76,7 +76,7 @@ export function ProjectTimelineView({ projects, basePath = '/admin' }: ProjectTi
             {MONTHS.map((m, i) => (
                <div 
                  key={m} 
-                 className={`flex-shrink-0 text-xs font-medium ${subTextColor} border-r ${isDark ? 'border-white/5' : 'border-gray-200'} py-3 text-center ${bgHeader}`}
+                 className={`shrink-0 text-xs font-medium ${subTextColor} border-r ${isDark ? 'border-white/5' : 'border-gray-200'} py-3 text-center ${bgHeader}`}
                  style={{ width: CELL_WIDTH }}
                >
                    {m} <span className="opacity-50 font-normal">{CURRENT_YEAR}</span>
@@ -98,14 +98,14 @@ export function ProjectTimelineView({ projects, basePath = '/admin' }: ProjectTi
       <div className="flex-1 overflow-y-auto relative flex">
          
          {/* Fixed Column: Project Names */}
-         <div className={`w-64 flex-shrink-0 z-10 ${bgMain} border-r ${borderColor} shadow-[4px_0_24px_rgba(0,0,0,0.05)]`}>
+         <div className={`w-64 shrink-0 z-10 ${bgMain} border-r ${borderColor} shadow-[4px_0_24px_rgba(0,0,0,0.05)]`}>
              {projects.map(project => (
                  <div 
                     key={project.project_id} 
                     className={`h-12 border-b ${isDark ? 'border-white/5' : 'border-gray-100'} flex items-center px-4 gap-3 cursor-pointer ${isDark ? 'hover:bg-white/[0.03]' : 'hover:bg-gray-50'} transition-colors group`}
                     onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}
                  >
-                     <div className="w-2.5 h-2.5 rounded-sm shadow-sm flex-shrink-0" style={{ backgroundColor: project.icon_color || '#3B82F6' }} />
+                     <div className="w-2.5 h-2.5 rounded-sm shadow-sm shrink-0" style={{ backgroundColor: project.icon_color || '#3B82F6' }} />
                      <div className="min-w-0">
                          <div className={`text-sm ${textColor} font-medium truncate group-hover:text-blue-500 transition-colors`}>
                              {project.project_name}
@@ -130,7 +130,7 @@ export function ProjectTimelineView({ projects, basePath = '/admin' }: ProjectTi
                      {MONTHS.map((m, i) => (
                          <div 
                              key={m} 
-                             className={`flex-shrink-0 border-r ${gridLineColor} h-full ${i % 2 === 0 ? (isDark ? 'bg-white/[0.005]' : 'bg-gray-50/50') : ''}`} 
+                             className={`shrink-0 border-r ${gridLineColor} h-full ${i % 2 === 0 ? (isDark ? 'bg-white/[0.005]' : 'bg-gray-50/50') : ''}`} 
                              style={{ width: CELL_WIDTH }} 
                          />
                      ))}

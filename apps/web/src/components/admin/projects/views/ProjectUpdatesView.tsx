@@ -1,11 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuthStore } from '@/core/stores/authStore';
-import { 
+import { api } from '@/lib/api/client';
+import {
     Send, CheckCircle, AlertCircle, XCircle, 
     MoreHorizontal, MessageSquare, Loader2
 } from 'lucide-react';
@@ -45,15 +46,10 @@ export function ProjectUpdatesView({ projectId }: { projectId: string }) {
     const [health, setHealth] = useState<'on_track' | 'at_risk' | 'off_track'>('on_track');
     const [posting, setPosting] = useState(false);
 
-    useEffect(() => {
-        fetchUpdates();
-    }, [projectId]);
-
-    const fetchUpdates = async () => {
+    const fetchUpdates = useCallback(async () => {
         try {
-            const res = await fetch(`/api/admin/projects/${projectId}/updates`);
-            if (res.ok) {
-                const data = await res.json();
+            const { data, error } = await api.get<{ updates: Update[] }>(`/api/admin/projects/${projectId}/updates`);
+            if (!error && data) {
                 setUpdates(data.updates || []);
             }
         } catch (error) {
@@ -61,24 +57,23 @@ export function ProjectUpdatesView({ projectId }: { projectId: string }) {
         } finally {
             setLoading(false);
         }
-    };
+    }, [projectId]);
+
+    useEffect(() => {
+        fetchUpdates();
+    }, [fetchUpdates]);
 
     const handlePost = async () => {
         if (!content.trim() || !user) return;
         setPosting(true);
         try {
-            const res = await fetch(`/api/admin/projects/${projectId}/updates`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content,
-                    health_status: health,
-                    user_id: user.id
-                })
+            const { data, error } = await api.post<{ update: Update }>(`/api/admin/projects/${projectId}/updates`, {
+                content,
+                health_status: health,
+                user_id: user.id
             });
 
-            if (res.ok) {
-                const data = await res.json();
+            if (!error && data) {
                 setUpdates([data.update, ...updates]);
                 setContent('');
             }

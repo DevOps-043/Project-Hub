@@ -34,6 +34,9 @@ import {
 } from '@/lib/auth/sofia-auth';
 import type { SofiaUser } from '@/lib/supabase/sofia-client';
 import { syncWorkspacesFromSofia } from '@/lib/services/workspace-service';
+import { sanitizeSearchTerm } from '@/lib/http/sanitize';
+import { mapPermissionToRole } from '@/lib/auth/roles';
+import { detectDeviceType, detectBrowser } from '@/lib/http/user-agent';
 
 // Forzar runtime de Node.js para compatibilidad con bcrypt
 export const runtime = 'nodejs';
@@ -232,11 +235,15 @@ export async function POST(request: NextRequest) {
     // ═══════════════════════════════════════════════════════════
     debugLogin('🔐 [LOGIN] Usando autenticación local (Project Hub)...');
 
-    // Buscar usuario por email o username en la BD local (case-insensitive)
+    // Buscar usuario por email o username en la BD local (case-insensitive).
+    // sanitizeSearchTerm evita que un email con '%' en la parte local (válido
+    // por regex, p. ej. "a%b@x.com") se interprete como comodín de ilike y
+    // convierta el login en una búsqueda difusa en vez de una coincidencia exacta.
+    const safeIdentifier = sanitizeSearchTerm(email);
     const { data: user, error: userError } = await supabaseAdmin
       .from('account_users')
       .select('*')
-      .or(`email.ilike.${email},username.ilike.${email}`)
+      .or(`email.ilike.${safeIdentifier},username.ilike.${safeIdentifier}`)
       .maybeSingle();
 
     // Registrar intento de login
@@ -403,7 +410,7 @@ async function syncSofiaUserToIris(sofiaUser: SofiaUser): Promise<AccountUser> {
 
   if (existingUser) {
     // Actualizar datos del usuario existente con los de SOFIA
-    const updateData: Record<string, any> = {
+    const updateData: Record<string, unknown> = {
       first_name: sofiaUser.first_name,
       last_name_paternal: sofiaUser.last_name_paternal,
       last_name_maternal: sofiaUser.last_name_maternal,
@@ -501,7 +508,11 @@ async function syncSofiaUserToIris(sofiaUser: SofiaUser): Promise<AccountUser> {
 /**
  * Crea una sesión de autenticación en la BD
  */
-async function createSession(userId: string, tokens: any, request: NextRequest) {
+async function createSession(
+  userId: string,
+  tokens: { accessToken: string; refreshToken: string; expiresIn: number },
+  request: NextRequest
+) {
   const sessionData = {
     user_id: userId,
     token_hash: await hashToken(tokens.accessToken),
@@ -539,41 +550,3 @@ async function logLoginAttempt(
   }
 }
 
-/**
- * Mapea permission_level a rol simple del frontend
- */
-function mapPermissionToRole(level: string): 'admin' | 'user' | 'guest' {
-  switch (level) {
-    case 'super_admin':
-    case 'admin':
-      return 'admin';
-    case 'manager':
-    case 'user':
-      return 'user';
-    case 'viewer':
-    case 'guest':
-    default:
-      return 'guest';
-  }
-}
-
-/**
- * Detecta el tipo de dispositivo desde User-Agent
- */
-function detectDeviceType(userAgent: string): string {
-  if (/mobile/i.test(userAgent)) return 'mobile';
-  if (/tablet/i.test(userAgent)) return 'tablet';
-  return 'desktop';
-}
-
-/**
- * Detecta el navegador desde User-Agent
- */
-function detectBrowser(userAgent: string): string {
-  if (/chrome/i.test(userAgent) && !/edge/i.test(userAgent)) return 'Chrome';
-  if (/firefox/i.test(userAgent)) return 'Firefox';
-  if (/safari/i.test(userAgent) && !/chrome/i.test(userAgent)) return 'Safari';
-  if (/edge/i.test(userAgent)) return 'Edge';
-  if (/opera|opr/i.test(userAgent)) return 'Opera';
-  return 'Unknown';
-}

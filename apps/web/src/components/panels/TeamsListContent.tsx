@@ -9,6 +9,7 @@ import {
   ShieldCheck, Sparkles, UserPlus, Users, X,
 } from 'lucide-react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import styles from './TeamsListContent.module.css';
 
 type View = 'map' | 'teams' | 'settings';
@@ -33,7 +34,6 @@ const META:Record<NodeType,{label:string;description:string}> = {
   region:{label:'Región',description:'Cobertura geográfica amplia'}, zone:{label:'Zona',description:'Unidad territorial local'},
   team:{label:'Equipo',description:'Unidad operativa de trabajo'}, custom:{label:'Nivel personalizado',description:'Una división a tu medida'},
 };
-const headers=(json=false):Record<string,string>=>{const token=typeof window==='undefined'?null:localStorage.getItem('accessToken');return{...(json?{'Content-Type':'application/json'}:{}),...(token?{Authorization:`Bearer ${token}`}:{})}};
 function NodeIcon({type,size=18}:{type:NodeType;size?:number}){if(type==='organization')return <Building2 size={size}/>;if(type==='region')return <Globe2 size={size}/>;if(type==='zone')return <MapPin size={size}/>;if(type==='team')return <Users size={size}/>;if(type==='area')return <BriefcaseBusiness size={size}/>;return <Grid2X2 size={size}/>}
 
 export function TeamsListContent(){
@@ -41,12 +41,12 @@ export function TeamsListContent(){
   const [view,setView]=useState<View>('map'); const [data,setData]=useState<Data|null>(null); const [loading,setLoading]=useState(true);
   const [error,setError]=useState(''); const [search,setSearch]=useState(''); const [structureId,setStructureId]=useState('');
   const [selectedId,setSelectedId]=useState<string|null>(null); const [modal,setModal]=useState<'structure'|'node'|'member'|null>(null);
-  const load=useCallback(async(id?:string)=>{setLoading(true);setError('');try{const query=id?`?structureId=${encodeURIComponent(id)}`:'';const response=await fetch(`/api/workspaces/${workspace.slug}/hierarchy${query}`,{headers:headers()});const body=await response.json();if(!response.ok)throw new Error(body.error||'No se pudo cargar la arquitectura');setData(body);setStructureId(body.activeStructure?.id||'');setSelectedId(current=>body.nodes.some((node:OrgNode)=>node.id===current)?current:body.nodes[0]?.id||null)}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo cargar la arquitectura')}finally{setLoading(false)}},[workspace.slug]);
+  const load=useCallback(async(id?:string)=>{setLoading(true);setError('');try{const query=id?`?structureId=${encodeURIComponent(id)}`:'';const{data:body,error}=await api.get<Data>(`/api/workspaces/${workspace.slug}/hierarchy${query}`);if(error||!body)throw new Error(error||'No se pudo cargar la arquitectura');setData(body);setStructureId(body.activeStructure?.id||'');setSelectedId(current=>body.nodes.some((node:OrgNode)=>node.id===current)?current:body.nodes[0]?.id||null)}catch(cause){setError(cause instanceof Error?cause.message:'No se pudo cargar la arquitectura')}finally{setLoading(false)}},[workspace.slug]);
   useEffect(()=>{load()},[load]);
   const selected=data?.nodes.find(node=>node.id===selectedId)||null;
   const children=useMemo(()=>{const map=new Map<string|null,OrgNode[]>();for(const node of data?.nodes||[]){const list=map.get(node.parent_id)||[];list.push(node);map.set(node.parent_id,list)}for(const list of map.values())list.sort((a,b)=>a.position-b.position);return map},[data?.nodes]);
   const teams=useMemo(()=>{const term=search.trim().toLowerCase();return(data?.teams||[]).filter(team=>!term||`${team.name} ${team.description||''}`.toLowerCase().includes(term))},[data?.teams,search]);
-  const action=async(body:Record<string,unknown>)=>{const response=await fetch(`/api/workspaces/${workspace.slug}/hierarchy`,{method:'POST',headers:headers(true),body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(result.error||'No se pudo guardar');return result};
+  const action=async(body:Record<string,unknown>)=>{const{data:result,error}=await api.post<{structure:{id:string}}>(`/api/workspaces/${workspace.slug}/hierarchy`,body);if(error||!result)throw new Error(error||'No se pudo guardar');return result};
   if(loading&&!data)return <div className={styles.loader}><span/><p>Preparando la arquitectura organizacional…</p></div>;
   return <div className={styles.page}>
     <section className={styles.hero}><div><div className={styles.eyebrow}><Network size={15}/> Centro organizacional</div><h1>Equipos con estructura.</h1><p>Organiza {workspace.name} por áreas, regiones, zonas y equipos desde un mapa conectado con SofLIA.</p></div>{data?.permissions.canManage&&<button className={styles.heroButton} onClick={()=>setModal(data.activeStructure?'node':'structure')}><Plus size={18}/>{data.activeStructure?'Agregar nivel':'Crear estructura'}</button>}<div className={styles.heroRings}/></section>

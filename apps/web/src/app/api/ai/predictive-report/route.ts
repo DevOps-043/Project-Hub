@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase/server';
 import { getGeminiModel } from '@/lib/ai/gemini';
-
-// Setup Supabase & Gemini
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { requireAuth } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
     try {
+        const auth = await requireAuth(request);
+        if (!auth.ok) return auth.response;
+
         // 1. Fetch raw data (simplified aggregation)
         const { data: tasks } = await supabaseAdmin.from('task_issues').select('status_id, created_at, completed_at, priority_id, assignee_id');
         const { data: projects } = await supabaseAdmin.from('pm_projects').select('project_status, start_date, target_date, completion_percentage');
@@ -20,7 +18,7 @@ export async function POST(request: NextRequest) {
         // Mock data if empty (fallback for demo)
         const reportData = {
             total_tasks: tasks?.length || 124,
-            completed_tasks: tasks?.filter((t:any) => t.completed_at).length || 65,
+            completed_tasks: tasks?.filter((t) => t.completed_at).length || 65,
             active_projects: projects?.length || 12,
             avg_completion_rate: 78,
             blocked_tasks: 12, // simulated
@@ -61,8 +59,9 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(analysis);
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('Predictive API Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

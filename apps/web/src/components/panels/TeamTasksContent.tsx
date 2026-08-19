@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
-import { useWorkspace, getPanelPathForRole } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import CreateIssueModal from '@/components/tasks/CreateIssueModal';
 
 // Types
@@ -115,14 +115,18 @@ const PriorityIcon = ({ level, color }: { level: number; color: string }) => {
   );
 };
 
-export function TeamTasksContent() {
+interface TeamTasksContentProps {
+  /** Ruta base del panel (p.ej. "/admin" o "/{orgSlug}/admin"). Default: "/admin". */
+  panelBase?: string;
+  /** Slug del workspace, si aplica (rutas /[orgSlug]/admin/*). */
+  workspaceSlug?: string;
+}
+
+export function TeamTasksContent({ panelBase = '/admin', workspaceSlug }: TeamTasksContentProps = {}) {
   const params = useParams();
   const teamId = params.teamId as string;
-  const orgSlug = params.orgSlug as string;
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
-  const { userRole } = useWorkspace();
-  const panelBase = getPanelPathForRole(orgSlug, userRole);
 
   // State
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -137,16 +141,14 @@ export function TeamTasksContent() {
   // Fetch issues
   const fetchIssues = useCallback(async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/admin/teams/${teamId}/issues`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const { data, error } = await api.get<{ issues?: Issue[]; statuses?: Status[]; team?: Team }>(
+        `/api/admin/teams/${teamId}/issues`
+      );
 
-      if (res.ok) {
-        const data = await res.json();
+      if (!error && data) {
         setIssues(data.issues || []);
         setStatuses(data.statuses || []);
-        setTeam(data.team);
+        setTeam(data.team ?? null);
         // Expand all statuses by default
         setExpandedStatuses(new Set(data.statuses?.map((s: Status) => s.status_id) || []));
       }
@@ -232,7 +234,7 @@ export function TeamTasksContent() {
             ].map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'all' | 'active' | 'backlog')}
                 className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
                   activeTab === tab.id
                     ? 'bg-[#00D4B3] text-white'
@@ -379,7 +381,7 @@ export function TeamTasksContent() {
                               className="flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg transition-all group hover:bg-white/5"
                             >
                               {/* Priority */}
-                              <div className="w-5 flex-shrink-0">
+                              <div className="w-5 shrink-0">
                                 {issue.priority && (
                                   <PriorityIcon level={issue.priority.level} color={issue.priority.color} />
                                 )}
@@ -424,7 +426,7 @@ export function TeamTasksContent() {
                               {/* Assignee */}
                               {issue.assignee ? (
                                 <div
-                                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium shrink-0"
                                   style={{
                                     backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
                                     color: colors.textSecondary
@@ -437,7 +439,7 @@ export function TeamTasksContent() {
                                   )}
                                 </div>
                               ) : (
-                                <div className="w-6 h-6 rounded-full border border-dashed flex-shrink-0" style={{ borderColor: colors.border }} />
+                                <div className="w-6 h-6 rounded-full border border-dashed shrink-0" style={{ borderColor: colors.border }} />
                               )}
 
                               {/* Due date */}
@@ -468,7 +470,7 @@ export function TeamTasksContent() {
             return (
               <div
                 key={status.status_id}
-                className="flex-shrink-0 w-80 rounded-xl p-3"
+                className="shrink-0 w-80 rounded-xl p-3"
                 style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }}
               >
                 {/* Column Header */}
@@ -606,7 +608,7 @@ export function TeamTasksContent() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         teamId={teamId}
-        workspaceSlug={orgSlug}
+        workspaceSlug={workspaceSlug}
         onIssueCreated={(issue) => {
           setIssues(prev => [...prev, issue]);
         }}

@@ -1,3 +1,14 @@
+function requireSecret(envVar: string, devFallback: string): string {
+    const value = process.env[envVar];
+    if (!value) {
+        if (process.env.NODE_ENV === 'production') {
+            throw new Error(`${envVar} no esta configurado`);
+        }
+        return devFallback;
+    }
+    return value;
+}
+
 // Environment configuration
 export const config = {
     // Server
@@ -6,9 +17,11 @@ export const config = {
     apiVersion: process.env.API_VERSION || 'v1',
 
     // JWT
-    jwtSecret: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+    // Sin fallback hardcodeado en producción: un secreto público conocido
+    // permite forjar tokens válidos para cualquier usuario.
+    jwtSecret: requireSecret('JWT_SECRET', 'dev-only-jwt-secret'),
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
-    refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET || 'your-refresh-secret',
+    refreshTokenSecret: requireSecret('REFRESH_TOKEN_SECRET', 'dev-only-refresh-secret'),
     refreshTokenExpiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '30d',
 
     // CORS

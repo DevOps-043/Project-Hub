@@ -1,4 +1,6 @@
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isUuid } from '@/lib/http/validation';
+
+export { isUuid };
 
 export const DEFAULT_TASK_STATUSES = [
   { name: 'Backlog', status_type: 'backlog', color: '#6B7280', icon: 'circle-dashed', position: 0, is_default: true, is_closed: false },
@@ -13,9 +15,22 @@ type SupabaseLike = {
   from: (table: string) => any;
 };
 
-export function isUuid(value: unknown): value is string {
-  return typeof value === 'string' && UUID_REGEX.test(value);
+export interface TaskStatusRow {
+  status_id: string;
+  team_id: string;
+  name: string;
+  status_type: string;
+  color: string;
+  icon: string;
+  position: number;
+  is_default: boolean;
+  is_closed: boolean;
 }
+
+type TeamRefQuery = {
+  eq: (column: string, value: string) => TeamRefQuery;
+  maybeSingle: () => PromiseLike<{ data: { team_id: string } | null }>;
+};
 
 export async function resolveTeamId(
   supabase: SupabaseLike,
@@ -24,7 +39,7 @@ export async function resolveTeamId(
 ): Promise<string | null> {
   if (!teamIdentifier) return null;
 
-  const selectTeam = (query: any) => (
+  const selectTeam = (query: TeamRefQuery) => (
     workspaceId ? query.eq('workspace_id', workspaceId) : query
   ).maybeSingle();
 
@@ -55,7 +70,7 @@ export async function resolveTeamId(
   return byName?.team_id || null;
 }
 
-export async function ensureDefaultTaskStatuses(supabase: SupabaseLike, teamId: string) {
+export async function ensureDefaultTaskStatuses(supabase: SupabaseLike, teamId: string): Promise<TaskStatusRow[]> {
   const { data: existingStatuses, error: existingError } = await supabase
     .from('task_statuses')
     .select('*')
@@ -102,18 +117,18 @@ export async function resolveTaskStatusId(
   const statuses = await ensureDefaultTaskStatuses(supabase, teamId);
 
   if (statusId && isUuid(statusId)) {
-    const matchingStatus = statuses.find((status: any) => status.status_id === statusId);
+    const matchingStatus = statuses.find((status) => status.status_id === statusId);
     if (matchingStatus) return matchingStatus.status_id;
   }
 
   if (statusType) {
     const normalizedStatusType = statusType.toLowerCase().trim();
-    const matchingStatus = statuses.find((status: any) => status.status_type === normalizedStatusType);
+    const matchingStatus = statuses.find((status) => status.status_type === normalizedStatusType);
     if (matchingStatus) return matchingStatus.status_id;
   }
 
-  const defaultStatus = statuses.find((status: any) => status.is_default)
-    || statuses.find((status: any) => status.status_type === 'backlog')
+  const defaultStatus = statuses.find((status) => status.is_default)
+    || statuses.find((status) => status.status_type === 'backlog')
     || statuses[0];
 
   return defaultStatus?.status_id || null;

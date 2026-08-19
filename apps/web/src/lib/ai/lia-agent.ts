@@ -41,6 +41,26 @@ export const ARIA_SYSTEM_PROMPT = `Eres ARIA (AI Resource & Issue Assistant), la
 
 export const LIA_SYSTEM_PROMPT = ARIA_SYSTEM_PROMPT;
 
+export interface ARIATaskSummary {
+  title: string;
+  issue_number?: number;
+  due_date?: string | null;
+  status?: { name?: string | null; status_type?: string | null } | null;
+  priority?: { name?: string | null } | null;
+}
+
+export interface ARIAProjectSummary {
+  project_name: string;
+  project_key?: string | null;
+  project_status?: string | null;
+}
+
+export interface ARIATeamMemberSummary {
+  display_name?: string | null;
+  email?: string | null;
+  user_id?: string;
+}
+
 export interface ARIAContext {
   userName?: string;
   userId?: string;
@@ -49,9 +69,9 @@ export interface ARIAContext {
   teamId?: string;
   currentPage?: string;
   recentActions?: string[];
-  tasks?: any[];
-  projects?: any[];
-  teamMembers?: any[];
+  tasks?: ARIATaskSummary[];
+  projects?: ARIAProjectSummary[];
+  teamMembers?: ARIATeamMemberSummary[];
 }
 
 export type LIAContext = ARIAContext;
@@ -84,7 +104,7 @@ export function getARIASystemPrompt(context?: ARIAContext): string {
 
   if (context.tasks?.length) {
     prompt += '\n### Tareas recientes\n';
-    context.tasks.forEach((task: any) => {
+    context.tasks.forEach((task) => {
       prompt += `- [${task.status?.name || task.status?.status_type || 'Sin estado'}] ${task.title}`;
       if (task.issue_number) prompt += ` (#${task.issue_number})`;
       if (task.priority?.name) prompt += ` - Prioridad: ${task.priority.name}`;
@@ -95,7 +115,7 @@ export function getARIASystemPrompt(context?: ARIAContext): string {
 
   if (context.projects?.length) {
     prompt += '\n### Proyectos recientes\n';
-    context.projects.forEach((project: any) => {
+    context.projects.forEach((project) => {
       prompt += `- ${project.project_name}`;
       if (project.project_key) prompt += ` (${project.project_key})`;
       if (project.project_status) prompt += ` - Estado: ${project.project_status}`;
@@ -105,7 +125,7 @@ export function getARIASystemPrompt(context?: ARIAContext): string {
 
   if (context.teamMembers?.length) {
     prompt += '\n### Miembros disponibles\n';
-    context.teamMembers.forEach((member: any) => {
+    context.teamMembers.forEach((member) => {
       prompt += `- ${member.display_name || member.email || member.user_id}\n`;
     });
   }

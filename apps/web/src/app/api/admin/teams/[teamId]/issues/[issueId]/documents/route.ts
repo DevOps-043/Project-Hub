@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAuth } from '@/lib/auth/require-role';
 
 type RouteParams = { params: Promise<{ teamId: string; issueId: string }> };
 
@@ -11,13 +11,9 @@ type RouteParams = { params: Promise<{ teamId: string; issueId: string }> };
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { teamId, issueId } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     if (!['admin', 'super_admin'].includes(payload.permissionLevel)) {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 });
@@ -66,13 +62,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { teamId, issueId } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     if (!['admin', 'super_admin'].includes(payload.permissionLevel)) {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 });

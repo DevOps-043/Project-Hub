@@ -9,7 +9,7 @@ interface DisplaySettingsProps {
   onClose: () => void;
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
-  triggerRef: React.RefObject<HTMLButtonElement>;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
   
   // New props for functionality
   grouping: 'none' | 'status' | 'priority';
@@ -24,7 +24,99 @@ interface DisplaySettingsProps {
 
 import { useTheme } from '@/contexts/ThemeContext';
 
-export function DisplaySettings({ 
+// Componente Dropdown Premium
+function PremiumDropdown<T extends string>({
+  value,
+  options,
+  onChange,
+  className = "",
+  isDark,
+}: {
+  value: T,
+  options: { value: T, label: string }[],
+  onChange: (val: T) => void,
+  className?: string,
+  isDark: boolean,
+}) {
+  const [isInternalOpen, setIsInternalOpen] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const aquaColor = '#00D4B3';
+
+  // Cerrar al hacer clic fuera
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsInternalOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(o => o.value === value) || options[0];
+
+  return (
+    <div className={`relative ${className}`} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsInternalOpen(!isInternalOpen)}
+        className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl border-2 transition-all duration-200 text-xs font-medium ${
+          isDark
+            ? 'bg-[#1E2329] text-white hover:bg-[#252a31]'
+            : 'bg-white text-gray-900 hover:bg-gray-50'
+        }`}
+        style={{
+          borderColor: isInternalOpen ? aquaColor : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
+        }}
+      >
+        <span>{selectedOption?.label}</span>
+        <motion.div
+          animate={{ rotate: isInternalOpen ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <ChevronDown size={14} className="opacity-50" />
+        </motion.div>
+      </button>
+
+      <AnimatePresence>
+        {isInternalOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: className.includes('open-up') ? 4 : -4, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: className.includes('open-up') ? 4 : -4, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className={`absolute ${className.includes('open-up') ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 right-0 min-w-[120px] rounded-xl border shadow-2xl z-[60] overflow-hidden ${
+              isDark ? 'bg-[#1E2329] border-white/10' : 'bg-white border-gray-100'
+            }`}
+          >
+            <div className="py-1">
+              {options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setIsInternalOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left text-xs transition-colors flex items-center justify-between group ${
+                    value === option.value
+                      ? (isDark ? 'bg-white/5 text-white' : 'bg-[#00D4B3]/5 text-[#00D4B3]')
+                      : (isDark ? 'text-gray-400 hover:text-white hover:bg-white/5' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50')
+                  }`}
+                >
+                  <span>{option.label}</span>
+                  {value === option.value && <Check size={12} className={isDark ? 'text-white' : 'text-[#00D4B3]'} />}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+export function DisplaySettings({
   isOpen, 
   onClose, 
   currentView, 
@@ -53,96 +145,6 @@ export function DisplaySettings({
   const itemInactive = isDark ? 'text-gray-400 hover:text-gray-200 hover:bg-white/5' : 'text-gray-500 hover:text-gray-900 hover:bg-white';
   
   const btnSecondary = isDark ? 'bg-white/5 hover:bg-white/10 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900';
-  const aquaColor = '#00D4B3';
-
-  // Componente Dropdown Premium local
-  const PremiumDropdown = ({ 
-    value, 
-    options, 
-    onChange, 
-    className = "" 
-  }: { 
-    value: string, 
-    options: { value: string, label: string }[], 
-    onChange: (val: any) => void,
-    className?: string
-  }) => {
-    const [isInternalOpen, setIsInternalOpen] = React.useState(false);
-    const dropdownRef = React.useRef<HTMLDivElement>(null);
-
-    // Cerrar al hacer clic fuera
-    React.useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-          setIsInternalOpen(false);
-        }
-      };
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const selectedOption = options.find(o => o.value === value) || options[0];
-
-    return (
-      <div className={`relative ${className}`} ref={dropdownRef}>
-        <button
-          type="button"
-          onClick={() => setIsInternalOpen(!isInternalOpen)}
-          className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl border-2 transition-all duration-200 text-xs font-medium ${
-            isDark 
-              ? 'bg-[#1E2329] text-white hover:bg-[#252a31]' 
-              : 'bg-white text-gray-900 hover:bg-gray-50'
-          }`}
-          style={{
-            borderColor: isInternalOpen ? aquaColor : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)')
-          }}
-        >
-          <span>{selectedOption?.label}</span>
-          <motion.div
-            animate={{ rotate: isInternalOpen ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <ChevronDown size={14} className="opacity-50" />
-          </motion.div>
-        </button>
-
-        <AnimatePresence>
-          {isInternalOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: className.includes('open-up') ? 4 : -4, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: className.includes('open-up') ? 4 : -4, scale: 0.95 }}
-              transition={{ duration: 0.15 }}
-              className={`absolute ${className.includes('open-up') ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 right-0 min-w-[120px] rounded-xl border shadow-2xl z-[60] overflow-hidden ${
-                isDark ? 'bg-[#1E2329] border-white/10' : 'bg-white border-gray-100'
-              }`}
-            >
-              <div className="py-1">
-                {options.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      onChange(option.value);
-                      setIsInternalOpen(false);
-                    }}
-                    className={`w-full px-3 py-2 text-left text-xs transition-colors flex items-center justify-between group ${
-                      value === option.value
-                        ? (isDark ? 'bg-white/5 text-white' : 'bg-[#00D4B3]/5 text-[#00D4B3]')
-                        : (isDark ? 'text-gray-400 hover:text-white hover:bg-white/5' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50')
-                    }`}
-                  >
-                    <span>{option.label}</span>
-                    {value === option.value && <Check size={12} className={isDark ? 'text-white' : 'text-[#00D4B3]'} />}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  };
 
   return (
     <AnimatePresence>
@@ -182,10 +184,11 @@ export function DisplaySettings({
                 <LayoutList size={14} />
                 <span>Grouping</span>
               </div>
-              <PremiumDropdown 
+              <PremiumDropdown
                 value={grouping}
                 onChange={onGroupingChange}
                 className="w-40"
+                isDark={isDark}
                 options={[
                   { value: 'none', label: 'No grouping' },
                   { value: 'status', label: 'By Status' },
@@ -199,10 +202,11 @@ export function DisplaySettings({
                 <div className="rotate-90"><LayoutList size={14} /></div>
                 <span>Ordering</span>
               </div>
-              <PremiumDropdown 
+              <PremiumDropdown
                 value={ordering}
                 onChange={onOrderingChange}
                 className="w-40"
+                isDark={isDark}
                 options={[
                   { value: 'manual', label: 'Manual' },
                   { value: 'alphabetical', label: 'Alphabetical' },
@@ -216,10 +220,11 @@ export function DisplaySettings({
           <div className={`p-4 border-t ${separator} space-y-3`}>
              <div className="flex items-center justify-between text-sm">
                 <span className={textSub}>Show projects</span>
-                <PremiumDropdown 
+                <PremiumDropdown
                   value={showClosed}
                   onChange={onShowClosedChange}
                   className="w-32 open-up"
+                  isDark={isDark}
                   options={[
                     { value: 'all', label: 'All projects' },
                     { value: 'active', label: 'Only active' },

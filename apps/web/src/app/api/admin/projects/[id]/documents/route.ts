@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAuth } from '@/lib/auth/require-role';
+import { isUuid } from '@/lib/http/validation';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -11,13 +12,9 @@ type RouteParams = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: projectId } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     // Verificar que es admin/super_admin
     if (!['admin', 'super_admin'].includes(payload.permissionLevel)) {
@@ -28,7 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Resolver projectId si es Key
     let finalProjectId = projectId;
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+    const isUUID = isUuid(projectId);
     if (!isUUID) {
       const { data: pData } = await supabase
         .from('pm_projects')
@@ -68,13 +65,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: projectId } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     if (!['admin', 'super_admin'].includes(payload.permissionLevel)) {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 });

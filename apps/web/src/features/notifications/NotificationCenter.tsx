@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuthStore } from '@/core/stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
+import { api } from '@/lib/api/client';
 
 interface Notification {
     notification_id: string;
@@ -40,9 +41,8 @@ export const NotificationCenter = () => {
 
         const fetchNotifications = async () => {
             try {
-                const res = await fetch(`/api/notifications?userId=${userId}&limit=20`);
-                if (res.ok) {
-                    const data = await res.json();
+                const { data, error } = await api.get<Notification[]>(`/api/notifications?userId=${userId}&limit=20`);
+                if (!error && data) {
                     setNotifications(data);
                     setUnreadCount(data.filter((n: Notification) => !n.is_read).length);
                 }
@@ -72,7 +72,7 @@ export const NotificationCenter = () => {
         setNotifications(prev => prev.map(n => n.notification_id === id ? { ...n, is_read: true } : n));
         setUnreadCount(prev => Math.max(0, prev - 1));
 
-        await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+        await api.patch(`/api/notifications/${id}/read`);
     };
 
     const getIcon = (type: string) => {

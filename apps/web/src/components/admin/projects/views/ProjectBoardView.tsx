@@ -54,7 +54,7 @@ export function ProjectBoardView({ projects, basePath = '/admin', onAddProject }
   return (
     <div className="flex h-full overflow-x-auto pb-4 gap-6 min-w-full">
       {columns.map(col => (
-        <div key={col.id} className="min-w-[280px] w-[280px] flex-shrink-0 flex flex-col">
+        <div key={col.id} className="min-w-[280px] w-[280px] shrink-0 flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between mb-3 px-1">
             <div className="flex items-center gap-2">

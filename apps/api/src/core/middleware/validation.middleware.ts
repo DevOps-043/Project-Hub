@@ -20,7 +20,7 @@ export const validate = (schema: ZodSchema) => {
             next();
         } catch (error) {
             if (error instanceof ZodError) {
-                const firstError = error.errors[0];
+                const firstError = error.issues[0];
                 throw createError(
                     firstError.message,
                     400,

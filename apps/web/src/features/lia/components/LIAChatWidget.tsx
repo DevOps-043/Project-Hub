@@ -39,6 +39,28 @@ interface ARIAChatWidgetProps {
   teamId?: string;
 }
 
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  0: { transcript: string };
+}
+
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
 const QUICK_ACTIONS = [
   { label: 'Que puedes hacer', message: 'Que puedes hacer en Project Hub?' },
   { label: 'Mis tareas', message: 'Ayudame a revisar mis tareas pendientes.' },
@@ -65,7 +87,7 @@ export function LIAChatWidget({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const panelColors = {
     bg: colors.bgPrimary,
@@ -136,8 +158,8 @@ export function LIAChatWidget({
 
   const toggleVoiceInput = () => {
     const browserWindow = window as Window & {
-      SpeechRecognition?: any;
-      webkitSpeechRecognition?: any;
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
     };
     const SpeechRecognition = browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
 
@@ -158,7 +180,7 @@ export function LIAChatWidget({
     recognition.interimResults = true;
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => setIsListening(false);
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
       const result = event.results[event.results.length - 1];
       const transcript = result[0].transcript;
 
@@ -178,6 +200,8 @@ export function LIAChatWidget({
     if ((!textToSend && currentAttachments.length === 0) || isLoading) return;
 
     const userMessage: Message = {
+      // sendMessage only runs from event handlers (never during render), so Date.now() here is safe.
+      // eslint-disable-next-line react-hooks/purity
       id: `user-${Date.now()}`,
       role: 'user',
       content: textToSend,
@@ -190,6 +214,7 @@ export function LIAChatWidget({
     setAttachments([]);
     setIsLoading(true);
 
+    // eslint-disable-next-line react-hooks/purity -- runs from an event handler, never during render
     const assistantId = `assistant-${Date.now()}`;
 
     try {
@@ -262,6 +287,9 @@ export function LIAChatWidget({
 
           const data = JSON.parse(line.slice(6));
           if (data.content) {
+            // Local stream accumulator inside an event-handler-triggered async
+            // function (never runs during render) — safe to mutate.
+            // eslint-disable-next-line react-hooks/immutability
             assistantContent += data.content;
             setMessages((current) => current.map((message) => (
               message.id === assistantId
@@ -332,7 +360,7 @@ export function LIAChatWidget({
             <div className="flex items-center gap-2.5">
               {/* Avatar */}
               <div
-                className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-white"
+                className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
                 style={{
                   background: 'radial-gradient(circle at 30% 25%, #2BE9C6 0%, #00D4B3 45%, #0A2540 100%)',
                   boxShadow: '0 4px 12px rgba(0,212,179,0.35)',
@@ -397,7 +425,7 @@ export function LIAChatWidget({
                     /* ── Mensaje ARIA: avatar + texto limpio, sin burbuja pesada ── */
                     <div className="flex items-start gap-2.5">
                       <div
-                        className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-white"
+                        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white"
                         style={{
                           background: 'radial-gradient(circle at 30% 25%, #2BE9C6 0%, #00D4B3 45%, #0A2540 100%)',
                           boxShadow: '0 2px 8px rgba(0,212,179,0.3)',
@@ -494,7 +522,7 @@ export function LIAChatWidget({
                   className="flex items-center gap-2.5"
                 >
                   <div
-                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-white"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white"
                     style={{
                       background: 'radial-gradient(circle at 30% 25%, #2BE9C6 0%, #00D4B3 45%, #0A2540 100%)',
                       boxShadow: '0 2px 8px rgba(0,212,179,0.3)',
@@ -560,19 +588,19 @@ export function LIAChatWidget({
                 {attachments.map((attachment, index) => (
                   <div
                     key={`${attachment.name}-${index}`}
-                    className="flex max-w-[150px] flex-shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs"
+                    className="flex max-w-[150px] shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs"
                     style={{ backgroundColor: panelColors.bgMuted, borderColor: panelColors.border, color: panelColors.text }}
                   >
                     {attachment.mimeType.startsWith('image/') ? (
-                      <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                      <ImageIcon className="h-3.5 w-3.5 shrink-0" />
                     ) : (
-                      <FileText className="h-3.5 w-3.5 flex-shrink-0" />
+                      <FileText className="h-3.5 w-3.5 shrink-0" />
                     )}
                     <span className="truncate">{attachment.name}</span>
                     <button
                       type="button"
                       onClick={() => removeAttachment(index)}
-                      className="ml-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-red-400 hover:bg-red-500/10"
+                      className="ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-red-400 hover:bg-red-500/10"
                       aria-label={`Quitar ${attachment.name}`}
                     >
                       <X className="h-2.5 w-2.5" />
@@ -599,7 +627,7 @@ export function LIAChatWidget({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl transition-colors"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors"
                 style={{ color: panelColors.muted }}
                 onMouseEnter={(e) => (e.currentTarget.style.color = panelColors.accent)}
                 onMouseLeave={(e) => (e.currentTarget.style.color = panelColors.muted)}
@@ -632,7 +660,7 @@ export function LIAChatWidget({
                   toggleVoiceInput();
                 }}
                 disabled={isLoading}
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl transition-all disabled:opacity-40"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all disabled:opacity-40"
                 style={{
                   background: isListening
                     ? '#EF4444'

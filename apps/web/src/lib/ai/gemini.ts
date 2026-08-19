@@ -96,8 +96,10 @@ export interface ChatMessage {
   }[];
 }
 
-function formatMessageParts(message: ChatMessage) {
-    const parts: any[] = [{ text: message.content }];
+type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+function formatMessageParts(message: ChatMessage): GeminiPart[] {
+    const parts: GeminiPart[] = [{ text: message.content }];
     if (message.attachments && message.attachments.length > 0) {
         message.attachments.forEach(att => {
             parts.push({
@@ -114,7 +116,13 @@ function formatMessageParts(message: ChatMessage) {
 /**
  * Genera una respuesta simple de texto con información de tokens
  */
-export async function generateText(prompt: string): Promise<{ text: string; usage?: any }> {
+interface GeminiUsage {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+}
+
+export async function generateText(prompt: string): Promise<{ text: string; usage?: GeminiUsage }> {
   const model = getGeminiModel();
   const result = await model.generateContent(prompt);
   const response = await result.response;

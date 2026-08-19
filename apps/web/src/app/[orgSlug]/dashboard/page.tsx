@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuthStore } from '@/core/stores/authStore';
+import { api } from '@/lib/api/client';
 import { Building2, Users, FolderKanban, Shield, Loader2, Wrench, ArrowRight } from 'lucide-react';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -37,20 +38,15 @@ export default function WorkspaceDashboardPage() {
   useEffect(() => {
     if (!workspace?.slug) return;
 
-    const token = localStorage.getItem('accessToken');
-    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
     // Fetch teams
-    fetch(`/api/workspaces/${workspace.slug}/teams?limit=6`, { headers })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.teams) setMyTeams(data.teams); })
+    api.get<{ teams?: any[] }>(`/api/workspaces/${workspace.slug}/teams?limit=6`)
+      .then(({ data }) => { if (data?.teams) setMyTeams(data.teams); })
       .catch(() => {})
       .finally(() => setLoadingTeams(false));
 
     // Fetch projects
-    fetch(`/api/workspaces/${workspace.slug}/projects?limit=6`, { headers })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data?.projects) setMyProjects(data.projects); })
+    api.get<{ projects?: any[] }>(`/api/workspaces/${workspace.slug}/projects?limit=6`)
+      .then(({ data }) => { if (data?.projects) setMyProjects(data.projects); })
       .catch(() => {})
       .finally(() => setLoadingProjects(false));
   }, [workspace?.slug]);
@@ -136,7 +132,7 @@ export default function WorkspaceDashboardPage() {
                 borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
               }}
             >
-              <action.icon className="w-5 h-5 text-[#00D4B3] flex-shrink-0" />
+              <action.icon className="w-5 h-5 text-[#00D4B3] shrink-0" />
               <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>
                 {action.label}
               </span>

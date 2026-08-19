@@ -220,7 +220,24 @@ export async function listApiKeys(workspaceId: string): Promise<McpApiKeyDisplay
     return [];
   }
 
-  return (data || []).map((row: any) => ({
+  interface ApiKeyListRow {
+    key_id: string;
+    workspace_id: string;
+    created_by: string;
+    name: string;
+    key_prefix: string;
+    scopes: string[];
+    is_active: boolean;
+    last_used_at: string | null;
+    total_requests: number;
+    created_at: string;
+    updated_at: string;
+    revoked_at: string | null;
+    expires_at: string | null;
+    creator: { display_name?: string | null; first_name?: string | null; last_name_paternal?: string | null } | null;
+  }
+
+  return ((data || []) as unknown as ApiKeyListRow[]).map((row) => ({
     key_id: row.key_id,
     workspace_id: row.workspace_id,
     created_by: row.created_by,

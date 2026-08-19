@@ -1,33 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 import { parsePagination } from '@/lib/http/query';
+import { sanitizeSearchTerm } from '@/lib/http/sanitize';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) {
-      return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-    }
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member) {
-      return NextResponse.json({ error: 'Sin acceso' }, { status: 403 });
-    }
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { payload, workspace, member } = auth;
 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
@@ -35,7 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       defaultLimit: 10,
       maxLimit: 100,
     });
-    const search = searchParams.get('search') || '';
+    const search = sanitizeSearchTerm(searchParams.get('search') || '');
 
     const isAdmin = ['owner', 'admin'].includes(member.iris_role);
 
@@ -47,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .eq('user_id', payload.sub)
         .eq('is_active', true);
 
-      const userTeamIds = (userTeams || []).map((t: any) => t.team_id);
+      const userTeamIds = (userTeams || []).map((t) => t.team_id);
 
       if (userTeamIds.length === 0) {
         return NextResponse.json({
@@ -159,19 +141,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { payload, workspace, member } = auth;
 
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member || !['owner', 'admin', 'manager'].includes(member.iris_role)) {
+    if (!['owner', 'admin', 'manager'].includes(member.iris_role)) {
       return NextResponse.json({ error: 'Sin permisos para crear equipos' }, { status: 403 });
     }
 

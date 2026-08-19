@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Building2, ChevronRight, Shield, LogOut, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuthStore, WorkspaceInfo } from '@/core/stores/authStore';
+import { api } from '@/lib/api/client';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Propietario',
@@ -53,27 +54,21 @@ export default function SelectOrganizationPage() {
 
     // Si no hay workspaces en el store, intentar fetch del API
     if (isAuthenticated && workspaces.length === 0) {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-      if (token) {
-        fetch('/api/workspaces', {
-          headers: { Authorization: `Bearer ${token}` },
+      api.get<{ workspaces?: WorkspaceInfo[] }>('/api/workspaces')
+        .then(({ data, error }) => {
+          if (!error && data?.workspaces) {
+            const mapped: WorkspaceInfo[] = data.workspaces.map((ws: WorkspaceInfo) => ({
+              id: ws.id,
+              name: ws.name,
+              slug: ws.slug,
+              logoUrl: ws.logoUrl,
+              role: ws.role,
+            }));
+            setFetchedWorkspaces(mapped);
+            useAuthStore.getState().setWorkspaces(mapped);
+          }
         })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.workspaces) {
-              const mapped: WorkspaceInfo[] = data.workspaces.map((ws: any) => ({
-                id: ws.id,
-                name: ws.name,
-                slug: ws.slug,
-                logoUrl: ws.logoUrl,
-                role: ws.role,
-              }));
-              setFetchedWorkspaces(mapped);
-              useAuthStore.getState().setWorkspaces(mapped);
-            }
-          })
-          .catch(console.error);
-      }
+        .catch(console.error);
     }
   }, [isLoading, isAuthenticated, workspaces, router]);
 
@@ -149,13 +144,14 @@ export default function SelectOrganizationPage() {
                 className="w-full bg-white dark:bg-[#1E2329] rounded-xl p-4 border border-[#E5E7EB] dark:border-white/10 hover:border-[#0A2540] dark:hover:border-[#00D4B3] hover:shadow-md transition-all flex items-center gap-4 group text-left"
               >
                 {/* Logo/Avatar de la org */}
-                <div className="w-12 h-12 rounded-lg bg-[#F3F4F6] dark:bg-[#0F1419] flex items-center justify-center flex-shrink-0 overflow-hidden">
+                <div className="w-12 h-12 rounded-lg bg-[#F3F4F6] dark:bg-[#0F1419] flex items-center justify-center shrink-0 overflow-hidden">
                   {workspace.logoUrl ? (
                     <Image
                       src={workspace.logoUrl}
                       alt={workspace.name}
                       width={48}
                       height={48}
+                      unoptimized
                       className="w-full h-full object-cover rounded-lg"
                     />
                   ) : (
@@ -182,7 +178,7 @@ export default function SelectOrganizationPage() {
                 </div>
 
                 {/* Arrow */}
-                <ChevronRight className="w-5 h-5 text-[#9CA3AF] group-hover:text-[#0A2540] dark:group-hover:text-[#00D4B3] transition-colors flex-shrink-0" />
+                <ChevronRight className="w-5 h-5 text-[#9CA3AF] group-hover:text-[#0A2540] dark:group-hover:text-[#00D4B3] transition-colors shrink-0" />
               </motion.button>
             ))
           )}

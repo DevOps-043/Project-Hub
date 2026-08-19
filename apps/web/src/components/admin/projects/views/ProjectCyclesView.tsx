@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@/contexts/ThemeContext';
+import { api } from '@/lib/api/client';
 import {
   Calendar, ChevronDown, ChevronRight, Circle, CheckCircle2,
   Clock, Loader2, Plus, Target, AlertCircle, User
@@ -87,12 +88,8 @@ export function ProjectCyclesView({ projectId, teamId, workspaceSlug }: ProjectC
     if (!teamId) return;
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/admin/teams/${teamId}/cycles`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const { data, error: apiError } = await api.get<{ cycles: Cycle[] }>(`/api/admin/teams/${teamId}/cycles`);
+      if (!apiError && data) {
         setCycles(data.cycles || []);
       }
     } catch (error) {
@@ -110,12 +107,10 @@ export function ProjectCyclesView({ projectId, teamId, workspaceSlug }: ProjectC
     if (cycleIssues[cycleId]) return; // Ya cargadas
     setLoadingIssues(cycleId);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/admin/teams/${teamId}/issues?cycleId=${cycleId}&projectId=${projectId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const { data, error: apiError } = await api.get<{ issues: CycleIssue[] }>(
+        `/api/admin/teams/${teamId}/issues?cycleId=${cycleId}&projectId=${projectId}`
+      );
+      if (!apiError && data) {
         setCycleIssues(prev => ({ ...prev, [cycleId]: data.issues || [] }));
       }
     } catch (error) {
@@ -233,7 +228,7 @@ export function ProjectCyclesView({ projectId, teamId, workspaceSlug }: ProjectC
                         {cycle.name}
                       </h3>
                       <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0"
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0"
                         style={{ backgroundColor: statusConfig.bg, color: statusConfig.color }}
                       >
                         {statusConfig.label}
@@ -338,16 +333,16 @@ export function ProjectCyclesView({ projectId, teamId, workspaceSlug }: ProjectC
 
                                 {/* Assignee */}
                                 {issue.assignee ? (
-                                  <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-500 flex items-center justify-center text-[9px] font-bold flex-shrink-0" title={issue.assignee.display_name || issue.assignee.first_name}>
+                                  <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-500 flex items-center justify-center text-[9px] font-bold shrink-0" title={issue.assignee.display_name || issue.assignee.first_name}>
                                     {issue.assignee.first_name?.[0]}
                                   </div>
                                 ) : (
-                                  <User size={12} className="opacity-30 flex-shrink-0" style={{ color: colors.textSec }} />
+                                  <User size={12} className="opacity-30 shrink-0" style={{ color: colors.textSec }} />
                                 )}
 
                                 {/* Due date */}
                                 {issue.due_date && (
-                                  <span className="text-[10px] flex-shrink-0" style={{ color: colors.textSec }}>
+                                  <span className="text-[10px] shrink-0" style={{ color: colors.textSec }}>
                                     {format(new Date(issue.due_date), 'd MMM', { locale: es })}
                                   </span>
                                 )}

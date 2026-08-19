@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useTheme } from '@/contexts/ThemeContext';
+import { api } from '@/lib/api/client';
 import Link from 'next/link';
 import { 
     CheckCircle2, Circle, AlertCircle, Search, Filter, User, Plus
@@ -60,9 +61,8 @@ export function ProjectIssuesView({ projectId, teamId, workspaceSlug }: { projec
     useEffect(() => {
         const fetchIssues = async () => {
             try {
-                const res = await fetch(`/api/admin/projects/${projectId}/issues`);
-                if (res.ok) {
-                    const data = await res.json();
+                const { data, error } = await api.get<{ issues: Issue[] }>(`/api/admin/projects/${projectId}/issues`);
+                if (!error && data) {
                     setIssues(data.issues || []);
                 }
             } catch (error) {

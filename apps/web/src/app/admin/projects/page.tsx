@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { CreateProjectModal } from '@/components/admin/projects/CreateProjectModal';
+import { api } from '@/lib/api/client';
 
 // Components
 import { DisplaySettings, ViewType } from '@/components/admin/projects/DisplaySettings';
@@ -19,6 +20,29 @@ import {
 // ============================================
 // TYPES (Main Definition)
 // ============================================
+interface RawProjectApiRow {
+  project_id: string;
+  project_key: string;
+  project_name: string;
+  project_description: string | null;
+  icon_name?: string;
+  icon_color?: string;
+  health_status?: 'on_track' | 'at_risk' | 'off_track' | 'none';
+  priority_level?: 'urgent' | 'high' | 'medium' | 'low' | 'none';
+  project_status?: string;
+  lead_user_id?: string | null;
+  lead_display_name?: string | null;
+  lead_first_name?: string | null;
+  lead_last_name?: string | null;
+  lead_avatar_url?: string | null;
+  start_date: string | null;
+  target_date: string | null;
+  created_at: string;
+  completion_percentage?: number;
+  progress_history?: { value: number }[];
+  team_name?: string;
+}
+
 // Ajustado para coincidir con lo que esperan las views
 export interface Project {
   project_id: string;
@@ -116,13 +140,11 @@ export default function ProjectsPage() {
       const params = new URLSearchParams();
       if (searchQuery) params.append('search', searchQuery);
       
-      const response = await fetch(`/api/admin/projects?${params.toString()}`);
-      
-      if (!response.ok) throw new Error('Error al cargar proyectos');
-      
-      const data = await response.json();
-      
-      const transformedProjects: Project[] = data.projects.map((p: any) => ({
+      const { data, error: apiError } = await api.get<{ projects: RawProjectApiRow[] }>(`/api/admin/projects?${params.toString()}`);
+
+      if (apiError || !data) throw new Error('Error al cargar proyectos');
+
+      const transformedProjects: Project[] = data.projects.map((p: RawProjectApiRow) => ({
         project_id: p.project_id,
         project_key: p.project_key,
         project_name: p.project_name,
@@ -137,7 +159,7 @@ export default function ProjectsPage() {
           name: p.lead_display_name || `${p.lead_first_name || ''} ${p.lead_last_name || ''}`.trim(),
           initials: getInitials(p.lead_display_name || `${p.lead_first_name || ''} ${p.lead_last_name || ''}`),
           color: getColorFromName(p.lead_display_name || p.lead_first_name || 'User'),
-          avatar: p.lead_avatar_url
+          avatar: p.lead_avatar_url ?? undefined
         } : undefined,
         start_date: p.start_date,
         target_date: p.target_date,
@@ -196,9 +218,9 @@ export default function ProjectsPage() {
           />
         );
       case 'board':
-        return <ProjectBoardView projects={processedProjects as any[]} />;
+        return <ProjectBoardView projects={processedProjects} />;
       case 'timeline':
-        return <ProjectTimelineView projects={processedProjects as any[]} />;
+        return <ProjectTimelineView projects={processedProjects} />;
       default:
         return null;
     }
@@ -208,7 +230,7 @@ export default function ProjectsPage() {
     <div className="-m-6 flex flex-col h-screen" style={{ backgroundColor: 'transparent' }}>
       {/* Header Fijo */}
       <div 
-        className="flex-shrink-0 border-b z-20 sticky top-0"
+        className="shrink-0 border-b z-20 sticky top-0"
         style={{ 
           backgroundColor: isDark ? 'rgba(15, 20, 25, 0.95)' : colors.bgPrimary,
           backdropFilter: 'blur(8px)',

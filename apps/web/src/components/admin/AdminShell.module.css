@@ -202,7 +202,7 @@
   z-index: 120;
   top: 1rem;
   right: 1rem;
-  left: 19rem;
+  left: 1rem;
   display: flex;
   height: 4rem;
   align-items: center;
@@ -213,7 +213,7 @@
   background: rgb(14 21 27 / 0.82);
   box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.035);
   backdrop-filter: blur(20px);
-  transition: left 220ms ease, background-color 220ms ease;
+  transition: background-color 220ms ease;
 }
 
 :global(.light) .navbar {
@@ -222,7 +222,7 @@
   box-shadow: 0 1rem 3rem rgb(10 37 64 / 0.09), inset 0 1px 0 rgb(255 255 255 / 0.8);
 }
 
-.navbarCollapsed { left: 6.5rem; }
+.navbarCollapsed { left: 1rem; }
 
 .main {
   min-height: 100dvh;

@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { NotificationCenter } from '@/features/notifications/NotificationCenter';
+import { api } from '@/lib/api/client';
 import shellStyles from './AdminShell.module.css';
 
 // Iconos
@@ -43,7 +44,6 @@ const quickActions = [
   { label: 'Usuarios', shortcut: 'U', action: '/admin/users' },
   { label: 'Proyectos', shortcut: 'P', action: '/admin/projects' },
   { label: 'Analytics', shortcut: 'A', action: '/admin/reports' },
-  { label: 'Configuración', shortcut: 'C', action: '/admin/settings' },
 ];
 
 interface AdminNavbarProps {
@@ -78,9 +78,10 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
       if (searchValue.length >= 2) {
         setIsSearching(true);
         try {
-            const res = await fetch(`/api/search?q=${encodeURIComponent(searchValue)}`);
-            if (res.ok) {
-                const data = await res.json();
+            const { data, error } = await api.get<Array<{ type: string; id: string; url: string; avatar?: string; title: string; subtitle: string }>>(
+              `/api/search?q=${encodeURIComponent(searchValue)}`
+            );
+            if (!error && data) {
                 setSearchResults(data);
             }
         } catch(e) {
@@ -155,7 +156,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
 
         {/* Workspace Logo & Name */}
         <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 border" style={{ borderColor: colors.border }}>
+            <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 border" style={{ borderColor: colors.border }}>
               <img
                 src={workspaceLogo || '/Logo.png'}
                 alt={workspaceName || 'Workspace'}
@@ -262,7 +263,7 @@ export const AdminNavbar: React.FC<AdminNavbarProps> = ({
                         </div>
                     ) : (
                         <div className="p-8 text-center" style={{ color: colors.textMuted }}>
-                            {isSearching ? <p>Buscando...</p> : <p>No se encontraron resultados para "{searchValue}"</p>}
+                            {isSearching ? <p>Buscando...</p> : <p>No se encontraron resultados para &ldquo;{searchValue}&rdquo;</p>}
                         </div>
                     )}
                 </>

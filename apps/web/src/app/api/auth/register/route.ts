@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { hashPassword } from '@/lib/auth/password';
 import { generateTokenPair, hashToken } from '@/lib/auth/jwt';
+import { detectDeviceType, detectBrowser } from '@/lib/http/user-agent';
 
 // Forzar runtime de Node.js
 export const runtime = 'nodejs';
@@ -165,23 +166,3 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * Detecta el tipo de dispositivo desde User-Agent
- */
-function detectDeviceType(userAgent: string): string {
-  if (/mobile/i.test(userAgent)) return 'mobile';
-  if (/tablet/i.test(userAgent)) return 'tablet';
-  return 'desktop';
-}
-
-/**
- * Detecta el navegador desde User-Agent
- */
-function detectBrowser(userAgent: string): string {
-  if (/chrome/i.test(userAgent) && !/edge/i.test(userAgent)) return 'Chrome';
-  if (/firefox/i.test(userAgent)) return 'Firefox';
-  if (/safari/i.test(userAgent) && !/chrome/i.test(userAgent)) return 'Safari';
-  if (/edge/i.test(userAgent)) return 'Edge';
-  if (/opera|opr/i.test(userAgent)) return 'Opera';
-  return 'Unknown';
-}

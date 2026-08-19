@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Login schema
 export const loginSchema = z.object({
     body: z.object({
-        email: z.string().email('Email inválido'),
+        email: z.email('Email inválido'),
         password: z.string().min(6, 'La contraseña debe tener mínimo 6 caracteres'),
     }),
 });
@@ -12,7 +12,7 @@ export const loginSchema = z.object({
 export const registerSchema = z.object({
     body: z.object({
         name: z.string().min(2, 'El nombre debe tener mínimo 2 caracteres'),
-        email: z.string().email('Email inválido'),
+        email: z.email('Email inválido'),
         password: z.string().min(6, 'La contraseña debe tener mínimo 6 caracteres'),
     }),
 });

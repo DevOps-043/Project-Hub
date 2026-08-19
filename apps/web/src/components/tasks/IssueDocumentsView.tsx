@@ -16,6 +16,7 @@ import {
 import {
   Plus, Link2, CloudOff, Loader2, Upload, LinkIcon, X, FileText,
 } from 'lucide-react';
+import { api } from '@/lib/api/client';
 
 interface IssueDocumentsViewProps {
   issueId: string;
@@ -63,12 +64,8 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
   const fetchDocuments = useCallback(async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(apiBase, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const { data, error } = await api.get<{ documents?: LinkedDocument[] }>(apiBase);
+      if (!error && data) {
         setDocuments(data.documents || []);
       }
     } catch (error) {
@@ -94,26 +91,15 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
     thumbnail_url?: string | null;
   }) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(apiBase, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(doc),
-      });
+      const { data, error, status } = await api.post<{ document: LinkedDocument }>(apiBase, doc);
 
-      if (res.ok) {
-        const data = await res.json();
+      if (!error && data) {
         setDocuments((prev) => [data.document, ...prev]);
         return true;
-      } else if (res.status === 409) {
+      } else if (status === 409) {
         alert('Este documento ya está vinculado a esta tarea.');
-      }
-      if (!res.ok && res.status !== 409) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.error || 'No se pudo vincular el documento a la tarea.');
+      } else {
+        alert(error || 'No se pudo vincular el documento a la tarea.');
       }
       return false;
     } catch (error) {
@@ -148,17 +134,14 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
     setUploading(true);
     try {
       // Obtener access token de Google
-      const tokenFromStorage = localStorage.getItem('accessToken');
-      const tokenRes = await fetch('/api/auth/google/token', {
-        headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-      });
+      const { data: tokenData, error: tokenError } = await api.get<{ accessToken: string }>('/api/auth/google/token');
 
-      if (!tokenRes.ok) {
+      if (tokenError || !tokenData) {
         alert('No se pudo obtener acceso a Google. Reconecta tu cuenta.');
         return;
       }
 
-      const { accessToken } = await tokenRes.json();
+      const { accessToken } = tokenData;
       const uploaded = await uploadFileToDrive(file, accessToken);
 
       if (!uploaded) {
@@ -202,13 +185,10 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
       // Intentar obtener nombre del archivo via metadata
       let fileName = `Documento de Google`;
       try {
-        const tokenFromStorage = localStorage.getItem('accessToken');
-        const tokenRes = await fetch('/api/auth/google/token', {
-          headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-        });
+        const { data: tokenData, error: tokenError } = await api.get<{ accessToken: string }>('/api/auth/google/token');
 
-        if (tokenRes.ok) {
-          const { accessToken } = await tokenRes.json();
+        if (!tokenError && tokenData) {
+          const { accessToken } = tokenData;
           const metaRes = await fetch(
             `https://www.googleapis.com/drive/v3/files/${parsed.fileId}?fields=name,mimeType`,
             { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -253,13 +233,9 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
   const handleUnlink = async (docId: string) => {
     setUnlinkingId(docId);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`${apiBase}/${docId}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const { error } = await api.delete(`${apiBase}/${docId}`);
 
-      if (res.ok) {
+      if (!error) {
         setDocuments((prev) => prev.filter((d) => d.id !== docId));
       }
     } catch (error) {
@@ -378,7 +354,7 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
               className="flex items-center gap-2 p-2 rounded-lg border"
               style={{ backgroundColor: colors.inputBg, borderColor: colors.border }}
             >
-              <LinkIcon size={14} style={{ color: colors.textSec }} className="flex-shrink-0" />
+              <LinkIcon size={14} style={{ color: colors.textSec }} className="shrink-0" />
               <input
                 type="url"
                 value={urlValue}

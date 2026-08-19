@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGeminiModel } from '@/lib/ai/gemini';
+import { requireAuth } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
     try {
+        const auth = await requireAuth(request);
+        if (!auth.ok) return auth.response;
+
         const { content, fileData, mimeType } = await request.json();
 
         if (!content && !fileData) {
@@ -14,7 +18,7 @@ export async function POST(request: NextRequest) {
 
         const model = getGeminiModel();
 
-        const parts: any[] = [];
+        const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
 
         // Prompt del sistema
         parts.push({
@@ -56,11 +60,11 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(data);
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('Agile Advisor Error:', error);
-        return NextResponse.json({ 
-            error: error.message,
-            fallback: true 
+        return NextResponse.json({
+            error: error instanceof Error ? error.message : 'Internal server error',
+            fallback: true
         }, { status: 500 });
     }
 }

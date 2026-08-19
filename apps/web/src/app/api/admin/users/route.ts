@@ -6,16 +6,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { hashPassword } from '@/lib/auth/password';
+import { requireAdmin } from '@/lib/auth/require-role';
+import { sanitizeSearchTerm } from '@/lib/http/sanitize';
 
 export const runtime = 'nodejs';
 
 // GET - Listar usuarios con paginación y filtros
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
-    const search = searchParams.get('search') || '';
+    const search = sanitizeSearchTerm(searchParams.get('search') || '');
     const status = searchParams.get('status') || '';
     const role = searchParams.get('role') || '';
 
@@ -96,6 +101,9 @@ export async function GET(request: NextRequest) {
 // POST - Crear nuevo usuario
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const body = await request.json();
     
     const {

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { api } from '@/lib/api/client';
 import MermaidBlock from './MermaidBlock';
 
 const DIAGRAM_TYPES = ['flowchart', 'sequence', 'class', 'er', 'state', 'gantt'] as const;
@@ -81,16 +82,11 @@ export default function DiagramGeneratorInline({ onInsert, disabled, context }: 
     setLoading(true);
     setCode('');
     try {
-      const res = await fetch('/api/ai/diagram-generator', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: p, type }),
-      });
-      const data = await res.json();
-      if (res.ok && data.code?.trim()) {
+      const { data, error } = await api.post<{ code?: string }>('/api/ai/diagram-generator', { prompt: p, type });
+      if (!error && data?.code?.trim()) {
         setCode(data.code);
       } else {
-        alert(data.error || 'Error generando diagrama. Intenta de nuevo.');
+        alert(error || 'Error generando diagrama. Intenta de nuevo.');
       }
     } catch (e) {
       console.error(e);

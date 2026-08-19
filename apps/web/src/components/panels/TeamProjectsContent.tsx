@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
-import { useWorkspace, getPanelPathForRole } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { CreateProjectModal } from '@/components/admin/projects/CreateProjectModal';
@@ -94,14 +94,18 @@ const ProjectIcon = ({ name, color, size = 40 }: { name: string; color: string; 
   </div>
 );
 
-export function TeamProjectsContent() {
+interface TeamProjectsContentProps {
+  /** Ruta base del panel (p.ej. "/admin" o "/{orgSlug}/admin"). Default: "/admin". */
+  panelBase?: string;
+  /** Slug del workspace, si aplica (rutas /[orgSlug]/admin/*). */
+  workspaceSlug?: string;
+}
+
+export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: TeamProjectsContentProps = {}) {
   const params = useParams();
   const teamId = params.teamId as string;
-  const orgSlug = params.orgSlug as string;
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
-  const { userRole } = useWorkspace();
-  const panelBase = getPanelPathForRole(orgSlug, userRole);
 
   const accentColor = '#00D4B3';
   const primaryColor = '#0A2540';
@@ -119,13 +123,12 @@ export function TeamProjectsContent() {
   const fetchProjects = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const headers = { 'Authorization': `Bearer ${token}` };
-
       // Fetch team info
-      const teamRes = await fetch(`/api/admin/teams/${teamId}`, { headers });
-      if (teamRes.ok) {
-        const teamData = await teamRes.json();
+      const teamRes = await api.get<{ id: string; name: string; slug: string; color: string }>(
+        `/api/admin/teams/${teamId}`
+      );
+      if (!teamRes.error && teamRes.data) {
+        const teamData = teamRes.data;
         // API returns id instead of team_id
         setTeam({
           team_id: teamData.id,
@@ -136,10 +139,9 @@ export function TeamProjectsContent() {
       }
 
       // Fetch projects for team
-      const projectsRes = await fetch(`/api/admin/projects?team_id=${teamId}`, { headers });
-      if (projectsRes.ok) {
-        const data = await projectsRes.json();
-        setProjects(data.projects || []);
+      const projectsRes = await api.get<{ projects?: Project[] }>(`/api/admin/projects?team_id=${teamId}`);
+      if (!projectsRes.error && projectsRes.data) {
+        setProjects(projectsRes.data.projects || []);
       }
     } catch (error) {
       console.error('Error fetching projects:', error);
@@ -545,7 +547,7 @@ export function TeamProjectsContent() {
           setShowCreateModal(false);
         }}
         initialTeamId={teamId}
-        workspaceSlug={orgSlug}
+        workspaceSlug={workspaceSlug}
       />
     </div>
   );

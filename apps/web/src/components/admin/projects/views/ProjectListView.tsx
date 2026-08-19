@@ -46,7 +46,7 @@ const ProjectIcons: Record<string, React.ReactNode> = {
 };
 
 function PriorityIcon({ priority }: { priority: string }) {
-  const colors: any = { urgent: '#EF4444', high: '#F59E0B', medium: '#3B82F6', low: '#6B7280', none: 'transparent' };
+  const colors: Record<string, string> = { urgent: '#EF4444', high: '#F59E0B', medium: '#3B82F6', low: '#6B7280', none: 'transparent' };
   if (priority === 'none') return <span className="w-5" />;
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -57,12 +57,12 @@ function PriorityIcon({ priority }: { priority: string }) {
 }
 
 function HealthIndicator({ health }: { health: string }) {
-  const colors: any = { 'on_track': '#22C55E', 'at_risk': '#F59E0B', 'off_track': '#EF4444' };
+  const colors: Record<string, string> = { 'on_track': '#22C55E', 'at_risk': '#F59E0B', 'off_track': '#EF4444' };
   if (health === 'none' || !colors[health]) return <div className="w-5 h-5 rounded-full border-2 border-dashed border-gray-400 opacity-50" />;
   return <div className="w-5 h-5 rounded-full" style={{ backgroundColor: colors[health] }} />;
 }
 
-function Avatar({ user }: { user?: any }) {
+function Avatar({ user }: { user?: Project['lead'] }) {
   if (!user) return <div className="w-6 h-6 rounded-full border-2 border-dashed border-gray-400 flex items-center justify-center text-[10px] text-gray-500">?</div>;
   return (
     <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-semibold shadow-sm" style={{ backgroundColor: user.color || '#6B7280' }} title={user.name}>
@@ -71,7 +71,7 @@ function Avatar({ user }: { user?: any }) {
   );
 }
 
-function StatusBadge({ status, progressData }: { status: number; progressData: any[] }) {
+function StatusBadge({ status, progressData }: { status: number; progressData: { value: number }[] }) {
   const color = status === 100 ? '#22C55E' : status >= 60 ? '#F59E0B' : status > 0 ? '#F59E0B' : '#6B7280';
   return (
     <div className="flex items-center gap-2">
@@ -194,7 +194,7 @@ export function ProjectListView({
                 >
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-3">
-                      <span className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${project.icon_color}20`, color: project.icon_color }}>
+                      <span className="w-6 h-6 rounded flex items-center justify-center shrink-0" style={{ backgroundColor: `${project.icon_color}20`, color: project.icon_color }}>
                         {ProjectIcons[project.icon_name] || ProjectIcons['folder']}
                       </span>
                       <div>

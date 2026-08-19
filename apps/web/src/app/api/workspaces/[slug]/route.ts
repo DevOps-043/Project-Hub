@@ -4,10 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 import {
-  getWorkspaceBySlug,
-  getUserWorkspaceRole,
   getWorkspaceMemberCount,
   getWorkspaceMembers,
 } from '@/lib/services/workspace-service';
@@ -19,41 +17,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
-    const token =
-      request.cookies.get('accessToken')?.value ||
-      request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
-
     const { slug } = await params;
-    const workspace = await getWorkspaceBySlug(slug);
-
-    if (!workspace) {
-      return NextResponse.json(
-        { error: 'Workspace no encontrado' },
-        { status: 404 }
-      );
-    }
-
-    // Verificar que el usuario tiene acceso
-    const membership = await getUserWorkspaceRole(
-      workspace.workspace_id,
-      payload.sub
-    );
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: 'No tienes acceso a este workspace' },
-        { status: 403 }
-      );
-    }
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { workspace, member: membership } = auth;
 
     const includeMembers = request.nextUrl.searchParams.get('includeMembers') === 'true';
     const [memberCount, members] = await Promise.all([
@@ -74,7 +41,7 @@ export async function GET(
       userRole: membership.iris_role,
       sofiaRole: membership.sofia_role,
       memberCount,
-      members: members.map((m: any) => ({
+      members: members.map((m) => ({
         id: m.member_id,
         userId: m.user_id,
         role: m.iris_role,

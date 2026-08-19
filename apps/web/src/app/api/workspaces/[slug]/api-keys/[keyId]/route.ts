@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 import { revokeApiKey } from '@/lib/services/api-key-service';
 
 type RouteParams = { params: Promise<{ slug: string; keyId: string }> };
@@ -8,19 +7,11 @@ type RouteParams = { params: Promise<{ slug: string; keyId: string }> };
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { slug, keyId } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { workspace, member } = auth;
 
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member || !['owner', 'admin'].includes(member.iris_role)) {
+    if (!['owner', 'admin'].includes(member.iris_role)) {
       return NextResponse.json({ error: 'Sin permisos para revocar API keys' }, { status: 403 });
     }
 

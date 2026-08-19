@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAuth } from '@/lib/auth/require-role';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { decryptToken } from '@/lib/auth/token-encryption';
 import { readMultipleDocuments } from '@/lib/google/drive-reader';
@@ -40,20 +40,35 @@ interface ParsedCycle {
   end_date: string;
 }
 
+interface TeamMemberRow {
+  role: string;
+  user: {
+    user_id: string;
+    first_name: string;
+    last_name_paternal: string;
+    display_name: string | null;
+    email: string;
+  };
+}
+
+interface PriorityRow {
+  priority_id: string;
+  name: string;
+  level: number;
+}
+
+interface StatusRow {
+  status_id: string;
+  status_type: string;
+  is_default: boolean;
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Auth
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+    const auth = await requireAuth(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const { projectId, teamId, documents } = body as {
@@ -150,7 +165,7 @@ export async function POST(request: NextRequest) {
       `)
       .eq('team_id', teamId);
 
-    const membersList = (teamMembers || []).map((m: any) => ({
+    const membersList = ((teamMembers || []) as unknown as TeamMemberRow[]).map((m) => ({
       user_id: m.user.user_id,
       name: m.user.display_name || `${m.user.first_name} ${m.user.last_name_paternal}`,
       email: m.user.email,
@@ -164,7 +179,7 @@ export async function POST(request: NextRequest) {
       .order('level');
 
     const priorityMap: Record<string, string> = {};
-    (priorities || []).forEach((p: any) => {
+    (priorities || []).forEach((p: PriorityRow) => {
       const key = p.name.toLowerCase();
       priorityMap[key] = p.priority_id;
       // Map Spanish names too
@@ -231,13 +246,13 @@ export async function POST(request: NextRequest) {
       .order('position');
 
     const statusTypeMap: Record<string, string> = {};
-    (allTeamStatuses || []).forEach((s: any) => {
+    (allTeamStatuses || []).forEach((s: StatusRow) => {
       statusTypeMap[s.status_type] = s.status_id;
     });
 
     // Asegurar que defaultStatusId esta definido
     if (!defaultStatusId) {
-      const defaultRow = (allTeamStatuses || []).find((s: any) => s.is_default);
+      const defaultRow = (allTeamStatuses || []).find((s: StatusRow) => s.is_default);
       defaultStatusId = defaultRow?.status_id || (allTeamStatuses || [])[0]?.status_id;
     }
 
@@ -417,7 +432,7 @@ Genera el plan completo en JSON válido.`;
     }
 
     // 11. Crear issues en batch
-    const createdIssues: any[] = [];
+    const createdIssues: Record<string, unknown>[] = [];
     for (const issue of parsedIssues) {
       let assigneeId: string | null = null;
       if (issue.assignee_name) {

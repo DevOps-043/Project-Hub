@@ -20,6 +20,38 @@ const SOFIA_BUCKET_NAME = process.env.SOFIA_AVATAR_BUCKET || process.env.NEXT_PU
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
+/**
+ * `file.type` viene del Content-Type que declara el cliente al construir el
+ * FormData: un atacante puede subir cualquier contenido (p. ej. HTML/SVG con
+ * <script>) declarando `image/png`. Esto verifica los magic bytes reales del
+ * buffer contra cada tipo permitido para que el Content-Type declarado no sea
+ * la única defensa.
+ */
+export function matchesDeclaredImageType(buffer: ArrayBuffer, declaredType: string): boolean {
+  const bytes = new Uint8Array(buffer.slice(0, 12));
+  switch (declaredType) {
+    case 'image/jpeg':
+      return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    case 'image/png':
+      return (
+        bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+        bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+      );
+    case 'image/gif':
+      return (
+        bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38 &&
+        (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61
+      );
+    case 'image/webp': {
+      const riff = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+      const webp = String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]);
+      return riff === 'RIFF' && webp === 'WEBP';
+    }
+    default:
+      return false;
+  }
+}
+
 type AuthenticatedUser = {
   user_id: string;
   email: string;
@@ -137,10 +169,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'El archivo es demasiado grande. Maximo 5MB' }, { status: 400 });
     }
 
+    const fileBuffer = await file.arrayBuffer();
+    if (!matchesDeclaredImageType(fileBuffer, file.type)) {
+      return NextResponse.json({
+        error: 'El contenido del archivo no coincide con una imagen JPG, PNG, GIF o WebP valida',
+      }, { status: 400 });
+    }
+
     const target = await getStorageTarget(userResult);
     if (target instanceof NextResponse) return target;
 
-    const fileBuffer = await file.arrayBuffer();
     const fileExtension = file.type.split('/')[1] === 'jpeg' ? 'jpg' : file.type.split('/')[1];
     const filePath = `${target.storageUserId}/avatar-${Date.now()}.${fileExtension}`;
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAuth } from '@/lib/auth/require-role';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { decryptToken, encryptToken } from '@/lib/auth/token-encryption';
 
@@ -46,17 +46,9 @@ async function refreshGoogleToken(refreshTokenEncrypted: string): Promise<{
  */
 export async function GET(request: NextRequest) {
   try {
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+    const auth = await requireAuth(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     const supabase = getSupabaseAdmin();
     const { data: oauthProvider, error } = await supabase

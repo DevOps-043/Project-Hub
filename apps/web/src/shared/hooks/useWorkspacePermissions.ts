@@ -1,7 +1,7 @@
 'use client';
 
 import { useWorkspace } from '@/contexts/WorkspaceContext';
-import { hasMinRole, type IrisRole, type WorkspacePermissions } from '@/lib/permissions';
+import { hasMinRole, type WorkspaceRole, type WorkspacePermissions } from '@/lib/permissions';
 
 /**
  * Hook para acceder a los permisos del usuario en el workspace actual
@@ -15,7 +15,7 @@ export function useWorkspacePermissions() {
   return {
     ...permissions,
     userRole,
-    checkMinRole: (minRole: IrisRole) => hasMinRole(userRole, minRole),
+    checkMinRole: (minRole: WorkspaceRole) => hasMinRole(userRole, minRole),
     hasPermission: (key: keyof WorkspacePermissions) => permissions[key],
   };
 }

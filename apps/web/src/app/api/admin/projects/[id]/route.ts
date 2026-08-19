@@ -1,14 +1,37 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
+import { isUuid } from '@/lib/http/validation';
 
 export const runtime = 'nodejs';
+
+interface IssueWithStatusRow {
+  issue_id: string;
+  status_id: string;
+  task_statuses: { status_type: string } | { status_type: string }[] | null;
+}
+
+interface MilestoneRow {
+  milestone_id: string;
+  milestone_name: string;
+  milestone_status: string;
+  due_date: string | null;
+  progress_percentage: number | null;
+}
+
+function issueStatusType(issue: IssueWithStatusRow): string | undefined {
+  return Array.isArray(issue.task_statuses) ? issue.task_statuses[0]?.status_type : issue.task_statuses?.status_type;
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> } // Params es una promesa
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id: projectId } = await params; // Await params
 
     if (!projectId) {
@@ -17,7 +40,7 @@ export async function GET(
 
     // 1. Obtener detalles del proyecto con relaciones
     // Verificar si es UUID o Key de proyecto
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+    const isUUID = isUuid(projectId);
     
     let query = supabaseAdmin
       .from('pm_projects')
@@ -70,21 +93,21 @@ export async function GET(
       .select('issue_id, status_id, task_statuses!inner(status_type)')
       .eq('project_id', project.project_id);
 
-    const allIssues = issuesWithStatus || [];
+    const allIssues = (issuesWithStatus || []) as unknown as IssueWithStatusRow[];
     const totalIssues = allIssues.length;
-    const doneIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'done').length;
-    const inProgressIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'in_progress').length;
-    const cancelledIssues = allIssues.filter((i: any) => i.task_statuses?.status_type === 'cancelled').length;
+    const doneIssues = allIssues.filter((i) => issueStatusType(i) === 'done').length;
+    const inProgressIssues = allIssues.filter((i) => issueStatusType(i) === 'in_progress').length;
+    const cancelledIssues = allIssues.filter((i) => issueStatusType(i) === 'cancelled').length;
     const effectiveTotal = totalIssues - cancelledIssues;
     const issuePercentage = effectiveTotal > 0
       ? Math.round((doneIssues / effectiveTotal) * 100)
       : 0;
 
     // Fallback a milestones si no hay issues
-    const milestones = project.milestones || [];
+    const milestones = (project.milestones || []) as MilestoneRow[];
     const totalMilestones = milestones.length;
-    const completedMilestones = milestones.filter((m: any) => m.milestone_status === 'completed').length;
-    const inProgressMilestones = milestones.filter((m: any) => m.milestone_status === 'in_progress').length;
+    const completedMilestones = milestones.filter((m) => m.milestone_status === 'completed').length;
+    const inProgressMilestones = milestones.filter((m) => m.milestone_status === 'in_progress').length;
 
     const useIssues = totalIssues > 0;
     const percentage = useIssues
@@ -140,6 +163,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id: projectId } = await params;
 
     if (!projectId) {
@@ -155,7 +181,7 @@ export async function PATCH(
       'lead_user_id', 'team_id', 'icon_name', 'icon_color', 'tags'
     ];
     
-    const updateData: any = { updated_at: new Date().toISOString() };
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
     
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -238,6 +264,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id: projectId } = await params;
 
     if (!projectId) {
@@ -246,7 +275,7 @@ export async function DELETE(
 
     const { error } = await supabaseAdmin
       .from('pm_projects')
-      .update({ 
+      .update({
         project_status: 'archived',
         updated_at: new Date().toISOString()
       })

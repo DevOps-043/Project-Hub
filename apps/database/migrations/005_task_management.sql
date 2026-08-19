@@ -92,6 +92,11 @@ CREATE INDEX IF NOT EXISTS idx_task_labels_team ON task_labels(team_id);
 -- ============================================================================
 -- 4. CYCLES / SPRINTS (Ciclos de trabajo)
 -- ============================================================================
+-- NOTA: este esquema de task_cycles quedó desactualizado (ver migración 021,
+-- que reconcilia contra el esquema real vigente en producción: cycle_number,
+-- cooldown_days, scope_count/completed_count/progress_percent, completed_at,
+-- status con 'active'/'cancelled'). Se deja tal cual por ser historial ya
+-- aplicado; no editar esta definición, corregir hacia adelante en 021+.
 CREATE TABLE IF NOT EXISTS task_cycles (
     cycle_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id UUID NOT NULL REFERENCES teams(team_id) ON DELETE CASCADE,

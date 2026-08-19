@@ -9,10 +9,11 @@ import DescriptionRenderer from '@/components/diagrams/DescriptionRenderer';
 import DiagramGeneratorInline from '@/components/diagrams/DiagramGeneratorInline';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { 
-  ArrowLeft, Bell, BellOff, CheckCircle2, Circle, 
+import {
+  ArrowLeft, Bell, BellOff, CheckCircle2, Circle,
   AlertCircle, Clock, User, Tag, Calendar, Hash
 } from 'lucide-react';
+import { api } from '@/lib/api/client';
 
 // Types
 interface Status {
@@ -133,7 +134,7 @@ export default function ProjectIssueDetailPage() {
   // State
   const [issue, setIssue] = useState<Issue | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [project, setProject] = useState<any>(null);
+  const [project, setProject] = useState<{ project_name?: string; project_key?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -156,12 +157,19 @@ export default function ProjectIssueDetailPage() {
   const fetchIssue = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/projects/${projectId}/issues/${issueId}`);
-      if (res.ok) {
-        const data = await res.json();
+      const { data, error: apiError } = await api.get<{
+        issue: Issue;
+        activity?: ActivityItem[];
+        project?: { project_name?: string; project_key?: string };
+        statuses?: Status[];
+        priorities?: Priority[];
+        members?: UserInfo[];
+        labelOptions?: Label[];
+      }>(`/api/admin/projects/${projectId}/issues/${issueId}`);
+      if (!apiError && data) {
         setIssue(data.issue);
         setActivity(data.activity || []);
-        setProject(data.project);
+        setProject(data.project ?? null);
         setStatuses(data.statuses || []);
         setPriorities(data.priorities || []);
         setMembers(data.members || []);
@@ -183,18 +191,14 @@ export default function ProjectIssueDetailPage() {
   }, [fetchIssue]);
 
   // Update field
-  const updateField = async (field: string, value: any) => {
+  const updateField = async (field: string, value: string | number | null) => {
     if (!issue) return;
     setSaving(true);
     
     try {
-      const res = await fetch(`/api/admin/projects/${projectId}/issues/${issueId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value })
-      });
+      const { error } = await api.patch(`/api/admin/projects/${projectId}/issues/${issueId}`, { [field]: value });
 
-      if (res.ok) {
+      if (!error) {
         fetchIssue();
       }
     } catch (error) {

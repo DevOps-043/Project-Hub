@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGeminiModel } from '@/lib/ai/gemini';
+import { requireAuth } from '@/lib/auth/require-role';
+import { cleanMermaidResponse } from '@/lib/ai/mermaid-cleanup';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
     try {
+        const auth = await requireAuth(request);
+        if (!auth.ok) return auth.response;
+
         const { prompt, type } = await request.json();
 
         if (!prompt) {
@@ -36,47 +41,7 @@ export async function POST(request: NextRequest) {
         const result = await model.generateContent(systemPrompt);
         const text = result.response.text();
 
-        // Limpieza robusta del código Mermaid
-        let cleanCode = text;
-
-        // Extraer bloque mermaid si viene envuelto en markdown
-        const mermaidBlockMatch = cleanCode.match(/```mermaid\s*\n([\s\S]*?)```/);
-        if (mermaidBlockMatch) {
-            cleanCode = mermaidBlockMatch[1];
-        } else {
-            // Remover cualquier bloque de código genérico
-            const codeBlockMatch = cleanCode.match(/```\s*\n([\s\S]*?)```/);
-            if (codeBlockMatch) {
-                cleanCode = codeBlockMatch[1];
-            }
-        }
-
-        // Limpiar restos de markdown
-        cleanCode = cleanCode
-            .replace(/```mermaid/g, '')
-            .replace(/```/g, '')
-            .trim();
-
-        // Validar que empiece con un tipo de diagrama Mermaid válido
-        const validStarts = [
-            'graph ', 'graph\n', 'flowchart ', 'flowchart\n',
-            'sequenceDiagram', 'classDiagram', 'stateDiagram',
-            'erDiagram', 'gantt', 'pie', 'gitgraph', 'mindmap',
-            'timeline', 'journey', 'quadrantChart', 'xychart',
-            'block-beta', 'sankey-beta', 'packet-beta',
-        ];
-        const startsValid = validStarts.some(s => cleanCode.startsWith(s));
-
-        // Si tiene texto basura antes del código, intentar extraer la parte mermaid
-        if (!startsValid) {
-            for (const start of validStarts) {
-                const idx = cleanCode.indexOf(start);
-                if (idx > 0) {
-                    cleanCode = cleanCode.substring(idx).trim();
-                    break;
-                }
-            }
-        }
+        const cleanCode = cleanMermaidResponse(text);
 
         if (!cleanCode) {
             return NextResponse.json({ error: 'La IA no generó código de diagrama válido' }, { status: 422 });
@@ -84,8 +49,9 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ code: cleanCode });
 
-    } catch (error: any) {
+    } catch (error) {
         console.error('Diagram Gen Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

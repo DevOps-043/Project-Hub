@@ -3,13 +3,22 @@
 import React, { useEffect, useState } from 'react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import {
     PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
     AreaChart, Area, XAxis, YAxis, CartesianGrid,
     Legend
 } from 'recharts';
 
-const StatCard = ({ title, value, sub, icon, color }: any) => (
+interface StatCardProps {
+    title: string;
+    value: React.ReactNode;
+    sub?: string;
+    icon: React.ReactNode;
+    color?: string;
+}
+
+const StatCard = ({ title, value, sub, icon, color }: StatCardProps) => (
     <div className="p-6 rounded-2xl bg-white dark:bg-[#161b22] border border-gray-200 dark:border-white/5 shadow-sm">
         <div className="flex justify-between items-start mb-4">
             <div>
@@ -74,8 +83,26 @@ const ActivityHeatmap = ({ data }: { data: { date: string, count: number }[] }) 
     );
 };
 
+interface WorkspaceLegacyAnalyticsData {
+    tasks: {
+        total: number;
+        distribution?: Array<{ name: string; value: number; color?: string }>;
+    };
+    projects: {
+        total: number;
+        completed: number;
+        active: number;
+    };
+    heatmap: Array<{ date: string; count: number }>;
+    leaderboard?: Array<{
+        user: { full_name: string; email: string; avatar_url?: string | null };
+        count: number;
+    }>;
+    ariaUsage?: Array<{ date: string; tokens: number }>;
+}
+
 export default function WorkspaceAnalyticsPage() {
-    const [data, setData] = useState<any>(null);
+    const [data, setData] = useState<WorkspaceLegacyAnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
     const { isDark } = useTheme();
     const { workspace } = useWorkspace();
@@ -83,12 +110,8 @@ export default function WorkspaceAnalyticsPage() {
     useEffect(() => {
         const fetchAnalytics = async () => {
             try {
-                const token = localStorage.getItem('accessToken');
-                const res = await fetch(`/api/workspaces/${workspace.slug}/analytics`, {
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
-                });
-                if (res.ok) {
-                    const json = await res.json();
+                const { data: json, error } = await api.get<WorkspaceLegacyAnalyticsData>(`/api/workspaces/${workspace.slug}/analytics`);
+                if (!error && json) {
                     setData(json);
                 }
             } catch (e) { console.error(e); }
@@ -130,7 +153,7 @@ export default function WorkspaceAnalyticsPage() {
                 />
                 <StatCard
                     title="Tasa de Completitud"
-                    value={`${data.tasks.total > 0 ? Math.round((taskDistribution.find((d:any) => d.name === 'Completadas')?.value || 0) / data.tasks.total * 100) : 0}%`}
+                    value={`${data.tasks.total > 0 ? Math.round((taskDistribution.find((d) => d.name === 'Completadas')?.value || 0) / data.tasks.total * 100) : 0}%`}
                     icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>}
                     color="bg-green-500/10 text-green-500"
                 />
@@ -149,7 +172,7 @@ export default function WorkspaceAnalyticsPage() {
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie data={taskDistribution} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                                    {taskDistribution.map((entry: any, index: number) => (
+                                    {taskDistribution.map((entry, index: number) => (
                                         <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
@@ -163,7 +186,7 @@ export default function WorkspaceAnalyticsPage() {
                 <div className="bg-white dark:bg-[#161b22] p-6 rounded-2xl border border-gray-200 dark:border-white/5 lg:col-span-2 shadow-sm">
                     <h3 className="font-bold mb-6">Top Productividad (Usuarios)</h3>
                     <div className="space-y-4">
-                        {leaderboard.map((item: any, i: number) => (
+                        {leaderboard.map((item, i: number) => (
                             <div key={i} className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                                 <div className={`w-8 h-8 flex items-center justify-center rounded-full font-bold text-xs ${i === 0 ? 'bg-yellow-500 text-black' : 'bg-gray-200 dark:bg-zinc-800'}`}>
                                     {i + 1}

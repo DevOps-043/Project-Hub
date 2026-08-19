@@ -60,6 +60,66 @@ interface SofiaOrgData {
   };
 }
 
+/** Fila de `workspace_members` con el perfil de `account_users` embebido (join). */
+export interface WorkspaceMemberWithAccount {
+  member_id: string;
+  workspace_id: string;
+  user_id: string;
+  sofia_role: string;
+  iris_role: WorkspaceMember['iris_role'];
+  is_active: boolean;
+  joined_at: string;
+  updated_at: string;
+  account_users: {
+    user_id: string;
+    first_name: string | null;
+    last_name_paternal: string | null;
+    display_name: string | null;
+    email: string;
+    avatar_url: string | null;
+    permission_level: string;
+    company_role: string | null;
+    department: string | null;
+    phone_number: string | null;
+    account_status: string;
+    last_activity_at: string | null;
+  } | null;
+}
+
+/** Fila de `public.users` en SOFIA usada para sincronizar miembros. */
+interface SofiaUserRow {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
+  username: string;
+  email: string;
+  platform_role: string | null;
+  profile_picture_url: string | null;
+  email_verified: boolean | null;
+  is_banned: boolean | null;
+  bio: string | null;
+  location: string | null;
+  phone: string | null;
+}
+
+interface SofiaOrgMemberRow {
+  user_id: string;
+  role: string;
+  status: string | null;
+}
+
+interface ExistingMemberRow {
+  user_id: string;
+  is_active: boolean;
+}
+
+interface LegacyAccountRow {
+  user_id: string;
+  email: string | null;
+  username: string | null;
+}
+
 // ── Funciones ──
 
 export interface WorkspaceMemberListOptions {
@@ -68,7 +128,7 @@ export interface WorkspaceMemberListOptions {
 }
 
 export interface WorkspaceMembersPage {
-  members: any[];
+  members: WorkspaceMemberWithAccount[];
   total: number;
 }
 
@@ -252,7 +312,10 @@ export async function getWorkspacesForUser(userId: string): Promise<WorkspaceWit
       workspaces (${WORKSPACE_SELECT})
     `)
     .eq('user_id', userId)
-    .eq('is_active', true);
+    .eq('is_active', true) as {
+      data: Array<{ sofia_role: string; iris_role: string; is_active: boolean; workspaces: Workspace | null }> | null;
+      error: { message: string } | null;
+    };
 
   if (error) {
     console.error('[WORKSPACE SERVICE] Error fetching workspaces:', error.message);
@@ -262,9 +325,9 @@ export async function getWorkspacesForUser(userId: string): Promise<WorkspaceWit
   if (!data) return [];
 
   return data
-    .filter((m: any) => m.workspaces && m.workspaces.is_active)
-    .map((m: any) => ({
-      ...m.workspaces,
+    .filter((m) => m.workspaces && m.workspaces.is_active)
+    .map((m) => ({
+      ...(m.workspaces as Workspace),
       iris_role: m.iris_role,
       sofia_role: m.sofia_role,
     }));
@@ -345,7 +408,10 @@ export async function getWorkspaceMembersPage(
   }
 
   return {
-    members: data || [],
+    // Supabase infiere `account_users` embebido como arreglo porque no hay
+    // Database generado que le confirme que es una relación 1:1; en runtime
+    // siempre es un objeto único (o null), como ya asumen los consumidores.
+    members: (data || []) as unknown as WorkspaceMemberWithAccount[],
     total: count ?? data?.length ?? 0,
   };
 }
@@ -439,8 +505,8 @@ async function syncAllOrgMembersBatched(
       return;
     }
 
-    const existingByUserId = new Map<string, { user_id: string; is_active: boolean }>(
-      (existingMembers || []).map((member: any) => [member.user_id, member])
+    const existingByUserId = new Map<string, ExistingMemberRow>(
+      (existingMembers || []).map((member: ExistingMemberRow) => [member.user_id, member])
     );
 
     // 2. Miembros de la org en SOFIA (fuente de verdad)
@@ -454,11 +520,11 @@ async function syncAllOrgMembersBatched(
       return;
     }
 
-    const activeOrgMembers = (orgMembers || []).filter((member: any) => member.status !== 'removed');
-    const orgMemberByUserId = new Map<string, any>(
-      activeOrgMembers.map((member: any) => [member.user_id, member])
+    const activeOrgMembers = (orgMembers || []).filter((member: SofiaOrgMemberRow) => member.status !== 'removed');
+    const orgMemberByUserId = new Map<string, SofiaOrgMemberRow>(
+      activeOrgMembers.map((member: SofiaOrgMemberRow) => [member.user_id, member])
     );
-    const orgUserIds: string[] = activeOrgMembers.map((member: any) => member.user_id);
+    const orgUserIds: string[] = activeOrgMembers.map((member: SofiaOrgMemberRow) => member.user_id);
 
     // 3. Perfiles SOFIA de TODOS los miembros de la org.
     //    Se necesitan completos (no solo los nuevos) para poder mapear cuentas
@@ -466,7 +532,7 @@ async function syncAllOrgMembersBatched(
     //    Columnas reales de public.users en SofLIA: `password_hash`,
     //    `permission_level` y `account_status` ya no existen; las credenciales
     //    viven en auth.users (Supabase Auth) y el rol es `platform_role`.
-    const sofiaUsers: any[] = [];
+    const sofiaUsers: SofiaUserRow[] = [];
     for (const batch of chunkArray(orgUserIds, SYNC_BATCH_SIZE)) {
       const { data, error: usersError } = await sofia
         .from('users')
@@ -491,35 +557,35 @@ async function syncAllOrgMembersBatched(
         console.error('[WORKSPACE SERVICE] Error fetching SOFIA users:', usersError.message);
         return;
       }
-      if (data) sofiaUsers.push(...data);
+      if (data) sofiaUsers.push(...(data as SofiaUserRow[]));
     }
 
-    const usableSofiaUsers = sofiaUsers.filter((sofiaUser: any) => Boolean(sofiaUser.email));
+    const usableSofiaUsers = sofiaUsers.filter((sofiaUser) => Boolean(sofiaUser.email));
 
     // 4. Cuentas espejo creadas antes de la migracion pueden tener un user_id
     //    local distinto del id de SOFIA. Insertarlas de nuevo violaria
     //    UNIQUE(email) o UNIQUE(username), asi que se reutiliza la fila existente.
-    const legacyRows: any[] = [];
+    const legacyRows: LegacyAccountRow[] = [];
     for (const batch of chunkArray(usableSofiaUsers, SYNC_BATCH_SIZE)) {
       const { data } = await supabase
         .from('account_users')
         .select('user_id, email, username')
         .or(
           [
-            `email.in.(${batch.map((u: any) => `"${u.email}"`).join(',')})`,
+            `email.in.(${batch.map((u) => `"${u.email}"`).join(',')})`,
             `username.in.(${batch
-              .map((u: any) => `"${normalizeUsername(u.username, u.email)}"`)
+              .map((u) => `"${normalizeUsername(u.username, u.email)}"`)
               .join(',')})`,
           ].join(',')
         );
-      if (data) legacyRows.push(...data);
+      if (data) legacyRows.push(...(data as LegacyAccountRow[]));
     }
 
     const legacyIdBySofiaId = new Map<string, string>();
     for (const sofiaUser of usableSofiaUsers) {
       const desiredUsername = normalizeUsername(sofiaUser.username, sofiaUser.email);
       const legacy = legacyRows.find(
-        (row: any) =>
+        (row) =>
           row.user_id !== sofiaUser.id &&
           (row.email?.toLowerCase() === sofiaUser.email.toLowerCase() ||
             row.username?.toLowerCase() === desiredUsername.toLowerCase())
@@ -536,9 +602,9 @@ async function syncAllOrgMembersBatched(
     //    el panel (incluidos usuarios ya borrados de la tabla users).
     const allowedLocalIds = new Set(orgUserIds.map(localIdFor));
 
-    const staleMemberIds = (existingMembers || [])
-      .filter((member: any) => member.is_active && !allowedLocalIds.has(member.user_id))
-      .map((member: any) => member.user_id);
+    const staleMemberIds = ((existingMembers || []) as ExistingMemberRow[])
+      .filter((member) => member.is_active && !allowedLocalIds.has(member.user_id))
+      .map((member) => member.user_id);
 
     for (const batch of chunkArray(staleMemberIds, SYNC_BATCH_SIZE)) {
       const { error: deactivateError } = await supabase
@@ -572,12 +638,12 @@ async function syncAllOrgMembersBatched(
     // 7. Insertar solo los miembros que aun no tienen fila en workspace_members.
     //    Nunca se re-escriben los existentes: iris_role se edita en Project Hub.
     const newSofiaUsers = usableSofiaUsers.filter(
-      (sofiaUser: any) => !existingByUserId.has(localIdFor(sofiaUser.id))
+      (sofiaUser) => !existingByUserId.has(localIdFor(sofiaUser.id))
     );
 
     const accountRows = newSofiaUsers
-      .filter((sofiaUser: any) => !legacyIdBySofiaId.has(sofiaUser.id))
-      .map((sofiaUser: any) => {
+      .filter((sofiaUser) => !legacyIdBySofiaId.has(sofiaUser.id))
+      .map((sofiaUser) => {
         const lastNameParts = (sofiaUser.last_name || '').trim().split(/\s+/).filter(Boolean);
 
         return {
@@ -614,7 +680,7 @@ async function syncAllOrgMembersBatched(
     }
 
     const memberRows = newSofiaUsers
-      .map((sofiaUser: any) => {
+      .map((sofiaUser) => {
         const orgMember = orgMemberByUserId.get(sofiaUser.id);
         if (!orgMember) return null;
 

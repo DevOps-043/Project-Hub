@@ -317,11 +317,66 @@ function CustomDatePicker({
     );
 }
 
+function Section({ title, icon: Icon, isDark, borderColor, children }: { title: string, icon: React.ComponentType<{ size?: number; className?: string }>, isDark: boolean, borderColor: string, children: React.ReactNode }) {
+    return (
+        <div className={`p-6 rounded-2xl border ${isDark ? 'bg-white/5' : 'bg-white'} shadow-sm space-y-4`} style={{ borderColor }}>
+            <div className="flex items-center gap-2 mb-2">
+                <Icon size={18} className="text-blue-500" />
+                <h3 className="text-sm font-bold uppercase tracking-wider opacity-60">{title}</h3>
+            </div>
+            {children}
+        </div>
+    );
+}
+
+type ProjectSettingsField =
+    | 'project_name'
+    | 'project_description'
+    | 'priority_level'
+    | 'lead_user_id'
+    | 'team_id'
+    | 'start_date'
+    | 'target_date';
+
+interface ProjectSettingsUser {
+    id?: string;
+    user_id?: string;
+    displayName?: string;
+    display_name?: string;
+    firstName?: string;
+    lastNamePaternal?: string;
+    first_name?: string;
+    last_name_paternal?: string;
+    email?: string;
+    username?: string;
+}
+
+interface ProjectSettingsTeam {
+    id?: string;
+    team_id?: string;
+    name?: string;
+}
+
+interface ProjectSettingsProject {
+    project_name?: string;
+    name?: string;
+    project_description?: string | null;
+    description?: string | null;
+    priority_level?: string;
+    priority?: string;
+    lead_user_id?: string;
+    lead?: { user_id?: string } | null;
+    team_id?: string;
+    team?: { team_id?: string } | null;
+    start_date?: string | null;
+    target_date?: string | null;
+}
+
 interface ProjectSettingsViewProps {
-    project: any;
-    onUpdate: (field: string, value: any) => Promise<void>;
-    users: any[];
-    teams: any[];
+    project: ProjectSettingsProject;
+    onUpdate: (field: ProjectSettingsField, value: string) => Promise<void>;
+    users: ProjectSettingsUser[];
+    teams: ProjectSettingsTeam[];
     saving: boolean;
 }
 
@@ -349,25 +404,15 @@ export function ProjectSettingsView({ project, onUpdate, users, teams, saving }:
         textSec: '#6B7280'
     };
 
-    const handleChange = (field: string, value: any) => {
+    const handleChange = (field: ProjectSettingsField, value: string) => {
         setLocalProject(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleSave = async (field: string) => {
-        const value = (localProject as any)[field];
-        if (value === (project as any)[field]) return;
+    const handleSave = async (field: ProjectSettingsField) => {
+        const value = localProject[field];
+        if (value === project[field]) return;
         await onUpdate(field, value);
     };
-
-    const Section = ({ title, icon: Icon, children }: { title: string, icon: any, children: React.ReactNode }) => (
-        <div className={`p-6 rounded-2xl border ${isDark ? 'bg-white/5' : 'bg-white'} shadow-sm space-y-4`} style={{ borderColor: colors.border }}>
-            <div className="flex items-center gap-2 mb-2">
-                <Icon size={18} className="text-blue-500" />
-                <h3 className="text-sm font-bold uppercase tracking-wider opacity-60">{title}</h3>
-            </div>
-            {children}
-        </div>
-    );
 
     return (
         <div className="max-w-4xl mx-auto space-y-6 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -383,7 +428,7 @@ export function ProjectSettingsView({ project, onUpdate, users, teams, saving }:
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* General Information */}
-                <Section title="Identity" icon={Type}>
+                <Section title="Identity" icon={Type} isDark={isDark} borderColor={colors.border}>
                     <div className="space-y-4">
                         <div className="space-y-1.5">
                             <label className="text-xs font-medium opacity-50">Project Name</label>
@@ -412,7 +457,7 @@ export function ProjectSettingsView({ project, onUpdate, users, teams, saving }:
                                         title: localProject.project_name,
                                         description: localProject.project_description,
                                         priority: localProject.priority_level,
-                                        teamName: teams.find((t: any) => t.team_id === localProject.team_id)?.name,
+                                        teamName: teams.find((t) => t.team_id === localProject.team_id)?.name,
                                     }}
                                     onInsert={(code) => {
                                         const fence = `\n\`\`\`mermaid\n${code}\n\`\`\``;
@@ -426,7 +471,7 @@ export function ProjectSettingsView({ project, onUpdate, users, teams, saving }:
                 </Section>
 
                 {/* Leadership & Teams */}
-                <Section title="Ownership" icon={Shield}>
+                <Section title="Ownership" icon={Shield} isDark={isDark} borderColor={colors.border}>
                     <div className="space-y-4">
                         <CustomSelect
                             label="Project Lead"
@@ -467,7 +512,7 @@ export function ProjectSettingsView({ project, onUpdate, users, teams, saving }:
                     </div>
                 </Section>
 
-                <Section title="Priority" icon={Flag}>
+                <Section title="Priority" icon={Flag} isDark={isDark} borderColor={colors.border}>
                     <CustomSelect
                         label="Priority Level"
                         value={localProject.priority_level || 'medium'}
@@ -487,7 +532,7 @@ export function ProjectSettingsView({ project, onUpdate, users, teams, saving }:
                 </Section>
 
                 {/* Timeline */}
-                <Section title="Timeline" icon={Calendar}>
+                <Section title="Timeline" icon={Calendar} isDark={isDark} borderColor={colors.border}>
                     <div className="space-y-4">
                         <CustomDatePicker
                             label="Start Date"

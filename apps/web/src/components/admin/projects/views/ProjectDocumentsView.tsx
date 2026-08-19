@@ -13,6 +13,7 @@ import {
   parseGoogleUrl,
   uploadFileToDrive,
 } from '@/lib/google/document-utils';
+import { api } from '@/lib/api/client';
 import {
   FileSpreadsheet, Link2, Plus, Loader2, X,
   CloudOff, Upload, LinkIcon, Sparkles, CheckCircle,
@@ -75,12 +76,8 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
   const fetchDocuments = useCallback(async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(apiBase, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const { data, error } = await api.get<{ documents: LinkedDocument[] }>(apiBase);
+      if (!error && data) {
         setDocuments(data.documents || []);
       }
     } catch (error) {
@@ -106,26 +103,16 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
     thumbnail_url?: string | null;
   }) => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(apiBase, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(doc),
-      });
+      const { data, error, status } = await api.post<{ document: LinkedDocument }>(apiBase, doc);
 
-      if (res.ok) {
-        const data = await res.json();
+      if (!error && data) {
         setDocuments(prev => [data.document, ...prev]);
         return true;
-      } else if (res.status === 409) {
+      } else if (status === 409) {
         alert('Este documento ya está vinculado al proyecto.');
       }
-      if (!res.ok && res.status !== 409) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.error || 'No se pudo vincular el documento al proyecto.');
+      if (error && status !== 409) {
+        alert(error || 'No se pudo vincular el documento al proyecto.');
       }
       return false;
     } catch (error) {
@@ -159,17 +146,14 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
 
     setUploading(true);
     try {
-      const tokenFromStorage = localStorage.getItem('accessToken');
-      const tokenRes = await fetch('/api/auth/google/token', {
-        headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-      });
+      const { data: tokenData, error: tokenError } = await api.get<{ accessToken?: string }>('/api/auth/google/token');
 
-      if (!tokenRes.ok) {
+      if (tokenError || !tokenData?.accessToken) {
         alert('No se pudo obtener acceso a Google. Reconecta tu cuenta.');
         return;
       }
 
-      const { accessToken } = await tokenRes.json();
+      const { accessToken } = tokenData;
       const uploaded = await uploadFileToDrive(file, accessToken);
 
       if (!uploaded) {
@@ -211,13 +195,10 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
     try {
       let fileName = 'Documento de Google';
       try {
-        const tokenFromStorage = localStorage.getItem('accessToken');
-        const tokenRes = await fetch('/api/auth/google/token', {
-          headers: tokenFromStorage ? { Authorization: `Bearer ${tokenFromStorage}` } : {},
-        });
+        const { data: tokenData, error: tokenError } = await api.get<{ accessToken?: string }>('/api/auth/google/token');
 
-        if (tokenRes.ok) {
-          const { accessToken } = await tokenRes.json();
+        if (!tokenError && tokenData?.accessToken) {
+          const { accessToken } = tokenData;
           const metaRes = await fetch(
             `https://www.googleapis.com/drive/v3/files/${parsed.fileId}?fields=name,mimeType`,
             { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -263,17 +244,14 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
     setCreatingSheet(true);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const createRes = await fetch('/api/auth/google/token', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const { data: tokenData, error: tokenError } = await api.get<{ accessToken?: string }>('/api/auth/google/token');
 
-      if (!createRes.ok) {
+      if (tokenError || !tokenData?.accessToken) {
         alert('No se pudo obtener acceso a Google. Reconecta tu cuenta.');
         return;
       }
 
-      const { accessToken } = await createRes.json();
+      const { accessToken } = tokenData;
       const sheetTitle = projectKey ? `[${projectKey}] Master Sheet` : `Proyecto - Master Sheet`;
 
       let spreadsheetId: string;
@@ -331,13 +309,9 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
   const handleUnlink = async (docId: string) => {
     setUnlinkingId(docId);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`${apiBase}/${docId}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const { error } = await api.delete(`${apiBase}/${docId}`);
 
-      if (res.ok) {
+      if (!error) {
         setDocuments(prev => prev.filter(d => d.id !== docId));
       }
     } catch (error) {
@@ -365,39 +339,28 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
     const phaseTimer3 = setTimeout(() => setScanPhase(3), 8000);
 
     try {
-      const token = localStorage.getItem('accessToken');
-
-      const res = await fetch('/api/ai/analyze-documents', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          projectId,
-          teamId,
-          documents: documents.map(d => ({
-            external_id: d.external_id,
-            mime_type: d.mime_type,
-            name: d.name
-          }))
-        }),
+      const { data, error: apiError } = await api.post<{ issues_count?: number; message?: string }>('/api/ai/analyze-documents', {
+        projectId,
+        teamId,
+        documents: documents.map(d => ({
+          external_id: d.external_id,
+          mime_type: d.mime_type,
+          name: d.name
+        }))
       });
 
       clearTimeout(phaseTimer2);
       clearTimeout(phaseTimer3);
       setScanPhase(3);
 
-      const data = await res.json();
-
-      if (res.ok) {
+      if (!apiError && data) {
         setScanResult({
           count: data.issues_count || 0,
           message: data.message || 'Proceso completado con éxito.'
         });
         setIsSofLIAModalOpen(false);
       } else {
-        setScanError(data.error || 'Error al procesar con SofLIA');
+        setScanError(apiError || 'Error al procesar con SofLIA');
       }
     } catch (error) {
       console.error('Error in SofLIA scan:', error);
@@ -585,7 +548,7 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
               className="flex items-center gap-2 p-2 rounded-lg border"
               style={{ backgroundColor: colors.inputBg, borderColor: colors.border }}
             >
-              <LinkIcon size={14} style={{ color: colors.textSec }} className="flex-shrink-0" />
+              <LinkIcon size={14} style={{ color: colors.textSec }} className="shrink-0" />
               <input
                 type="url"
                 value={urlValue}
@@ -671,7 +634,7 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6 sm:mb-8">
                   <div className="flex items-center gap-2.5 sm:gap-3">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20 flex-shrink-0">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20 shrink-0">
                       <Brain size={20} className="sm:w-6 sm:h-6" />
                     </div>
                     <div>
@@ -720,7 +683,7 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
 
                     {!teamId && (
                       <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex gap-2">
-                        <AlertCircle className="text-amber-500 flex-shrink-0" size={16} />
+                        <AlertCircle className="text-amber-500 shrink-0" size={16} />
                         <p className="text-[11px] leading-relaxed text-amber-500 font-medium">
                           El proyecto no tiene un equipo asignado. Asígnalo en Configuración antes de continuar.
                         </p>
@@ -729,7 +692,7 @@ export function ProjectDocumentsView({ projectId, workspaceSlug, projectKey, she
 
                     {scanError && (
                       <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 flex gap-2">
-                        <AlertCircle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
+                        <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={16} />
                         <div>
                           <p className="text-[11px] leading-relaxed text-red-500 font-medium">
                             {scanError}

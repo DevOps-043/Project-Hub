@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
+import { requireAuth } from '@/lib/auth/require-role';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ preferences: data });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Get notification preferences error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -74,13 +75,9 @@ export async function GET(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token invalido' }, { status: 401 });
+    const auth = await requireAuth(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const allowedFields = [
@@ -118,7 +115,7 @@ export async function PUT(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ preferences: data });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Update notification preferences error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

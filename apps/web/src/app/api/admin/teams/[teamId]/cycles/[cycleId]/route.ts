@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,9 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string; cycleId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { teamId, cycleId } = await params;
 
     if (!teamId || !cycleId) {
@@ -70,6 +74,9 @@ export async function PATCH(
   { params }: { params: Promise<{ teamId: string; cycleId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { teamId, cycleId } = await params;
     const body = await request.json();
 
@@ -78,7 +85,7 @@ export async function PATCH(
     }
 
     const allowedFields = ['name', 'description', 'start_date', 'end_date', 'cooldown_days', 'status'];
-    const updateData: any = { updated_at: new Date().toISOString() };
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -118,6 +125,9 @@ export async function DELETE(
   { params }: { params: Promise<{ teamId: string; cycleId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { teamId, cycleId } = await params;
 
     if (!teamId || !cycleId) {

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Search, Users } from 'lucide-react';
 import { getPanelPathForRole, useWorkspace } from '@/contexts/WorkspaceContext';
 import { themeColors, useTheme } from '@/contexts/ThemeContext';
+import { api } from '@/lib/api/client';
 
 interface TeamMember {
   user_id: string;
@@ -42,12 +43,8 @@ export default function WorkspaceTeamMembersPage() {
   const fetchMembers = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/admin/teams/${teamId}/members`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const { data, error: err } = await api.get<{ team?: Team; members?: TeamMember[] }>(`/api/admin/teams/${teamId}/members`);
+      if (!err && data) {
         setTeam(data.team || null);
         setMembers(data.members || []);
       }

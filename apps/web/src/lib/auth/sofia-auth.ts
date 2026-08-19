@@ -77,9 +77,15 @@ const SOFIA_USER_COLUMNS = `
  * Los identificadores válidos (email/username) nunca los contienen.
  * OJO: el punto SÍ es válido (va dentro del valor, no separa), y quitarlo
  * rompería cualquier email.
+ *
+ * También se escapan `%`/`_`: son comodines de `ilike` a nivel de Postgres
+ * (no solo de PostgREST), así que sin esto un email con `%` en la parte
+ * local (válido por RFC, p. ej. "a%b@x.com") convertiría la búsqueda de
+ * cuenta en un match difuso en vez de exacto — riesgo real porque este
+ * identificador llega sin autenticar, antes de verificar la contraseña.
  */
-function sanitizeIdentifier(value: string): string {
-  return value.replace(/[(),"'\\]/g, '').trim();
+export function sanitizeIdentifier(value: string): string {
+  return value.replace(/[(),"'\\]/g, '').trim().replace(/[%_]/g, '\\$&');
 }
 
 /**
@@ -554,7 +560,7 @@ export async function getSofiaUserOrgs(userId: string, accessToken?: string): Pr
     }
     if (!data) return [];
 
-    return data.map((row: any) => ({
+    return data.map((row: Record<string, unknown>) => ({
       ...row,
       organizations: Array.isArray(row.organizations)
         ? row.organizations[0]

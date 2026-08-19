@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useAuthStore } from '@/core/stores/authStore';
+import { api } from '@/lib/api/client';
 import shellStyles from './AdminShell.module.css';
 import {
   Blocks,
@@ -24,7 +25,6 @@ import {
   PanelLeftOpen,
   Plus,
   Settings2,
-  SlidersHorizontal,
   Sun,
   UserRound,
   UsersRound,
@@ -37,7 +37,6 @@ const icons = {
   teams: <UsersRound size={19} strokeWidth={1.8} />,
   tasks: <ListChecks size={19} strokeWidth={1.8} />,
   analytics: <ChartSpline size={19} strokeWidth={1.8} />,
-  settings: <SlidersHorizontal size={19} strokeWidth={1.8} />,
   reports: <FileChartColumn size={19} strokeWidth={1.8} />,
   tools: <Blocks size={19} strokeWidth={1.8} />,
 };
@@ -57,11 +56,9 @@ const ownerMenuItems: MenuItem[] = [
   { id: 'teams', label: 'Equipos', icon: 'teams', path: '/teams' },
   { id: 'tasks', label: 'Tareas', icon: 'tasks', path: '/tasks' },
   { id: 'projects', label: 'Proyectos', icon: 'projects', path: '/projects' },
-
   { id: 'analytics', label: 'Analytics', icon: 'analytics', path: '/analytics' },
   { id: 'reports', label: 'Reportes', icon: 'reports', path: '/reports' },
   { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },
-  { id: 'settings', label: 'Configuración', icon: 'settings', path: '/settings' },
 ];
 
 const adminMenuItems: MenuItem[] = [
@@ -70,7 +67,6 @@ const adminMenuItems: MenuItem[] = [
   { id: 'teams', label: 'Equipos', icon: 'teams', path: '/teams' },
   { id: 'tasks', label: 'Tareas', icon: 'tasks', path: '/tasks' },
   { id: 'projects', label: 'Proyectos', icon: 'projects', path: '/projects' },
-
   { id: 'analytics', label: 'Analytics', icon: 'analytics', path: '/analytics' },
   { id: 'reports', label: 'Reportes', icon: 'reports', path: '/reports' },
   { id: 'tools', label: 'Herramientas', icon: 'tools', path: '/tools' },
@@ -168,12 +164,8 @@ function TeamsDropdown({ basePath, teamsApiUrl }: { basePath: string; teamsApiUr
   React.useEffect(() => {
     const fetchTeams = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch(teamsApiUrl, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const data = await res.json();
-        if (res.ok && data.teams) {
+        const { data, error } = await api.get<{ teams: Team[] }>(teamsApiUrl);
+        if (!error && data && data.teams) {
           setTeams(data.teams);
         }
       } catch (e) {
@@ -239,14 +231,14 @@ function TeamsDropdown({ basePath, teamsApiUrl }: { basePath: string; teamsApiUr
                     <ChevronRight
                       size={13}
                       strokeWidth={1.8}
-                      className={`transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
+                      className={`transition-transform duration-200 shrink-0 ${isExpanded ? 'rotate-90' : 'rotate-0'}`}
                       style={{ color: colors.textMuted }}
                       aria-hidden="true"
                     />
 
                     {/* Team Color Badge */}
                     <div 
-                      className="w-5 h-5 rounded flex-shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
+                      className="w-5 h-5 rounded shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
                       style={{ backgroundColor: team.color }}
                     >
                       {team.name.substring(0, 1).toUpperCase()}
@@ -292,7 +284,7 @@ function TeamsDropdown({ basePath, teamsApiUrl }: { basePath: string; teamsApiUr
                               color: isOptionActive ? '#00D4B3' : colors.textMuted,
                             }}
                           >
-                            <span className="flex-shrink-0 opacity-70 group-hover:opacity-100">
+                            <span className="shrink-0 opacity-70 group-hover:opacity-100">
                               {option.icon}
                             </span>
                             <span className="text-sm group-hover:text-[#00D4B3] transition-colors">
@@ -472,7 +464,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
         </div>
 
         {/* Bottom Section - User Profile with Menu (fixed at bottom) */}
-        <div className="flex-shrink-0">
+        <div className="shrink-0">
           <UserProfileMenu isCollapsed={isMobile ? false : isCollapsed} basePath={basePath} />
         </div>
       </aside>
@@ -490,6 +482,8 @@ function UserProfileMenu({ isCollapsed, basePath }: { isCollapsed: boolean; base
   const handleLogout = async () => {
     try {
       await logout();
+      // Hard redirect (not router.push) so all client state (stores, caches) resets.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = '/auth/sign-in';
     } catch (error) {
       console.error('Error logging out:', error);

@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Crear cliente de Supabase con service role para acceso completo
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabaseAdmin as supabase } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
+import { sanitizeSearchTerm, sanitizeFilterIdentifier } from '@/lib/http/sanitize';
+import { groupHistoryByProject, generateSparklineData } from '@/lib/services/project-sparkline';
+import { isUuid } from '@/lib/http/validation';
 
 export interface ProjectResponse {
   project_id: string;
@@ -40,8 +38,11 @@ export interface ProjectResponse {
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || '';
+    const search = sanitizeSearchTerm(searchParams.get('search') || '');
     const status = searchParams.get('status');
     const priority = searchParams.get('priority');
     const health = searchParams.get('health');
@@ -51,19 +52,19 @@ export async function GET(request: NextRequest) {
 
     let finalTeamId = teamId;
     if (teamId) {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+      const isUUID = isUuid(teamId);
       if (!isUUID) {
         const { data: teamData } = await supabase
           .from('teams')
           .select('team_id')
-          .or(`slug.eq.${teamId},name.eq.${teamId}`)
+          .or(`slug.eq.${sanitizeFilterIdentifier(teamId)},name.eq.${sanitizeFilterIdentifier(teamId)}`)
           .single();
         if (teamData) finalTeamId = teamData.team_id;
       }
     }
 
     // Intentar usar la vista primero, si no existe usar query directa
-    let projects: any[] = [];
+    let projects: Omit<ProjectResponse, 'progress_history'>[] = [];
     let useView = true;
 
     // Primero intentamos con la vista
@@ -153,7 +154,29 @@ export async function GET(request: NextRequest) {
       }
 
       // Transformar datos del query directo al formato esperado
-      projects = (directData || []).map((p: any) => ({
+      interface DirectProjectRow {
+        project_id: string;
+        project_key: string;
+        project_name: string;
+        project_description: string | null;
+        icon_name: string;
+        icon_color: string;
+        project_status: string;
+        health_status: string;
+        priority_level: string;
+        completion_percentage: number;
+        start_date: string | null;
+        target_date: string | null;
+        team_id: string | null;
+        lead_user_id: string | null;
+        created_at: string;
+        updated_at: string;
+        tags: string[];
+        lead: { first_name?: string; last_name_paternal?: string; display_name?: string; avatar_url?: string } | null;
+        team: { name?: string; color?: string } | null;
+      }
+
+      projects = ((directData || []) as unknown as DirectProjectRow[]).map((p) => ({
         project_id: p.project_id,
         project_key: p.project_key,
         project_name: p.project_name,
@@ -185,34 +208,44 @@ export async function GET(request: NextRequest) {
       projects = viewData || [];
     }
 
-    // Obtener historial de progreso para cada proyecto (para sparklines)
-    const projectsWithHistory = await Promise.all(
-      projects.map(async (project) => {
-        const { data: historyData } = await supabase
-          .from('pm_project_progress_history')
-          .select('completion_percentage, recorded_at')
-          .eq('project_id', project.project_id)
-          .gte('recorded_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-          .order('recorded_at', { ascending: true })
-          .limit(12);
+    // Historial de progreso para sparklines: una sola query batched para
+    // todos los proyectos de la página (antes: 1 query por proyecto, N+1).
+    // La agrupación vive en lib/services/project-sparkline para poder
+    // probarla sin mockear Supabase.
+    const projectIds = projects.map((project) => project.project_id);
+    let historyRows: { project_id: string; completion_percentage: number; recorded_at: string }[] = [];
 
-        // Si no hay historial, generar puntos basados en el progreso actual
-        let progressHistory: { value: number }[] = [];
-        
-        if (historyData && historyData.length > 0) {
-          progressHistory = historyData.map(h => ({ value: h.completion_percentage }));
-        } else {
-          // Generar datos sintéticos para sparkline basados en el progreso actual
-          const progress = project.completion_percentage || 0;
-          progressHistory = generateSparklineData(progress);
-        }
+    if (projectIds.length > 0) {
+      const { data } = await supabase
+        .from('pm_project_progress_history')
+        .select('project_id, completion_percentage, recorded_at')
+        .in('project_id', projectIds)
+        .gte('recorded_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+        .order('recorded_at', { ascending: true });
+      historyRows = data || [];
+    }
 
-        return {
-          ...project,
-          progress_history: progressHistory
-        };
-      })
-    );
+    const historyByProject = groupHistoryByProject(historyRows);
+
+    const projectsWithHistory = projects.map((project) => {
+      const historyData = historyByProject.get(project.project_id);
+
+      // Si no hay historial, generar puntos basados en el progreso actual
+      let progressHistory: { value: number }[];
+
+      if (historyData && historyData.length > 0) {
+        progressHistory = historyData.map(h => ({ value: h.completion_percentage }));
+      } else {
+        // Generar datos sintéticos para sparkline basados en el progreso actual
+        const progress = project.completion_percentage || 0;
+        progressHistory = generateSparklineData(progress);
+      }
+
+      return {
+        ...project,
+        progress_history: progressHistory
+      };
+    });
 
     // Obtener conteo total
     const { count } = await supabase
@@ -238,6 +271,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const body = await request.json();
 
     const {
@@ -366,7 +402,7 @@ export async function POST(request: NextRequest) {
 
     // --- MILESTONES ---
     if (body.milestones && Array.isArray(body.milestones) && body.milestones.length > 0) {
-      const milestonesData = body.milestones.map((m: any, index: number) => ({
+      const milestonesData = body.milestones.map((m: { name: string; description?: string; targetDate?: string }, index: number) => ({
         project_id: newProject.project_id,
         milestone_name: m.name,
         milestone_description: m.description || null,
@@ -398,22 +434,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-// Helper: Generar datos sintéticos para sparkline
-function generateSparklineData(progress: number): { value: number }[] {
-  const points: { value: number }[] = [];
-  let current = 0;
-  
-  for (let i = 0; i < 12; i++) {
-    current = Math.min(100, current + Math.random() * (progress / 6));
-    points.push({ value: Math.round(current) });
-  }
-  
-  // Asegurar que el último punto coincida con el progreso actual
-  if (points.length > 0) {
-    points[points.length - 1].value = progress;
-  }
-  
-  return points;
 }

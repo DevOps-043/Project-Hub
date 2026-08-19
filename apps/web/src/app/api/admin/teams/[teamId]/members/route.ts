@@ -1,6 +1,32 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/auth/require-role';
+import { sanitizeFilterIdentifier } from '@/lib/http/sanitize';
+import { isUuid } from '@/lib/http/validation';
+
+interface TeamMemberUserProfile {
+  user_id: string;
+  first_name: string;
+  last_name_paternal: string;
+  display_name: string | null;
+  email: string;
+  avatar_url: string | null;
+  last_activity_at: string | null;
+  account_status: string;
+}
+
+interface TeamMemberRow {
+  role: string;
+  joined_at: string;
+  users: TeamMemberUserProfile;
+}
+
+interface TaskStatRow {
+  assignee_id: string | null;
+  status_id: string;
+  task_statuses: { status_type: string } | null;
+}
 
 export async function GET(
   request: NextRequest,
@@ -10,13 +36,16 @@ export async function GET(
   let { teamId } = await params;
 
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     // RESOLUCIÓN DE TEAM ID (UUID o Slug)
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    const isUUID = isUuid(teamId);
     if (!isUUID) {
        const { data: teamData } = await supabase
          .from('teams')
          .select('team_id')
-         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .or(`slug.eq.${sanitizeFilterIdentifier(teamId)},name.eq.${sanitizeFilterIdentifier(teamId)}`)
          .single();
        if (teamData) teamId = teamData.team_id;
     }
@@ -62,7 +91,7 @@ export async function GET(
     
     // Get all tasks for this team to count locally (efficient for small/medium teams)
     // Or simpler: Just count total tasks assigned to these users in this team
-    const userIds = membersData.map((m: any) => m.users.user_id);
+    const userIds = (membersData as unknown as TeamMemberRow[]).map((m) => m.users.user_id);
     
     const { data: taskStats, error: taskStatsError } = await supabase
       .from('task_issues')
@@ -78,9 +107,9 @@ export async function GET(
     });
 
     if (!taskStatsError && taskStats) {
-      taskStats.forEach((task: any) => {
+      (taskStats as unknown as TaskStatRow[]).forEach((task) => {
         const userId = task.assignee_id;
-        if (tasksByUser[userId]) {
+        if (userId && tasksByUser[userId]) {
           tasksByUser[userId].total += 1;
           if (task.task_statuses?.status_type === 'done' || task.task_statuses?.status_type === 'completed') {
             tasksByUser[userId].completed += 1;
@@ -89,7 +118,7 @@ export async function GET(
       });
     }
 
-    const formattedMembers = membersData.map((item: any) => {
+    const formattedMembers = (membersData as unknown as TeamMemberRow[]).map((item) => {
       const user = item.users;
       const stats = tasksByUser[user.user_id] || { total: 0, completed: 0 };
       
@@ -140,6 +169,9 @@ export async function POST(
   const { teamId } = await params;
 
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const body = await request.json();
     const { user_id, role } = body;
 
@@ -170,8 +202,9 @@ export async function POST(
 
     return NextResponse.json({ success: true, member: data });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error adding team member:', error);
-    return NextResponse.json({ error: error.message || 'Server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Server error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

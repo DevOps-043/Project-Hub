@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useWorkspace, getPanelPathForRole } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface TeamData {
@@ -69,15 +70,9 @@ function GeneralPanel({ team, workspaceSlug, canManage, onUpdate }: {
     setError('');
     setSaved(false);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/workspaces/${workspaceSlug}/teams/${team.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error guardando');
+      const { error } = await api.put(`/api/workspaces/${workspaceSlug}/teams/${team.id}`, form);
+      if (error) {
+        throw new Error(error || 'Error guardando');
       }
       onUpdate({ ...team, ...form });
       setSaved(true);
@@ -214,13 +209,8 @@ function DangerPanel({ team, workspaceSlug, canManage, canDelete, panelBase }: {
   const archiveTeam = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
       const newStatus = team.status === 'archived' ? 'active' : 'archived';
-      await fetch(`/api/workspaces/${workspaceSlug}/teams/${team.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      await api.put(`/api/workspaces/${workspaceSlug}/teams/${team.id}`, { status: newStatus });
       window.location.reload();
     } catch { /* ignore */ }
     setLoading(false);
@@ -230,11 +220,7 @@ function DangerPanel({ team, workspaceSlug, canManage, canDelete, panelBase }: {
     if (deleteInput !== team.name) return;
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      await fetch(`/api/workspaces/${workspaceSlug}/teams/${team.id}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      await api.delete(`/api/workspaces/${workspaceSlug}/teams/${team.id}`);
       router.push(`${panelBase}/teams`);
     } catch { /* ignore */ }
     setLoading(false);
@@ -349,12 +335,8 @@ export function TeamSettingsContent() {
     setLoading(true);
     setError('');
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/workspaces/${workspace.slug}/teams/${teamId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error('Equipo no encontrado');
-      const data = await res.json();
+      const { data, error } = await api.get<{ team: TeamData }>(`/api/workspaces/${workspace.slug}/teams/${teamId}`);
+      if (error || !data) throw new Error('Equipo no encontrado');
       setTeam(data.team);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando equipo');
@@ -417,7 +399,7 @@ export function TeamSettingsContent() {
       {/* Layout: Tabs + Content */}
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar Tabs */}
-        <div className="w-full lg:w-56 flex-shrink-0 space-y-1">
+        <div className="w-full lg:w-56 shrink-0 space-y-1">
           {tabs.map(tab => {
             const isActive = activeTab === tab.id;
             return (

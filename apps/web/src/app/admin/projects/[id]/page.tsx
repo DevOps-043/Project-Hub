@@ -19,6 +19,7 @@ import { ProjectIssuesView } from '@/components/admin/projects/views/ProjectIssu
 import { ProjectDocumentsView } from '@/components/admin/projects/views/ProjectDocumentsView';
 import { ProjectSettingsView } from '@/components/admin/projects/views/ProjectSettingsView';
 import { ProjectCyclesView } from '@/components/admin/projects/views/ProjectCyclesView';
+import { api } from '@/lib/api/client';
 
 // Status options
 const STATUS_OPTIONS = [
@@ -80,7 +81,12 @@ interface ProjectDetail {
     name: string;
     color: string;
   } | null;
-  milestones: any[];
+  milestones: Array<{
+    milestone_id: string;
+    milestone_name: string;
+    milestone_status: string;
+    due_date: string | null;
+  }>;
   metadata?: {
     resources?: ProjectResource[];
   };
@@ -137,11 +143,9 @@ export default function ProjectDetailPage() {
 
   const fetchProject = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/projects/${params.id}`);
-      if (!res.ok) throw new Error('Failed to fetch project');
-      
-      const data = await res.json();
-      
+      const { data, error } = await api.get<{ project?: ProjectDetail; progress?: ProjectProgress }>(`/api/admin/projects/${params.id}`);
+      if (error || !data) throw new Error('Failed to fetch project');
+
       if (data.project) {
         setProject(data.project);
         setTitleValue(data.project.project_name || data.project.name || '');
@@ -162,16 +166,14 @@ export default function ProjectDetailPage() {
     const fetchOptions = async () => {
       try {
         const [usersRes, teamsRes] = await Promise.all([
-          fetch('/api/admin/users?limit=100'),
-          fetch('/api/admin/teams?limit=50')
+          api.get<{ users?: UserOption[] }>('/api/admin/users?limit=100'),
+          api.get<{ teams?: TeamOption[] }>('/api/admin/teams?limit=50')
         ]);
-        if (usersRes.ok) {
-          const data = await usersRes.json();
-          setUsers(data.users || []);
+        if (!usersRes.error && usersRes.data) {
+          setUsers(usersRes.data.users || []);
         }
-        if (teamsRes.ok) {
-          const data = await teamsRes.json();
-          setTeams(data.teams || []);
+        if (!teamsRes.error && teamsRes.data) {
+          setTeams(teamsRes.data.teams || []);
         }
       } catch (e) {
         console.error('Error fetching options:', e);
@@ -185,7 +187,7 @@ export default function ProjectDetailPage() {
   }, [fetchProject]);
 
   // Open dropdown with position
-  const openDropdown = (name: string, ref: React.RefObject<HTMLButtonElement>) => {
+  const openDropdown = (name: string, ref: React.RefObject<HTMLButtonElement | null>) => {
     if (activeDropdown === name) {
       setActiveDropdown(null);
       return;
@@ -202,24 +204,18 @@ export default function ProjectDetailPage() {
   };
 
   // Update project field
-  const updateProject = async (field: string, value: any) => {
+  const updateProject = async (field: string, value: string | null | undefined) => {
     if (!project) return;
     
     setSaving(true);
     try {
-      const res = await fetch(`/api/admin/projects/${params.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value })
-      });
+      const { data, error } = await api.patch<{ project?: Partial<ProjectDetail> }>(`/api/admin/projects/${params.id}`, { [field]: value });
 
-      const data = await res.json();
-      
-      if (res.ok) {
+      if (!error && data) {
         setProject(prev => prev ? { ...prev, ...data.project } : null);
       } else {
         // Show error to user
-        alert(data.error || 'Error al actualizar');
+        alert(error || 'Error al actualizar');
       }
     } catch (error) {
       console.error('Error updating project:', error);
@@ -884,9 +880,9 @@ export default function ProjectDetailPage() {
                 <button className={`${textSub} ${hoverText} transition-colors`}><Plus size={16} /></button>
              </div>
              <div className="max-h-[300px] overflow-y-auto">
-               {(project.milestones && project.milestones.length > 0) ? project.milestones.map((m: any) => (
+               {(project.milestones && project.milestones.length > 0) ? project.milestones.map((m) => (
                  <div key={m.milestone_id} className={`p-3 border-b ${borderSub} last:border-0 ${hoverItem} transition-colors cursor-pointer flex items-center gap-3`}>
-                   <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${m.milestone_status === 'completed' ? 'bg-green-500 border-green-500' : 'border-gray-400'}`} />
+                   <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${m.milestone_status === 'completed' ? 'bg-green-500 border-green-500' : 'border-gray-400'}`} />
                    <div className="flex-1 min-w-0">
                      <div className={`text-sm ${textMain} truncate`}>{m.milestone_name}</div>
                      <div className={`text-xs ${textMuted}`}>{m.due_date ? format(new Date(m.due_date), 'MMM d') : 'No date'}</div>

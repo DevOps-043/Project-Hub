@@ -6,7 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAdmin } from '@/lib/auth/require-role';
+import { sanitizeFilterIdentifier } from '@/lib/http/sanitize';
+import { isUuid } from '@/lib/http/validation';
 
 export const runtime = 'nodejs';
 
@@ -16,24 +18,17 @@ export async function GET(
 ) {
   try {
     let { teamId } = await params;
-    
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
     // RESOLUCIÓN DE TEAM ID (UUID o Slug)
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    const isUUID = isUuid(teamId);
     if (!isUUID) {
        const { data: teamData } = await supabaseAdmin
          .from('teams')
          .select('team_id')
-         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .or(`slug.eq.${sanitizeFilterIdentifier(teamId)},name.eq.${sanitizeFilterIdentifier(teamId)}`)
          .single();
        if (teamData) teamId = teamData.team_id;
     }
@@ -62,24 +57,18 @@ export async function POST(
 ) {
   try {
     let { teamId } = await params;
-    
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     // RESOLUCIÓN DE TEAM ID
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    const isUUID = isUuid(teamId);
     if (!isUUID) {
        const { data: teamData } = await supabaseAdmin
          .from('teams')
          .select('team_id')
-         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .or(`slug.eq.${sanitizeFilterIdentifier(teamId)},name.eq.${sanitizeFilterIdentifier(teamId)}`)
          .single();
        if (teamData) teamId = teamData.team_id;
     }

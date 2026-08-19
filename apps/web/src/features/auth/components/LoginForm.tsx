@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '@/shared/components';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/shared/components';
@@ -91,9 +92,9 @@ export const LoginForm = () => {
                 <CardFooter className="justify-center">
                     <p className="text-sm text-neutral-600">
                         ¿No tienes cuenta?{' '}
-                        <a href="/registro" className="text-primary-600 hover:underline">
+                        <Link href="/registro" className="text-primary-600 hover:underline">
                             Regístrate
-                        </a>
+                        </Link>
                     </p>
                 </CardFooter>
             </Card>

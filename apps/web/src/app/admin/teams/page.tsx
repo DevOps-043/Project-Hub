@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useAuthStore } from '@/core/stores/authStore';
+import { api } from '@/lib/api/client';
 
 interface TeamOwner {
   id: string;
@@ -45,9 +46,8 @@ export default function TeamsPage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: '10' });
       if (search) params.append('search', search);
-      const res = await fetch(`/api/admin/teams?${params}`);
-      const data = await res.json();
-      if (res.ok) {
+      const { data, error } = await api.get<{ teams?: Team[]; pagination?: { total?: number } }>(`/api/admin/teams?${params}`);
+      if (!error && data) {
         setTeams(data.teams || []);
         setTotal(data.pagination?.total || 0);
       }
@@ -59,7 +59,7 @@ export default function TeamsPage() {
 
   const deleteTeam = async () => {
     if (!selectedTeam) return;
-    await fetch(`/api/admin/teams/${selectedTeam.id}`, { method: 'DELETE' });
+    await api.delete(`/api/admin/teams/${selectedTeam.id}`);
     setShowDeleteConfirm(false);
     setSelectedTeam(null);
     fetchTeams();
@@ -456,17 +456,14 @@ function TeamFormModal({ team, currentUserId, onClose, onSave }: { team: Team | 
         ownerId: currentUserId
       };
       
-      const res = await fetch(team ? `/api/admin/teams/${team.id}` : '/api/admin/teams', {
-        method: team ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error saving team');
+      const { error } = team
+        ? await api.put(`/api/admin/teams/${team.id}`, body)
+        : await api.post('/api/admin/teams', body);
+
+      if (error) {
+        throw new Error(error || 'Error saving team');
       }
-      
+
       onSave();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error desconocido');

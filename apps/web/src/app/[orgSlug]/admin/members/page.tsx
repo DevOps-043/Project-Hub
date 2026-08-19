@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import styles from './MembersPage.module.css';
 
 interface ProjectStat {
@@ -267,13 +268,9 @@ export default function WorkspaceMembersPage() {
     if (!workspace?.slug) return;
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/workspaces/${workspace.slug}/members?includeStats=true`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los miembros');
-      setMembers(data.users || []);
+      const { data, error: apiError } = await api.get<{ users: Member[]; error?: string }>(`/api/workspaces/${workspace.slug}/members?includeStats=true`);
+      if (apiError) throw new Error(apiError || 'No se pudieron cargar los miembros');
+      setMembers(data?.users || []);
     } catch (error) {
       setMessage({ type: 'error', text: error instanceof Error ? error.message : 'No se pudieron cargar los miembros' });
     } finally {
@@ -306,17 +303,8 @@ export default function WorkspaceMembersPage() {
     if (!workspace?.slug || !editMember || !form) return;
     setSaving(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/workspaces/${workspace.slug}/members`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ userId: editMember.id, ...form }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'No se pudo guardar el miembro');
+      const { error: apiError } = await api.patch(`/api/workspaces/${workspace.slug}/members`, { userId: editMember.id, ...form });
+      if (apiError) throw new Error(apiError || 'No se pudo guardar el miembro');
 
       setMembers((current) => current.map((member) => (
         member.id === editMember.id
@@ -430,7 +418,9 @@ export default function WorkspaceMembersPage() {
               <article key={member.id} className={styles.memberCard}>
                 <div className={styles.memberHeader}>
                   <div className={styles.avatar}>
-                    {member.avatarUrl ? <img src={member.avatarUrl} alt="" /> : getInitials(member)}
+                    <div className={styles.avatarImage}>
+                      {member.avatarUrl ? <img src={member.avatarUrl} alt="" /> : getInitials(member)}
+                    </div>
                     <span className={member.accountStatus === 'active' ? styles.online : styles.offline} aria-hidden="true" />
                   </div>
                   <div className={styles.memberIdentity}>
@@ -475,7 +465,9 @@ export default function WorkspaceMembersPage() {
           <section className={`${styles.modal} ${styles.editModal}`} role="dialog" aria-modal="true" aria-labelledby="edit-member-title">
             <header className={styles.modalProfileHeader}>
               <div className={styles.modalAvatar}>
-                {editMember.avatarUrl ? <img src={editMember.avatarUrl} alt="" /> : getInitials(editMember)}
+                <div className={styles.modalAvatarImage}>
+                  {editMember.avatarUrl ? <img src={editMember.avatarUrl} alt="" /> : getInitials(editMember)}
+                </div>
                 <span aria-hidden="true" />
               </div>
               <div className={styles.modalIdentity}>
@@ -556,7 +548,9 @@ export default function WorkspaceMembersPage() {
           <section className={`${styles.modal} ${styles.statsModal}`} role="dialog" aria-modal="true" aria-labelledby="member-stats-title">
             <header className={styles.modalProfileHeader}>
               <div className={styles.modalAvatar}>
-                {statsMember.avatarUrl ? <img src={statsMember.avatarUrl} alt="" /> : getInitials(statsMember)}
+                <div className={styles.modalAvatarImage}>
+                  {statsMember.avatarUrl ? <img src={statsMember.avatarUrl} alt="" /> : getInitials(statsMember)}
+                </div>
                 <span aria-hidden="true" />
               </div>
               <div className={styles.modalIdentity}>

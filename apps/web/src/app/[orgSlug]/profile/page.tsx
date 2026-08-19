@@ -5,21 +5,7 @@ import { useAuthStore } from '@/core/stores/authStore';
 import { useTheme } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGoogleConnection } from '@/shared/hooks/useGoogleConnection';
-
-async function readApiJson(response: Response): Promise<any> {
-  const text = await response.text().catch(() => '');
-  if (!text) return {};
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return {
-      error: response.ok
-        ? 'Respuesta inesperada del servidor'
-        : 'Respuesta no valida del servidor. Intenta nuevamente o revisa el tamano del archivo.',
-    };
-  }
-}
+import { api } from '@/lib/api/client';
 
 export default function WorkspaceProfilePage() {
   const { user, fetchCurrentUser } = useAuthStore();
@@ -59,8 +45,6 @@ export default function WorkspaceProfilePage() {
     }
   };
 
-  useEffect(() => { loadFullProfile(); }, []);
-
   useEffect(() => {
     if (user && !formData.first_name) {
       setFormData(prev => ({
@@ -75,15 +59,19 @@ export default function WorkspaceProfilePage() {
         avatar_url: user.avatar || '',
       }));
     }
+    // formData.first_name is read only as a "populate once" guard; including it
+    // would re-run this effect every time it's set, without changing the outcome.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const loadFullProfile = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      if (!token) return;
-      const res = await fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${token}` } });
-      if (res.ok) {
-        const fullUser = await res.json();
+      const { data: fullUser, error } = await api.get<{
+        firstNameRaw?: string; firstName?: string; lastNamePaternal?: string; lastName?: string;
+        lastNameMaternal?: string; name?: string; username?: string; phoneNumber?: string;
+        companyRole?: string; department?: string; timezone?: string; locale?: string; avatar?: string;
+      }>('/api/auth/me');
+      if (!error && fullUser) {
         setFormData({
           first_name: fullUser.firstNameRaw || fullUser.firstName || '',
           last_name_paternal: fullUser.lastNamePaternal || fullUser.lastName?.split(' ')[0] || '',
@@ -100,6 +88,8 @@ export default function WorkspaceProfilePage() {
       }
     } catch (error) { console.error('Error cargando perfil:', error); }
   };
+
+  useEffect(() => { loadFullProfile(); }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -134,19 +124,13 @@ export default function WorkspaceProfilePage() {
     e.preventDefault();
     setLoading(true); setSuccessMessage(null); setErrorMessage(null);
     try {
-      const token = localStorage.getItem('accessToken');
       const { avatar_url, ...dataToSend } = formData;
-      const res = await fetch('/api/auth/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(dataToSend)
-      });
-      const data = await readApiJson(res);
-      if (!res.ok) throw new Error(data.error || 'Error al actualizar perfil');
+      const { error } = await api.patch('/api/auth/me', dataToSend);
+      if (error) throw new Error(error || 'Error al actualizar perfil');
       setSuccessMessage('Perfil actualizado correctamente');
       await fetchCurrentUser();
       setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err: any) { setErrorMessage(err.message); }
+    } catch (err) { setErrorMessage(err instanceof Error ? err.message : 'Ocurrió un error inesperado.'); }
     finally { setLoading(false); }
   };
 
@@ -160,19 +144,13 @@ export default function WorkspaceProfilePage() {
     }
     setChangingPassword(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(passwordData)
-      });
-      const data = await readApiJson(res);
-      if (!res.ok) throw new Error(data.error || 'Error al cambiar contrasena');
+      const { error } = await api.post('/api/auth/change-password', passwordData);
+      if (error) throw new Error(error || 'Error al cambiar contrasena');
       setSuccessMessage('Contrasena actualizada correctamente');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setShowPasswordSection(false);
       setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err: any) { setErrorMessage(err.message); }
+    } catch (err) { setErrorMessage(err instanceof Error ? err.message : 'Ocurrió un error inesperado.'); }
     finally { setChangingPassword(false); }
   };
 
@@ -192,17 +170,15 @@ export default function WorkspaceProfilePage() {
     }
     setUploadingAvatar(true); setErrorMessage(null);
     try {
-      const token = localStorage.getItem('accessToken');
       const formDataUpload = new FormData();
       formDataUpload.append('file', file);
-      const res = await fetch('/api/upload/avatar', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formDataUpload });
-      const data = await readApiJson(res);
-      if (!res.ok) throw new Error(data.error || 'Error al subir la imagen');
-      setFormData(prev => ({ ...prev, avatar_url: data.avatarUrl }));
+      const { data, error } = await api.post<{ avatarUrl?: string }>('/api/upload/avatar', formDataUpload);
+      if (error) throw new Error(error || 'Error al subir la imagen');
+      setFormData(prev => ({ ...prev, avatar_url: data?.avatarUrl || prev.avatar_url }));
       setSuccessMessage('Imagen de perfil actualizada');
       await fetchCurrentUser();
       setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err: any) { setErrorMessage(err.message); }
+    } catch (err) { setErrorMessage(err instanceof Error ? err.message : 'Ocurrió un error inesperado.'); }
     finally { setUploadingAvatar(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
@@ -211,15 +187,13 @@ export default function WorkspaceProfilePage() {
     if (!confirm('Estas seguro de que quieres eliminar tu foto de perfil?')) return;
     setUploadingAvatar(true); setErrorMessage(null);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/upload/avatar', { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-      const data = await readApiJson(res);
-      if (!res.ok) throw new Error(data.error || 'Error al eliminar la imagen');
+      const { error } = await api.delete('/api/upload/avatar');
+      if (error) throw new Error(error || 'Error al eliminar la imagen');
       setFormData(prev => ({ ...prev, avatar_url: '' }));
       setSuccessMessage('Imagen de perfil eliminada');
       await fetchCurrentUser();
       setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err: any) { setErrorMessage(err.message); }
+    } catch (err) { setErrorMessage(err instanceof Error ? err.message : 'Ocurrió un error inesperado.'); }
     finally { setUploadingAvatar(false); }
   };
 
@@ -315,7 +289,7 @@ export default function WorkspaceProfilePage() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4 min-w-0">
               {/* Google Logo */}
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-white/5' : 'bg-white shadow-sm border border-gray-100'}`}>
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-white/5' : 'bg-white shadow-sm border border-gray-100'}`}>
                 <svg className="w-6 h-6" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -348,7 +322,7 @@ export default function WorkspaceProfilePage() {
               </div>
             </div>
 
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
               {google.isLoading ? (
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
                   <div className="w-4 h-4 border-2 border-gray-400/30 border-t-gray-400 rounded-full animate-spin" />

@@ -5,7 +5,6 @@ type CacheEntry<T> = {
 
 declare global {
   // Cache local por proceso. En serverless reduce repeticion dentro de la misma instancia.
-  // eslint-disable-next-line no-var
   var __projectHubMemoryCache: Map<string, CacheEntry<unknown>> | undefined;
 }
 

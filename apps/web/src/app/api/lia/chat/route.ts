@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatMessage, geminiConfig, streamChatResponse } from '@/lib/ai/gemini';
-import { getARIASystemPrompt, ARIAContext } from '@/lib/ai/lia-agent';
+import { getARIASystemPrompt, ARIAContext, ARIATaskSummary } from '@/lib/ai/lia-agent';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { requireAuth } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -12,8 +13,60 @@ interface ChatRequest {
   stream?: boolean;
 }
 
-async function enrichContext(context?: ARIAContext): Promise<ARIAContext | undefined> {
-  if (!context?.teamId && !context?.userId) return context;
+/**
+ * Antes esta ruta confiaba en context.userId/context.teamId tal como
+ * llegaban en el body: cualquier usuario autenticado (con cualquier rol)
+ * podía leer tareas y proyectos de un equipo ajeno con solo mandar otro
+ * teamId, y registrar uso/adjuntos a nombre de otro userId. userId sale
+ * siempre del token; teamId solo se usa si el caller es miembro real.
+ */
+interface RawTaskSummaryRow {
+  title: string;
+  issue_number: number | null;
+  due_date: string | null;
+  status: { name: string | null; status_type: string | null } | { name: string | null; status_type: string | null }[] | null;
+  priority: { name: string | null } | { name: string | null }[] | null;
+}
+
+/**
+ * Sin generar Database types, supabase-js a veces infiere las relaciones
+ * embebidas (FK many-to-one) como arreglo aunque en runtime sea un objeto
+ * único; se normaliza aquí para no propagar ese ruido al tipo ARIATaskSummary.
+ */
+function normalizeTaskSummaries(rows: RawTaskSummaryRow[]): ARIATaskSummary[] {
+  return rows.map((row) => ({
+    title: row.title,
+    issue_number: row.issue_number ?? undefined,
+    due_date: row.due_date,
+    status: Array.isArray(row.status) ? (row.status[0] ?? null) : row.status,
+    priority: Array.isArray(row.priority) ? (row.priority[0] ?? null) : row.priority,
+  }));
+}
+
+async function verifyTeamMembership(userId: string, teamId: string): Promise<boolean> {
+  const { data } = await getSupabaseAdmin()
+    .from('team_members')
+    .select('member_id')
+    .eq('team_id', teamId)
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .maybeSingle();
+  return !!data;
+}
+
+async function enrichContext(requestedContext: ARIAContext | undefined, authenticatedUserId: string): Promise<ARIAContext | undefined> {
+  const context: ARIAContext = requestedContext
+    ? { ...requestedContext, userId: authenticatedUserId }
+    : { userId: authenticatedUserId };
+
+  if (context.teamId && !(await verifyTeamMembership(authenticatedUserId, context.teamId))) {
+    // No es miembro de ese equipo: se ignora el teamId en vez de filtrar
+    // datos de un equipo ajeno.
+    delete context.teamId;
+    delete context.teamName;
+  }
+
+  if (!context.teamId && !context.userId) return context;
 
   try {
     const supabase = getSupabaseAdmin();
@@ -38,7 +91,7 @@ async function enrichContext(context?: ARIAContext): Promise<ARIAContext | undef
         .limit(20);
 
       if (tasks) {
-        enriched.tasks = tasks;
+        enriched.tasks = normalizeTaskSummaries(tasks);
       }
 
       const { data: projects } = await supabase
@@ -62,7 +115,7 @@ async function enrichContext(context?: ARIAContext): Promise<ARIAContext | undef
         .limit(20);
 
       if (tasks) {
-        enriched.tasks = tasks;
+        enriched.tasks = normalizeTaskSummaries(tasks);
       }
     }
 
@@ -179,6 +232,9 @@ function logApproximateUsage(context: ARIAContext, messages: ChatMessage[], resp
 
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAuth(request);
+    if (!auth.ok) return auth.response;
+
     const body: ChatRequest = await request.json();
     const { messages, stream = true } = body;
 
@@ -193,7 +249,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const context = await enrichContext(body.context);
+    const context = await enrichContext(body.context, auth.payload.sub);
     await persistAttachments(messages, context);
 
     const systemPrompt = getARIASystemPrompt(context);

@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +10,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id: projectId } = await params;
 
     if (!projectId) {
@@ -19,7 +23,7 @@ export async function GET(
     const limit = parseInt(searchParams.get('limit') || '50');
     const status = searchParams.get('status');
 
-    let query = supabaseAdmin
+    const query = supabaseAdmin
       .from('task_issues')
       .select(`
         *,

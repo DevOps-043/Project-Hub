@@ -1,25 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 
 export const dynamic = 'force-dynamic';
+
+interface IssuePriorityRef {
+  level?: number | null;
+}
+
+interface ReportIssueRow {
+  issue_id: string;
+  title: string;
+  status_id: string | null;
+  priority_id: string | null;
+  assignee_id: string | null;
+  created_at: string;
+  completed_at: string | null;
+  due_date: string | null;
+  status: unknown;
+  priority: IssuePriorityRef | IssuePriorityRef[] | null;
+}
+
+function getPriorityLevel(priority: IssuePriorityRef | IssuePriorityRef[] | null): number | undefined {
+  const p = Array.isArray(priority) ? priority[0] : priority;
+  return p?.level ?? undefined;
+}
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token invalido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 });
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { workspace } = auth;
 
     const supabase = getSupabaseAdmin();
     const now = new Date();
@@ -52,7 +64,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const teamIds = (wsTeams || []).map(t => t.team_id);
 
     // Tasks scoped to workspace teams
-    let issues: any[] = [];
+    let issues: ReportIssueRow[] = [];
     if (teamIds.length > 0) {
       const { data } = await supabase
         .from('task_issues')
@@ -63,13 +75,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           priority:task_priorities(name, level)
         `)
         .in('team_id', teamIds);
-      issues = data || [];
+      issues = (data as unknown as ReportIssueRow[]) || [];
     }
 
     const completedIssues = issues.filter(i => i.completed_at !== null);
     const openIssues = issues.filter(i => i.completed_at === null);
-    const highPriorityIssues = issues.filter(i => (i.priority as any)?.level >= 3);
-    const urgentIssues = issues.filter(i => (i.priority as any)?.level === 4);
+    const highPriorityIssues = issues.filter(i => (getPriorityLevel(i.priority) ?? 0) >= 3);
+    const urgentIssues = issues.filter(i => getPriorityLevel(i.priority) === 4);
 
     const overdueIssues = issues.filter(i => {
       if (i.completed_at) return false;
@@ -99,7 +111,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .slice(0, 5)
       .map(([id]) => id);
 
-    let topContributors: any[] = [];
+    let topContributors: Array<{ user_id: string; name: string; completed: number }> = [];
     if (topContributorIds.length > 0) {
       const { data: users } = await supabase
         .from('account_users')
@@ -122,7 +134,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (completedThisMonth.length > 0) {
       const totalDays = completedThisMonth.reduce((sum, issue) => {
         const created = new Date(issue.created_at);
-        const completed = new Date(issue.completed_at);
+        const completed = new Date(issue.completed_at ?? issue.created_at);
         return sum + Math.ceil((completed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
       }, 0);
       avgCompletionTime = Math.round(totalDays / completedThisMonth.length);

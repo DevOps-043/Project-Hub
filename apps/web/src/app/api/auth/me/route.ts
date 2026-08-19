@@ -8,6 +8,7 @@ import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
 import { findSofiaUser } from '@/lib/auth/sofia-auth';
 import { getSofiaAdmin, isSofiaConfigured } from '@/lib/supabase/sofia-client';
+import { mapPermissionToRole } from '@/lib/auth/roles';
 
 export const runtime = 'nodejs';
 
@@ -40,7 +41,7 @@ const ACTIVITY_TOUCH_INTERVAL_MS = (
   Number.isFinite(configuredActivityTouchSeconds) ? configuredActivityTouchSeconds : 300
 ) * 1000;
 
-function shouldTouchActivity(lastActivityAt: string | null): boolean {
+export function shouldTouchActivity(lastActivityAt: string | null): boolean {
   if (!lastActivityAt) return true;
 
   const lastActivityTime = new Date(lastActivityAt).getTime();
@@ -155,7 +156,7 @@ export async function PATCH(request: NextRequest) {
       'avatar_url'
     ];
 
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
     let hasUpdates = false;
 
     for (const field of allowedFields) {
@@ -199,7 +200,7 @@ export async function PATCH(request: NextRequest) {
         }, { status: 500 });
       }
 
-      const sofiaUpdates: Record<string, any> = { updated_at: new Date().toISOString() };
+      const sofiaUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
       if (body.first_name !== undefined) sofiaUpdates.first_name = body.first_name;
       if (body.display_name !== undefined) sofiaUpdates.display_name = body.display_name;
@@ -252,7 +253,28 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-function mapUserResponse(user: any) {
+export interface AccountUserProfile {
+  user_id: string;
+  email: string;
+  username: string;
+  first_name: string;
+  last_name_paternal: string;
+  last_name_maternal: string | null;
+  display_name: string | null;
+  phone_number: string | null;
+  permission_level: string;
+  company_role: string | null;
+  department: string | null;
+  avatar_url: string | null;
+  is_email_verified: boolean;
+  timezone: string;
+  locale: string;
+  created_at: string;
+  updated_at: string;
+  last_activity_at: string | null;
+}
+
+export function mapUserResponse(user: AccountUserProfile) {
   return {
     id: user.user_id,
     email: user.email,
@@ -279,15 +301,3 @@ function mapUserResponse(user: any) {
   };
 }
 
-function mapPermissionToRole(level: string): 'admin' | 'user' | 'guest' {
-  switch (level) {
-    case 'super_admin':
-    case 'admin':
-      return 'admin';
-    case 'manager':
-    case 'user':
-      return 'user';
-    default:
-      return 'guest';
-  }
-}

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 
 type RouteParams = { params: Promise<{ slug: string; teamId: string; issueId: string }> };
 
@@ -10,19 +9,9 @@ type RouteParams = { params: Promise<{ slug: string; teamId: string; issueId: st
  */
 async function validateAccess(request: NextRequest, params: Promise<{ slug: string; teamId: string; issueId: string }>) {
   const { slug, teamId, issueId } = await params;
-  const token = request.cookies.get('accessToken')?.value ||
-                request.headers.get('authorization')?.replace('Bearer ', '');
-
-  if (!token) return { error: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) };
-
-  const payload = await verifyToken(token);
-  if (!payload) return { error: NextResponse.json({ error: 'Token inválido' }, { status: 401 }) };
-
-  const workspace = await getWorkspaceBySlug(slug);
-  if (!workspace) return { error: NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 }) };
-
-  const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-  if (!member) return { error: NextResponse.json({ error: 'Sin acceso al workspace' }, { status: 403 }) };
+  const auth = await requireWorkspaceMember(request, slug);
+  if (!auth.ok) return { error: auth.response };
+  const { payload, workspace, member } = auth;
 
   const supabase = getSupabaseAdmin();
 

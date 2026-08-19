@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { api } from '@/lib/api/client';
 
 interface FAQ {
     faq_id: string;
@@ -21,9 +22,10 @@ export default function FAQPage() {
     useEffect(() => {
         const fetchFaqs = async () => {
             try {
-                const res = await fetch('/api/faqs');
-                const data = await res.json();
-                setFaqs(data);
+                const { data, error } = await api.get<FAQ[]>('/api/faqs');
+                if (!error && data) {
+                    setFaqs(data);
+                }
             } catch (error) {
                 console.error('Failed to load FAQs');
             } finally {

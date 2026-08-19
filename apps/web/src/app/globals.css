@@ -1,6 +1,68 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  /* SOFIA Design System - Core Colors */
+  --color-sofia-primary: #0A2540;
+  --color-sofia-accent: #00D4B3;
+  --color-sofia-white: #FFFFFF;
+
+  /* Secondary Colors */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+
+  /* Grays */
+  --color-gray-50: #F9FAFB;
+  --color-gray-100: #F7F9FB;
+  --color-gray-200: #E9ECEF;
+  --color-gray-300: #DEE2E6;
+  --color-gray-400: #6C757D;
+  --color-gray-500: #495057;
+  --color-gray-600: #343A40;
+  --color-gray-700: #2D3748;
+  --color-gray-800: #1E2329;
+  --color-gray-900: #0A1633;
+
+  /* Dark Mode */
+  --color-dark-bg: #0F1419;
+  --color-dark-card: #1E2329;
+  --color-dark-tertiary: #0A0D12;
+
+  /* Font Families */
+  --font-sans: var(--font-system-ui), Arial, sans-serif;
+  --font-display: var(--font-system-display), Georgia, serif;
+  --font-label: var(--font-system-label), Arial, sans-serif;
+
+  /* Font Sizes */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.4;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.4;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 1.3;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 1.2;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 1.2;
+
+  /* Spacing additions */
+  --spacing-18: 4.5rem;
+  --spacing-22: 5.5rem;
+
+  /* Box Shadows (brand-tinted, override defaults for every key used) */
+  --shadow-sm: 0 1px 2px rgba(10, 37, 64, 0.05);
+  --shadow: 0 2px 8px rgba(10, 37, 64, 0.08);
+  --shadow-md: 0 4px 16px rgba(10, 37, 64, 0.1);
+  --shadow-lg: 0 8px 24px rgba(10, 37, 64, 0.12);
+  --shadow-xl: 0 16px 48px rgba(10, 37, 64, 0.16);
+  --shadow-2xl: 0 25px 50px -12px rgba(10, 37, 64, 0.25);
+}
 
 :root {
   /* ============================================

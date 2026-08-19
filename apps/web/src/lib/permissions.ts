@@ -9,7 +9,7 @@
  * - member:  Miembro regular (mapeado desde SOFIA member)
  */
 
-export type IrisRole = 'owner' | 'admin' | 'manager' | 'leader' | 'member';
+export type WorkspaceRole = 'owner' | 'admin' | 'manager' | 'leader' | 'member';
 
 export interface WorkspacePermissions {
   manageWorkspace: boolean;
@@ -20,7 +20,7 @@ export interface WorkspacePermissions {
   viewAnalytics: boolean;
 }
 
-export const ROLE_PERMISSIONS: Record<IrisRole, WorkspacePermissions> = {
+export const ROLE_PERMISSIONS: Record<WorkspaceRole, WorkspacePermissions> = {
   owner:   { manageWorkspace: true,  manageMembers: true,  manageRoles: true,  manageProjects: true,  manageTeams: true,  viewAnalytics: true  },
   admin:   { manageWorkspace: false, manageMembers: true,  manageRoles: true,  manageProjects: true,  manageTeams: true,  viewAnalytics: true  },
   manager: { manageWorkspace: false, manageMembers: true,  manageRoles: false, manageProjects: true,  manageTeams: true,  viewAnalytics: true  },
@@ -28,7 +28,7 @@ export const ROLE_PERMISSIONS: Record<IrisRole, WorkspacePermissions> = {
   member:  { manageWorkspace: false, manageMembers: false, manageRoles: false, manageProjects: false, manageTeams: false, viewAnalytics: false },
 };
 
-const ROLE_HIERARCHY: Record<IrisRole, number> = {
+const ROLE_HIERARCHY: Record<WorkspaceRole, number> = {
   owner: 5,
   admin: 4,
   manager: 3,
@@ -39,21 +39,21 @@ const ROLE_HIERARCHY: Record<IrisRole, number> = {
 /**
  * Verifica si un rol tiene un nivel mínimo requerido
  */
-export function hasMinRole(currentRole: IrisRole, minRole: IrisRole): boolean {
+export function hasMinRole(currentRole: WorkspaceRole, minRole: WorkspaceRole): boolean {
   return (ROLE_HIERARCHY[currentRole] || 0) >= (ROLE_HIERARCHY[minRole] || 0);
 }
 
 /**
  * Obtiene los permisos para un rol
  */
-export function getPermissions(role: IrisRole): WorkspacePermissions {
+export function getPermissions(role: WorkspaceRole): WorkspacePermissions {
   return ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.member;
 }
 
 /**
  * Verifica un permiso específico para un rol
  */
-export function hasPermission(role: IrisRole, permission: keyof WorkspacePermissions): boolean {
+export function hasPermission(role: WorkspaceRole, permission: keyof WorkspacePermissions): boolean {
   const perms = ROLE_PERMISSIONS[role];
   return perms ? perms[permission] : false;
 }

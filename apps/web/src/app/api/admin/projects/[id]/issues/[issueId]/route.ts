@@ -1,8 +1,33 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
+
+interface IssueLabelJoinRow {
+  label: { label_id: string; name: string; color: string } | null;
+}
+
+interface IssueHistoryRow {
+  history_id: string;
+  field_name: string;
+  old_value: string | null;
+  new_value: string | null;
+  created_at: string;
+  actor_id: string;
+}
+
+interface IssueCommentRow {
+  comment_id: string;
+  body: string;
+  created_at: string;
+  author_id: string;
+}
+
+interface TeamMemberUserJoinRow {
+  user: { user_id: string; display_name: string | null; first_name: string; avatar_url: string | null } | null;
+}
 
 // GET - Get single issue details
 export async function GET(
@@ -10,6 +35,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string; issueId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id: projectId, issueId } = await params;
 
     if (!projectId || !issueId) {
@@ -81,7 +109,7 @@ export async function GET(
       .select('label:task_labels(label_id, name, color)')
       .eq('issue_id', issueId);
 
-    const labels = labelData?.map((l: any) => l.label).filter(Boolean) || [];
+    const labels = (labelData as unknown as IssueLabelJoinRow[] | null)?.map((l) => l.label).filter(Boolean) || [];
 
     // Get activity/history for this issue - simplified query
     const { data: history } = await supabaseAdmin
@@ -109,21 +137,21 @@ export async function GET(
         created_at: issue.created_at
       },
       // History items
-      ...(history || []).map((h: any) => ({
+      ...(history || []).map((h: IssueHistoryRow) => ({
         id: h.history_id,
         type: 'history',
         field_name: h.field_name,
         old_value: h.old_value,
         new_value: h.new_value,
-        actor: h.actor,
+        actor: undefined as unknown,
         created_at: h.created_at
       })),
       // Comments
-      ...(comments || []).map((c: any) => ({
+      ...(comments || []).map((c: IssueCommentRow) => ({
         id: c.comment_id,
         type: 'comment',
         body: c.body,
-        actor: c.author,
+        actor: undefined as unknown,
         created_at: c.created_at
       }))
     ].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -153,7 +181,7 @@ export async function GET(
       team,
       statuses: statusRes.data || [],
       priorities: priorityRes.data || [],
-      members: memberRes.data?.map((m: any) => m.user).filter(Boolean) || [],
+      members: (memberRes.data as unknown as TeamMemberUserJoinRow[] | null)?.map((m) => m.user).filter(Boolean) || [],
       labelOptions: labelOptionsRes.data || []
     });
 
@@ -169,6 +197,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; issueId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { id: projectId, issueId } = await params;
     const body = await request.json();
 
@@ -193,7 +224,7 @@ export async function PATCH(
       'assignee_id', 'due_date', 'estimate_points'
     ];
 
-    const updateData: any = { updated_at: new Date().toISOString() };
+    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {

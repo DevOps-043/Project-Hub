@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth/jwt';
+import { signOAuthState } from '@/lib/auth/oauth-state';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/callback/google';
@@ -30,27 +31,7 @@ function normalizeReturnUrl(returnUrl: unknown): string {
 }
 
 async function buildGoogleAuthUrl(userId: string, returnUrl: string): Promise<string> {
-  // State anti-CSRF: userId + returnUrl codificados y firmados con HMAC
-  const stateData = JSON.stringify({
-    userId,
-    returnUrl,
-    timestamp: Date.now(),
-  });
-  const stateB64 = Buffer.from(stateData).toString('base64url');
-
-  // Firmar el state con HMAC-SHA256
-  const secret = process.env.JWT_SECRET || 'iris-super-secret-key-change-in-production';
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(stateB64));
-  const sigB64 = Buffer.from(signature).toString('base64url');
-  const state = `${stateB64}.${sigB64}`;
+  const state = await signOAuthState(userId, returnUrl);
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);

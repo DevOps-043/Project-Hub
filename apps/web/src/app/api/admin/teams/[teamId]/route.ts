@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 // GET single team with members
 export async function GET(
@@ -7,6 +8,9 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { teamId } = await params;
     const supabase = getSupabaseAdmin();
 
@@ -76,6 +80,9 @@ export async function PUT(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { teamId } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
@@ -117,6 +124,9 @@ export async function DELETE(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { teamId } = await params;
     const supabase = getSupabaseAdmin();
 

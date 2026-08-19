@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
+import { api } from '@/lib/api/client';
 
 interface User {
   id: string; // user_id
@@ -42,23 +43,33 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch users for search
-  useEffect(() => {
-    if (isOpen) {
-      fetchUsers();
-    }
-  }, [isOpen]);
-
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/users');
-      if (res.ok) {
-        const data = await res.json();
-        const userList = data.users || [];
+      const { data, error: apiError } = await api.get<{
+        users: Array<{
+          user_id?: string;
+          id?: string;
+          display_name?: string;
+          email: string;
+          avatar_url?: string;
+          first_name?: string;
+          last_name_paternal?: string;
+        }>;
+      }>('/api/admin/users');
+      if (!apiError && data) {
+        const userList: Array<{
+          user_id?: string;
+          id?: string;
+          display_name?: string;
+          email: string;
+          avatar_url?: string;
+          first_name?: string;
+          last_name_paternal?: string;
+        }> = data.users || [];
         // Mapear si es necesario para ajustar al tipo User
-        setUsers(userList.map((u: any) => ({
-            id: u.user_id || u.id,
+        setUsers(userList.map((u) => ({
+            id: u.user_id || u.id || '',
             display_name: u.display_name,
             email: u.email,
             avatar_url: u.avatar_url,
@@ -75,6 +86,13 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
     }
   };
 
+  // Fetch users for search
+  useEffect(() => {
+    if (isOpen) {
+      fetchUsers();
+    }
+  }, [isOpen]);
+
   const filteredUsers = users.filter(user => {
       const searchLower = searchQuery.toLowerCase();
       const name = (user.display_name || user.first_name || '').toLowerCase();
@@ -89,18 +107,13 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
     setError(null);
 
     try {
-      const res = await fetch(`/api/admin/teams/${teamId}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: selectedUser.id,
-          role: selectedRole
-        })
+      const { error: apiError } = await api.post(`/api/admin/teams/${teamId}/members`, {
+        user_id: selectedUser.id,
+        role: selectedRole
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error al añadir miembro');
+      if (apiError) {
+        throw new Error(apiError || 'Error al añadir miembro');
       }
 
       onSuccess?.();
@@ -304,7 +317,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
                                         className="w-full flex items-center gap-3 p-3 text-left transition-colors hover:bg-white/5"
                                     >
                                         <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-500/20 text-xs font-bold">
-                                            {user.avatar_url ? <img src={user.avatar_url} className="w-full h-full rounded-full" /> : (user.first_name?.[0] || 'U')}
+                                            {user.avatar_url ? <img src={user.avatar_url} alt={user.display_name || user.first_name || 'Avatar'} className="w-full h-full rounded-full" /> : (user.first_name?.[0] || 'U')}
                                         </div>
                                         <div>
                                             <div className="text-sm font-medium" style={{ color: isDark ? 'white' : '#111827' }}>
@@ -327,7 +340,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
                 {selectedUser && (
                     <div className="mb-8 p-3 rounded-xl flex items-center gap-3 border" style={{ borderColor: `${accentColor}40`, backgroundColor: `${accentColor}10` }}>
                          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 text-sm font-bold">
-                            {selectedUser.avatar_url ? <img src={selectedUser.avatar_url} className="w-full h-full rounded-full" /> : (selectedUser.first_name?.[0] || 'U')}
+                            {selectedUser.avatar_url ? <img src={selectedUser.avatar_url} alt={selectedUser.display_name || selectedUser.first_name || 'Avatar'} className="w-full h-full rounded-full" /> : (selectedUser.first_name?.[0] || 'U')}
                         </div>
                         <div className="flex-1">
                             <div className="text-sm font-bold" style={{ color: isDark ? 'white' : '#111827' }}>

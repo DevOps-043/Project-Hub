@@ -1,16 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Usar Service Role para analíticas globales de admin
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
 
 export const dynamic = 'force-dynamic';
 
+interface StatusMapEntry {
+  status_id: string;
+  status_type: string;
+  name: string;
+  color: string;
+}
+
+interface AriaUsageLogRow {
+  tokens_total: number | null;
+  user_id: string;
+  created_at: string;
+}
+
+interface LeaderboardUser {
+  full_name: string;
+  email: string;
+  avatar_url?: string | null;
+  id?: string;
+}
+
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { searchParams } = new URL(request.url);
     const teamId = searchParams.get('teamId');
 
@@ -20,7 +38,7 @@ export async function GET(request: NextRequest) {
     
     // 2. Statuses Mapping
     const { data: statuses } = await supabaseAdmin.from('task_statuses').select('status_id, status_type, name, color');
-    const statusMap = (statuses || []).reduce((acc: any, s) => {
+    const statusMap = (statuses || []).reduce((acc: Record<string, StatusMapEntry>, s) => {
         acc[s.status_id] = s;
         return acc;
     }, {});
@@ -39,7 +57,7 @@ export async function GET(request: NextRequest) {
     const { data: projects } = await projectsQuery;
 
     // 4. AI Usage (Recuperar o inicializar vacío)
-    let ariaData: any[] = [];
+    let ariaData: AriaUsageLogRow[] = [];
     try {
         const { data } = await supabaseAdmin.from('aria_usage_logs')
             .select('tokens_total, user_id, created_at')
@@ -108,7 +126,7 @@ export async function GET(request: NextRequest) {
     // --- PROCESAMIENTO REAL ---
     
     // A) Distribución de Tareas
-    const taskStatusCounts = (tasks || []).reduce((acc: any, t) => {
+    const taskStatusCounts = (tasks || []).reduce((acc: Record<string, number>, t) => {
         const type = statusMap[t.status_id]?.status_type || 'backlog';
         acc[type] = (acc[type] || 0) + 1;
         return acc;
@@ -157,7 +175,7 @@ export async function GET(request: NextRequest) {
     // Necesitamos nombres de usuarios para el leaderboard
     // Hacemos fetch de users únicos
     const userIds = Object.keys(userTaskCounts);
-    let usersMap: Record<string, any> = {};
+    const usersMap: Record<string, LeaderboardUser> = {};
     if (userIds.length > 0) {
         const { data: users } = await supabaseAdmin.from('users').select('id, full_name, email, avatar_url').in('id', userIds);
         if (users) {
@@ -210,8 +228,9 @@ export async function GET(request: NextRequest) {
         ariaUsage: tokenChartData
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Analytics Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

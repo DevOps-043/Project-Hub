@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { api } from '@/lib/api/client';
 import MermaidBlock from '@/components/diagrams/MermaidBlock';
 
 const DIAGRAM_TYPES = ['auto', 'flowchart', 'sequence', 'class', 'er', 'state', 'gantt'] as const;
@@ -25,15 +26,13 @@ export default function DiagramGeneratorTool() {
     setCode('');
 
     try {
-      const res = await fetch('/api/ai/diagram-generator', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, type: diagramType }),
+      const { data, error } = await api.post<{ code?: string }>('/api/ai/diagram-generator', {
+        prompt,
+        type: diagramType,
       });
-      const data = await res.json();
 
-      if (!res.ok || !data.code?.trim()) {
-        setError(data.error || 'No se pudo generar el diagrama.');
+      if (error || !data?.code?.trim()) {
+        setError(error || 'No se pudo generar el diagrama.');
         return;
       }
 

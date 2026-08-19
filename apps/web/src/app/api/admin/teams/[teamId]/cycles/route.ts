@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
+import { sanitizeFilterIdentifier } from '@/lib/http/sanitize';
+import { computeCycleStats } from '@/lib/services/cycle-service';
+import { isUuid } from '@/lib/http/validation';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +13,9 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     let { teamId } = await params;
 
     if (!teamId) {
@@ -16,12 +23,12 @@ export async function GET(
     }
 
     // RESOLUCIÓN DE TEAM ID (UUID o Slug)
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    const isUUID = isUuid(teamId);
     if (!isUUID) {
        const { data: teamData } = await supabaseAdmin
          .from('teams')
          .select('team_id')
-         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .or(`slug.eq.${sanitizeFilterIdentifier(teamId)},name.eq.${sanitizeFilterIdentifier(teamId)}`)
          .single();
        if (teamData) teamId = teamData.team_id;
     }
@@ -31,41 +38,28 @@ export async function GET(
       .from('task_cycles')
       .select('*')
       .eq('team_id', teamId)
-      .order('number', { ascending: false });
+      .order('cycle_number', { ascending: false });
 
     if (error) {
       console.error('Error fetching cycles:', error);
       return NextResponse.json({ error: 'Failed to fetch cycles' }, { status: 500 });
     }
 
-    // Get issue counts for each cycle
-    const cyclesWithStats = await Promise.all(
-      (cycles || []).map(async (cycle) => {
-        // Get total issues in cycle
-        const { count: totalCount } = await supabaseAdmin
-          .from('task_issues')
-          .select('*', { count: 'exact', head: true })
-          .eq('cycle_id', cycle.cycle_id);
+    // Una sola query batched para todos los ciclos (antes: 2 queries por
+    // ciclo, 2N+1 en total). La agregación vive en lib/services/cycle-service
+    // para poder probarla sin mockear Supabase.
+    const cycleIds = (cycles || []).map((cycle) => cycle.cycle_id);
+    let issues: { cycle_id: string; completed_at: string | null }[] = [];
 
-        // Get completed issues (issues with status_type = 'done')
-        const { data: completedIssues } = await supabaseAdmin
-          .from('task_issues')
-          .select('issue_id, status:task_statuses!inner(status_type)')
-          .eq('cycle_id', cycle.cycle_id)
-          .not('completed_at', 'is', null);
+    if (cycleIds.length > 0) {
+      const { data } = await supabaseAdmin
+        .from('task_issues')
+        .select('cycle_id, completed_at')
+        .in('cycle_id', cycleIds);
+      issues = data || [];
+    }
 
-        const completedCount = completedIssues?.length || 0;
-        const scopeCount = totalCount || 0;
-        const progressPercent = scopeCount > 0 ? Math.round((completedCount / scopeCount) * 100) : 0;
-
-        return {
-          ...cycle,
-          scope_count: scopeCount,
-          completed_count: completedCount,
-          progress_percent: progressPercent
-        };
-      })
-    );
+    const cyclesWithStats = computeCycleStats(cycles || [], issues);
 
     return NextResponse.json({ cycles: cyclesWithStats });
 
@@ -81,6 +75,9 @@ export async function POST(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const { teamId } = await params;
     const body = await request.json();
 
@@ -99,13 +96,13 @@ export async function POST(
     // Get the next cycle number for this team
     const { data: lastCycle } = await supabaseAdmin
       .from('task_cycles')
-      .select('number')
+      .select('cycle_number')
       .eq('team_id', teamId)
-      .order('number', { ascending: false })
+      .order('cycle_number', { ascending: false })
       .limit(1)
       .single();
 
-    const nextCycleNumber = (lastCycle?.number || 0) + 1;
+    const nextCycleNumber = (lastCycle?.cycle_number || 0) + 1;
 
     // Determine status based on dates
     const today = new Date();
@@ -124,7 +121,7 @@ export async function POST(
       .from('task_cycles')
       .insert({
         team_id: teamId,
-        number: nextCycleNumber,
+        cycle_number: nextCycleNumber,
         name: name || `Cycle ${nextCycleNumber}`,
         description: description || null,
         start_date,

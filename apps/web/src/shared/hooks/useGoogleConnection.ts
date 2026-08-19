@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { api } from '@/lib/api/client';
 
 interface GoogleConnectionState {
   isConnected: boolean;
@@ -17,18 +18,12 @@ export async function startGoogleConnection(returnUrl?: string): Promise<void> {
     throw new Error('Sesion no disponible. Inicia sesion nuevamente.');
   }
 
-  const res = await fetch('/api/auth/google/connect', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ returnUrl: returnUrl || window.location.pathname }),
+  const { data, error } = await api.post<{ url?: string }>('/api/auth/google/connect', {
+    returnUrl: returnUrl || window.location.pathname,
   });
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.url) {
-    throw new Error(data.error || 'No se pudo iniciar la conexion con Google');
+  if (error || !data?.url) {
+    throw new Error(error || 'No se pudo iniciar la conexion con Google');
   }
 
   window.location.href = data.url;
@@ -51,17 +46,13 @@ export function useGoogleConnection() {
   const checkStatus = useCallback(async () => {
     try {
       setState(prev => ({ ...prev, isLoading: true }));
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/auth/google/status', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const { data, error } = await api.get<{ connected: boolean; email?: string; displayName?: string; avatarUrl?: string; scopes?: string[] }>('/api/auth/google/status');
 
-      if (!res.ok) {
+      if (error || !data) {
         setState(prev => ({ ...prev, isConnected: false, isLoading: false }));
         return;
       }
 
-      const data = await res.json();
       setState({
         isConnected: data.connected,
         isLoading: false,
@@ -101,13 +92,9 @@ export function useGoogleConnection() {
 
   const disconnect = useCallback(async () => {
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch('/api/auth/google/disconnect', {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const { error } = await api.delete('/api/auth/google/disconnect');
 
-      if (res.ok) {
+      if (!error) {
         setState({
           isConnected: false,
           isLoading: false,

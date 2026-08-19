@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import { Users, Search, Loader2 } from 'lucide-react';
 
 interface Team {
@@ -37,14 +38,10 @@ export default function MemberTeamsPage() {
   const fetchTeams = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('accessToken');
       const params = new URLSearchParams({ limit: '50' });
       if (search) params.append('search', search);
-      const res = await fetch(`/api/workspaces/${workspace.slug}/teams?${params}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const data = await res.json();
-      if (res.ok) {
+      const { data, error } = await api.get<{ teams?: Team[] }>(`/api/workspaces/${workspace.slug}/teams?${params}`);
+      if (!error && data) {
         setTeams(data.teams || []);
       }
     } catch (e) {

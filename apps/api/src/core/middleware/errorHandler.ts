@@ -57,7 +57,7 @@ export const errorHandler = (
             error: {
                 message: 'Error de validación',
                 code: 'VALIDATION_ERROR',
-                details: (err as any).errors,
+                details: (err as any).issues,
             },
         });
         return;

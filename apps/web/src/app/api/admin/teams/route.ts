@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { requireAdmin } from '@/lib/auth/require-role';
+import { sanitizeSearchTerm } from '@/lib/http/sanitize';
 
 // GET all teams with member count
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
-    
+
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
-    const search = searchParams.get('search') || '';
+    const search = sanitizeSearchTerm(searchParams.get('search') || '');
     const status = searchParams.get('status') || '';
     
     const offset = (page - 1) * limit;
@@ -81,6 +86,9 @@ export async function GET(request: NextRequest) {
 // POST create new team
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 

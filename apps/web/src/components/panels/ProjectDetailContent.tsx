@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { useWorkspace, getPanelPathForRole } from '@/contexts/WorkspaceContext';
+import { api } from '@/lib/api/client';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DescriptionRenderer from '@/components/diagrams/DescriptionRenderer';
@@ -104,19 +105,17 @@ export function ProjectDetailContent() {
     const fetchProject = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('accessToken');
-        const res = await fetch(`/api/workspaces/${orgSlug}/projects/${projectId}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        const { data, error, status } = await api.get<{ project: ProjectDetail; progress: Progress }>(
+          `/api/workspaces/${orgSlug}/projects/${projectId}`
+        );
 
-        if (!res.ok) {
-          if (res.status === 403) setError('Sin acceso a este proyecto');
-          else if (res.status === 404) setError('Proyecto no encontrado');
+        if (error || !data) {
+          if (status === 403) setError('Sin acceso a este proyecto');
+          else if (status === 404) setError('Proyecto no encontrado');
           else setError('Error al cargar el proyecto');
           return;
         }
 
-        const data = await res.json();
         setProject(data.project);
         setProgress(data.progress);
       } catch {
@@ -132,19 +131,15 @@ export function ProjectDetailContent() {
   useEffect(() => {
     const fetchOptions = async () => {
       try {
-        const token = localStorage.getItem('accessToken');
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const [usersRes, teamsRes] = await Promise.all([
-          fetch(`/api/workspaces/${orgSlug}/members?limit=100`, { headers }),
-          fetch(`/api/workspaces/${orgSlug}/teams?limit=50`, { headers })
+          api.get<{ users?: any[] }>(`/api/workspaces/${orgSlug}/members?limit=100`),
+          api.get<{ teams?: any[] }>(`/api/workspaces/${orgSlug}/teams?limit=50`)
         ]);
-        if (usersRes.ok) {
-          const data = await usersRes.json();
-          setUsers(data.users || []);
+        if (!usersRes.error && usersRes.data) {
+          setUsers(usersRes.data.users || []);
         }
-        if (teamsRes.ok) {
-          const data = await teamsRes.json();
-          setTeams(data.teams || []);
+        if (!teamsRes.error && teamsRes.data) {
+          setTeams(teamsRes.data.teams || []);
         }
       } catch (e) {
         console.error('Error fetching options:', e);
@@ -153,27 +148,20 @@ export function ProjectDetailContent() {
     if (orgSlug) fetchOptions();
   }, [orgSlug]);
 
-  const updateProject = async (field: string, value: any) => {
+  const updateProject = async (field: string, value: string) => {
     if (!project) return;
 
     setSaving(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const res = await fetch(`/api/workspaces/${orgSlug}/projects/${project.project_id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ [field]: value })
-      });
+      const { data, error } = await api.patch<{ project: Partial<ProjectDetail> }>(
+        `/api/workspaces/${orgSlug}/projects/${project.project_id}`,
+        { [field]: value }
+      );
 
-      const data = await res.json();
-
-      if (res.ok) {
+      if (!error && data) {
         setProject(prev => prev ? { ...prev, ...data.project } : null);
       } else {
-        alert(data.error || 'Error al actualizar');
+        alert(error || 'Error al actualizar');
       }
     } catch (error) {
       console.error('Error updating project:', error);
@@ -216,6 +204,9 @@ export function ProjectDetailContent() {
   const status = STATUS_LABELS[project.project_status] || { label: project.project_status, color: '#6B7280' };
   const priority = PRIORITY_LABELS[project.priority_level] || { label: project.priority_level, color: '#9CA3AF' };
   const sheetsTemplateId = (workspace?.settings as Record<string, unknown>)?.google_sheets_template_id as string | undefined;
+  const projectResources = Array.isArray(project.metadata?.resources)
+    ? (project.metadata.resources as Array<{ title: string; url: string; type: string }>)
+    : [];
 
   return (
     <div className="max-w-6xl mx-auto animate-fadeIn">
@@ -328,11 +319,11 @@ export function ProjectDetailContent() {
                 )}
 
                 {/* Resources from metadata */}
-                {project.metadata && Array.isArray((project.metadata as any).resources) && (project.metadata as any).resources.length > 0 && (
+                {projectResources.length > 0 && (
                   <div className={`rounded-xl border p-6 ${bgCard} ${borderMain}`}>
                     <h3 className={`text-sm font-semibold mb-3 ${textMain}`}>Recursos</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {((project.metadata as any).resources as Array<{ title: string; url: string; type: string }>).map((r, i) => (
+                      {projectResources.map((r, i) => (
                         <a
                           key={i}
                           href={r.url}
@@ -481,15 +472,15 @@ export function ProjectDetailContent() {
                 {project.milestones.map((m) => (
                   <div key={m.milestone_id} className="flex items-center gap-2">
                     {m.milestone_status === 'completed' ? (
-                      <CheckCircle2 size={14} className="text-green-500 flex-shrink-0" />
+                      <CheckCircle2 size={14} className="text-green-500 shrink-0" />
                     ) : (
-                      <Circle size={14} className={`flex-shrink-0 ${textSub}`} />
+                      <Circle size={14} className={`shrink-0 ${textSub}`} />
                     )}
                     <span className={`text-xs truncate ${m.milestone_status === 'completed' ? 'line-through opacity-60' : ''} ${textMain}`}>
                       {m.milestone_name}
                     </span>
                     {m.due_date && (
-                      <span className={`text-[10px] ml-auto flex-shrink-0 ${textSub}`}>
+                      <span className={`text-[10px] ml-auto shrink-0 ${textSub}`}>
                         {format(new Date(m.due_date), 'd MMM', { locale: es })}
                       </span>
                     )}

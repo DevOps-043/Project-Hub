@@ -1,13 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
-import { getWorkspaceBySlug, getUserWorkspaceRole } from '@/lib/services/workspace-service';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 import { parsePagination } from '@/lib/http/query';
+import { sanitizeSearchTerm } from '@/lib/http/sanitize';
 
-async function enrichProjectsWithIssueProgress(supabase: any, rawProjects: any[]) {
+type SupabaseAdminClient = ReturnType<typeof getSupabaseAdmin>;
+
+interface RawProject {
+  project_id: string;
+  project_key: string;
+  project_name: string;
+  project_description: string | null;
+  icon_name: string;
+  icon_color: string;
+  project_status: string;
+  health_status: string | null;
+  priority_level: string;
+  completion_percentage: number | null;
+  start_date: string | null;
+  target_date: string | null;
+  created_at: string;
+  lead_user_id: string | null;
+  lead: { first_name: string; last_name_paternal: string; display_name: string | null; avatar_url: string | null } | null;
+  team: { name: string; color: string } | null;
+}
+
+interface IssueProgressRow {
+  project_id: string;
+  status_id: string;
+  task_statuses: { status_type: string } | null;
+}
+
+async function enrichProjectsWithIssueProgress(supabase: SupabaseAdminClient, rawProjects: RawProject[]) {
   if (rawProjects.length === 0) return [];
 
-  const projectIds = rawProjects.map((p: any) => p.project_id);
+  const projectIds = rawProjects.map((p) => p.project_id);
 
   // Batch query: get all issues for these projects with their status info
   const { data: allIssues } = await supabase
@@ -16,18 +43,18 @@ async function enrichProjectsWithIssueProgress(supabase: any, rawProjects: any[]
     .in('project_id', projectIds);
 
   // Group by project_id and calculate completion
-  const issuesByProject: Record<string, any[]> = {};
-  for (const issue of (allIssues || [])) {
+  const issuesByProject: Record<string, IssueProgressRow[]> = {};
+  for (const issue of ((allIssues || []) as unknown as IssueProgressRow[])) {
     const pid = issue.project_id;
     if (!issuesByProject[pid]) issuesByProject[pid] = [];
     issuesByProject[pid].push(issue);
   }
 
-  const projects = rawProjects.map((p: any) => {
+  const projects = rawProjects.map((p) => {
     const issues = issuesByProject[p.project_id] || [];
     const total = issues.length;
-    const done = issues.filter((i: any) => i.task_statuses?.status_type === 'done').length;
-    const cancelled = issues.filter((i: any) => i.task_statuses?.status_type === 'cancelled').length;
+    const done = issues.filter((i) => i.task_statuses?.status_type === 'done').length;
+    const cancelled = issues.filter((i) => i.task_statuses?.status_type === 'cancelled').length;
     const effectiveTotal = total - cancelled;
     const pct = effectiveTotal > 0 ? Math.round((done / effectiveTotal) * 100) : (p.completion_percentage || 0);
 
@@ -62,22 +89,13 @@ async function enrichProjectsWithIssueProgress(supabase: any, rawProjects: any[]
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 });
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { payload, workspace, member } = auth;
 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search') || '';
+    const search = sanitizeSearchTerm(searchParams.get('search') || '');
     const { limit, offset } = parsePagination(searchParams, {
       defaultLimit: 50,
       maxLimit: 100,
@@ -93,14 +111,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .select('team_id')
         .eq('user_id', payload.sub)
         .eq('is_active', true);
-      const userTeamIds = (userTeams || []).map((t: any) => t.team_id);
+      const userTeamIds = (userTeams || []).map((t) => t.team_id);
 
       // Get user's direct project memberships
       const { data: userProjects } = await supabase
         .from('pm_project_members')
         .select('project_id')
         .eq('user_id', payload.sub);
-      const userProjectIds = (userProjects || []).map((p: any) => p.project_id);
+      const userProjectIds = (userProjects || []).map((p) => p.project_id);
 
       // Build OR filter: projects in my teams OR direct member OR lead OR creator
       const orFilters: string[] = [];
@@ -165,18 +183,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { payload, workspace, member } = auth;
 
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const member = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!member || !['owner', 'admin', 'manager', 'leader'].includes(member.iris_role)) {
+    if (!['owner', 'admin', 'manager', 'leader'].includes(member.iris_role)) {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 });
     }
 

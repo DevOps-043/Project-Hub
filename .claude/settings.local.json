@@ -15,7 +15,9 @@
       "Bash(xargs grep -l \"accordion\\\\|Accordion\\\\|collapsible\\\\|Collapsible\")",
       "Bash(ls -la \"/c/Users/fysg5/OneDrive/Escritorio/Pulse Hub/Project Hub/Project-Hub/apps/web/src/app/admin/projects/\"*/)",
       "Bash(xargs ls -la)",
-      "Bash(npx next lint --file apps/web/src/app/admin/teams/[teamId]/tasks/[issueId]/page.tsx)"
+      "Bash(npx next lint --file apps/web/src/app/admin/teams/[teamId]/tasks/[issueId]/page.tsx)",
+      "Bash(npm view *)",
+      "Bash(node -e ' *)"
     ]
   }
 }

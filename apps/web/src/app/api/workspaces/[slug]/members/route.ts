@@ -1,18 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getWorkspaceBySlug,
   getUserWorkspaceRole,
   getWorkspaceMembersPage,
   syncAllOrgMembers,
   updateMemberRole,
 } from '@/lib/services/workspace-service';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireWorkspaceMember } from '@/lib/auth/require-role';
 import { parsePagination } from '@/lib/http/query';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
+import type { WorkspaceMemberWithAccount } from '@/lib/services/workspace-service';
 
 const ALLOWED_ROLES = ['owner', 'admin', 'manager', 'leader', 'member'] as const;
 const ROLES_THAT_CAN_EDIT = ['owner', 'admin'];
 const ALLOWED_STATUSES = ['active', 'inactive', 'suspended', 'pending_verification'] as const;
+
+interface WorkspaceProjectSummary {
+  project_id: string;
+  project_name: string;
+  project_key: string;
+  project_status: string;
+  completion_percentage: number | null;
+  icon_color: string | null;
+}
+
+interface ProjectMembershipRow {
+  user_id: string;
+  project_id: string;
+  project_role: string;
+}
+
+interface AssignedTaskRow {
+  assignee_id: string;
+  project_id: string;
+  status: { status_type: string } | { status_type: string }[] | null;
+}
+
+function taskStatusType(task: AssignedTaskRow): string | undefined {
+  return Array.isArray(task.status) ? task.status[0]?.status_type : task.status?.status_type;
+}
 
 function cleanOptionalText(value: unknown, maxLength: number): string | null | undefined {
   if (value === undefined) return undefined;
@@ -25,19 +50,9 @@ function cleanOptionalText(value: unknown, maxLength: number): string | null | u
 export async function GET(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
-
-    const userMember = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!userMember) return NextResponse.json({ error: 'Sin acceso' }, { status: 403 });
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { workspace, member: userMember } = auth;
 
     const forceSync = request.nextUrl.searchParams.get('sync') === 'true';
     const includeStats = request.nextUrl.searchParams.get('includeStats') === 'true';
@@ -59,12 +74,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       memberPage = await getWorkspaceMembersPage(workspace.workspace_id, { limit, offset });
     }
 
-    let workspaceProjects: any[] = [];
-    let projectMemberships: any[] = [];
-    let assignedTasks: any[] = [];
+    let workspaceProjects: WorkspaceProjectSummary[] = [];
+    let projectMemberships: ProjectMembershipRow[] = [];
+    let assignedTasks: AssignedTaskRow[] = [];
 
     if (includeStats) {
-      const userIds = memberPage.members.map((member: any) => member.user_id);
+      const userIds = memberPage.members.map((member) => member.user_id);
       const supabase = getSupabaseAdmin();
       const { data } = await supabase
         .from('pm_projects')
@@ -72,8 +87,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .eq('workspace_id', workspace.workspace_id)
         .is('archived_at', null);
 
-      workspaceProjects = data || [];
-      const projectIds = workspaceProjects.map((project: any) => project.project_id);
+      workspaceProjects = (data || []) as WorkspaceProjectSummary[];
+      const projectIds = workspaceProjects.map((project) => project.project_id);
 
       if (userIds.length > 0 && projectIds.length > 0) {
         const [membershipsResult, tasksResult] = await Promise.all([
@@ -90,21 +105,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             .is('archived_at', null),
         ]);
 
-        projectMemberships = membershipsResult.data || [];
-        assignedTasks = tasksResult.data || [];
+        projectMemberships = (membershipsResult.data || []) as ProjectMembershipRow[];
+        assignedTasks = (tasksResult.data || []) as unknown as AssignedTaskRow[];
       }
     }
 
-    const projectById = new Map(workspaceProjects.map((project: any) => [project.project_id, project]));
+    const projectById = new Map(workspaceProjects.map((project) => [project.project_id, project]));
 
-    const transformedMembers = memberPage.members.map((m: any) => {
-      const memberships = projectMemberships.filter((membership: any) => membership.user_id === m.user_id);
-      const tasks = assignedTasks.filter((task: any) => task.assignee_id === m.user_id);
-      const projects = memberships.map((membership: any) => {
-        const project: any = projectById.get(membership.project_id);
-        const projectTasks = tasks.filter((task: any) => task.project_id === membership.project_id);
-        const completedTasks = projectTasks.filter((task: any) => {
-          const statusType = Array.isArray(task.status) ? task.status[0]?.status_type : task.status?.status_type;
+    const transformedMembers = memberPage.members.map((m: WorkspaceMemberWithAccount) => {
+      const memberships = projectMemberships.filter((membership) => membership.user_id === m.user_id);
+      const tasks = assignedTasks.filter((task) => task.assignee_id === m.user_id);
+      const projects = memberships.map((membership) => {
+        const project = projectById.get(membership.project_id);
+        const projectTasks = tasks.filter((task) => task.project_id === membership.project_id);
+        const completedTasks = projectTasks.filter((task) => {
+          const statusType = taskStatusType(task);
           return statusType === 'done' || statusType === 'completed';
         }).length;
 
@@ -120,12 +135,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           tasksCompleted: completedTasks,
         };
       });
-      const tasksCompleted = tasks.filter((task: any) => {
-        const statusType = Array.isArray(task.status) ? task.status[0]?.status_type : task.status?.status_type;
+      const tasksCompleted = tasks.filter((task) => {
+        const statusType = taskStatusType(task);
         return statusType === 'done' || statusType === 'completed';
       }).length;
       const averageProgress = projects.length
-        ? Math.round(projects.reduce((sum: number, project: any) => sum + project.progress, 0) / projects.length)
+        ? Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length)
         : 0;
 
       return {
@@ -146,7 +161,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         lastActivityAt: m.account_users?.last_activity_at || null,
         stats: {
           projectCount: projects.length,
-          activeProjectCount: projects.filter((project: any) => project.status === 'active').length,
+          activeProjectCount: projects.filter((project) => project.status === 'active').length,
           averageProgress,
           tasksAssigned: tasks.length,
           tasksCompleted,
@@ -174,20 +189,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
-    const token = request.cookies.get('accessToken')?.value ||
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-
-    if (!token) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-
-    const payload = await verifyToken(token);
-    if (!payload) return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-
-    const workspace = await getWorkspaceBySlug(slug);
-    if (!workspace) return NextResponse.json({ error: 'Workspace no encontrado' }, { status: 404 });
+    const auth = await requireWorkspaceMember(request, slug);
+    if (!auth.ok) return auth.response;
+    const { workspace, member: callerMember } = auth;
 
     // Verificar que el usuario que edita es owner o admin
-    const callerMember = await getUserWorkspaceRole(workspace.workspace_id, payload.sub);
-    if (!callerMember || !ROLES_THAT_CAN_EDIT.includes(callerMember.iris_role)) {
+    if (!ROLES_THAT_CAN_EDIT.includes(callerMember.iris_role)) {
       return NextResponse.json({ error: 'No tienes permisos para cambiar roles' }, { status: 403 });
     }
 

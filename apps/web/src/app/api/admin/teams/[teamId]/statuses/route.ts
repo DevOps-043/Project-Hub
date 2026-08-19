@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAdmin } from '@/lib/auth/require-role';
 import { ensureDefaultTaskStatuses, resolveTeamId } from '@/lib/services/task-status-service';
 
 export const runtime = 'nodejs';
@@ -18,15 +18,8 @@ export async function GET(
   try {
     let { teamId } = await params;
 
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token invalido' }, { status: 401 });
-    }
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
     const resolvedTeamId = await resolveTeamId(supabaseAdmin, teamId);
     if (!resolvedTeamId) {
@@ -49,15 +42,8 @@ export async function POST(
   try {
     let { teamId } = await params;
 
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token invalido' }, { status: 401 });
-    }
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
     const resolvedTeamId = await resolveTeamId(supabaseAdmin, teamId);
     if (!resolvedTeamId) {

@@ -6,8 +6,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { verifyToken } from '@/lib/auth/jwt';
+import { requireAdmin } from '@/lib/auth/require-role';
+import { sanitizeSearchTerm, sanitizeFilterIdentifier } from '@/lib/http/sanitize';
 import { ensureDefaultTaskStatuses, resolveTaskStatusId, resolveTeamId } from '@/lib/services/task-status-service';
+import { isUuid } from '@/lib/http/validation';
 
 export const runtime = 'nodejs';
 
@@ -18,27 +20,20 @@ export async function GET(
 ) {
   try {
     let { teamId } = await params;
-    
+
     // Auth
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
 
     // RESOLUCIÓN DE TEAM ID (UUID o Slug)
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    const isUUID = isUuid(teamId);
     
     if (!isUUID) {
        // Buscar por slug o nombre
        const { data: teamData, error: teamError } = await supabaseAdmin
          .from('teams')
          .select('team_id')
-         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .or(`slug.eq.${sanitizeFilterIdentifier(teamId)},name.eq.${sanitizeFilterIdentifier(teamId)}`)
          .single();
 
        if (teamError || !teamData) {
@@ -70,11 +65,11 @@ export async function GET(
     const offset = parseInt(searchParams.get('offset') || '0');
 
     // RESOLUCIÓN DE PROJECT ID (si es un slug o key en los params)
-    if (projectId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) {
+    if (projectId && !isUuid(projectId)) {
        const { data: projData } = await supabaseAdmin
          .from('pm_projects')
          .select('project_id')
-         .or(`project_key.eq.${projectId},project_name.eq.${projectId}`)
+         .or(`project_key.eq.${sanitizeFilterIdentifier(projectId)},project_name.eq.${sanitizeFilterIdentifier(projectId)}`)
          .single();
        if (projData) projectId = projData.project_id;
     }
@@ -113,7 +108,8 @@ export async function GET(
       query = query.eq('cycle_id', cycleId);
     }
     if (search) {
-      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
+      const safeSearch = sanitizeSearchTerm(search);
+      query = query.or(`title.ilike.%${safeSearch}%,description.ilike.%${safeSearch}%`);
     }
 
     const { data: issues, error } = await query;
@@ -144,15 +140,16 @@ export async function GET(
     const issuesWithIdentifier = (issues || []).map(issue => ({
       ...issue,
       identifier: `${teamPrefix}-${issue.issue_number}`,
-      labels: issue.labels?.map((l: any) => l.label) || []
+      labels: issue.labels?.map((l: { label: unknown }) => l.label) || []
     }));
 
     // Group by status if requested
-    let groupedIssues: any = null;
+    let groupedIssues: Record<string, unknown> | null = null;
     if (groupBy === 'status') {
-      groupedIssues = {};
+      const byStatus: Record<string, unknown> = {};
+      groupedIssues = byStatus;
       statuses?.forEach(status => {
-        groupedIssues[status.status_id] = {
+        byStatus[status.status_id] = {
           status,
           issues: issuesWithIdentifier.filter(i => i.status_id === status.status_id)
         };
@@ -191,25 +188,19 @@ export async function POST(
 ) {
   try {
     let { teamId } = await params;
-    
+
     // Auth
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const payload = await verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({ error: 'Token inválido' }, { status: 401 });
-    }
+    const auth = await requireAdmin(request);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     // RESOLUCIÓN DE TEAM ID PARA EL POST TAMBIÉN
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(teamId);
+    const isUUID = isUuid(teamId);
     if (!isUUID) {
        const { data: teamData } = await supabaseAdmin
          .from('teams')
          .select('team_id')
-         .or(`slug.eq.${teamId},name.eq.${teamId}`)
+         .or(`slug.eq.${sanitizeFilterIdentifier(teamId)},name.eq.${sanitizeFilterIdentifier(teamId)}`)
          .single();
        if (teamData) teamId = teamData.team_id;
     }
@@ -221,30 +212,30 @@ export async function POST(
     teamId = resolvedTeamId;
 
     const body = await request.json();
-    let { 
-      title, 
-      description, 
-      status_id, 
-      priority_id, 
-      assignee_id, 
-      project_id, 
+    const {
+      title,
+      description,
+      status_id,
+      priority_id,
+      assignee_id,
       cycle_id,
       parent_issue_id,
       due_date,
       estimate_points,
-      labels 
+      labels
     } = body;
+    let { project_id } = body;
 
     if (!title?.trim()) {
       return NextResponse.json({ error: 'El título es requerido' }, { status: 400 });
     }
 
     // RESOLUCIÓN DE PROJECT ID (si es un slug o key)
-    if (project_id && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(project_id)) {
+    if (project_id && !isUuid(project_id)) {
       const { data: projData } = await supabaseAdmin
         .from('pm_projects')
         .select('project_id')
-        .or(`project_key.eq.${project_id},project_name.eq.${project_id}`)
+        .or(`project_key.eq.${sanitizeFilterIdentifier(project_id)},project_name.eq.${sanitizeFilterIdentifier(project_id)}`)
         .single();
       
       if (projData) {
@@ -262,12 +253,11 @@ export async function POST(
     }
 
     // Validate UUIDs for optional foreign keys - strip invalid values
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const validPriorityId = priority_id && uuidRegex.test(priority_id) ? priority_id : null;
-    let validAssigneeId = assignee_id && uuidRegex.test(assignee_id) ? assignee_id : null;
-    const validProjectId = project_id && uuidRegex.test(project_id) ? project_id : null;
-    const validCycleId = cycle_id && uuidRegex.test(cycle_id) ? cycle_id : null;
-    const validParentIssueId = parent_issue_id && uuidRegex.test(parent_issue_id) ? parent_issue_id : null;
+    const validPriorityId = priority_id && isUuid(priority_id) ? priority_id : null;
+    let validAssigneeId = assignee_id && isUuid(assignee_id) ? assignee_id : null;
+    const validProjectId = project_id && isUuid(project_id) ? project_id : null;
+    const validCycleId = cycle_id && isUuid(cycle_id) ? cycle_id : null;
+    const validParentIssueId = parent_issue_id && isUuid(parent_issue_id) ? parent_issue_id : null;
 
     // El creador (creator_id) tiene FK NOT NULL contra account_users. El JWT.sub
     // proviene de la sincronización SOFIA->Project Hub, pero verificamos que exista

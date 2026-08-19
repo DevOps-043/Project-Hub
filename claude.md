@@ -140,6 +140,14 @@ interface ChatMessage {
 
 ### 1.2 Auth - Autenticacion
 
+**Archivo:** `lib/auth/roles.ts`
+
+| Funcion                        | Descripcion                                                              | Parametros        | Retorno                         |
+| -------------------------------- | --------------------------------------------------------------------------- | -------------------- | ---------------------------------- |
+| `mapPermissionToRole(level)`   | Mapea `account_users.permission_level` al rol simple que consume el frontend | `level: string`   | `'admin' \| 'user' \| 'guest'`   |
+
+Antes vivia duplicada byte a byte en `auth/login/route.ts` y `auth/me/route.ts`; consolidada aca.
+
 **Archivo:** `lib/auth/password.ts`
 
 | Funcion                                      | Descripcion                         | Parametros                             | Retorno            |
@@ -285,6 +293,8 @@ interface NotificationPayload {
 | `getRefreshToken()`                      | Obtiene refresh token de localStorage     | Ninguno                                                    | `string \| null`          |
 | `setTokens(accessToken, refreshToken)`   | Guarda tokens en localStorage             | `accessToken: string, refreshToken: string`                | `void`                    |
 | `clearTokens()`                          | Limpia tokens de localStorage             | Ninguno                                                    | `void`                    |
+
+`apiClient` detecta si `config.body instanceof FormData`: en ese caso NO hace `JSON.stringify` ni fuerza `Content-Type` (el navegador pone el `multipart/form-data; boundary=...`), dejando intacto el resto del flujo (auth automatica, retry en 401). Permite mandar tanto JSON como uploads de archivos por el mismo cliente. Tests en `lib/api/client.test.ts`.
 
 ---
 
@@ -479,6 +489,63 @@ Servicio de datos para acceso CRUD contra la Supabase de Project Hub. Usado por 
 | `getMilestones(projectId)`       | Lista milestones                    | `Promise<IrisMilestone[]>`     |
 | `getTeams()`                     | Lista equipos                       | `Promise<IrisTeam[]>`          |
 | `getLabels(projectId?)`          | Lista labels                        | `Promise<IrisLabel[]>`         |
+
+---
+
+### 1.13 HTTP - Sanitizacion y Rate Limiting
+
+**Archivo:** `lib/http/sanitize.ts`
+
+| Funcion                                          | Descripcion                                                                                                                                      | Parametros                        | Retorno  |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | -------- |
+| `sanitizeSearchTerm(value, maxLength?)`           | Para campos usados con `.ilike()`: quita `,()` y escapa `%`/`_` (comodines de ilike) con backslash                                              | `value: string, maxLength?: number (default 100)` | `string` |
+| `sanitizeFilterIdentifier(value, maxLength?)`     | Para identificadores (slug/nombre/key) usados en `.or()` con `.eq.`: solo quita `,()`. NO escapa `%`/`_` porque no son comodines para `.eq` y escaparlos rompería una coincidencia exacta legitima | `value: string, maxLength?: number (default 100)` | `string` |
+
+Ambas existen para prevenir inyeccion de filtros PostgREST: `supabase-js`'s `.or()` interpola el string crudo en la URL del query; `,`/`(`/`)` sin escapar pueden inyectar condiciones adicionales.
+
+**Archivo:** `lib/http/rate-limit.ts`
+
+| Funcion                                    | Descripcion                                                                 | Parametros                                        | Retorno            |
+| ------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------- | ------------------- |
+| `checkRateLimit(key, limit, windowMs)`      | Rate limiter en memoria, ventana fija por clave                              | `key: string, limit: number, windowMs: number`     | `RateLimitResult`   |
+
+Usado en `proxy.ts` para limitar `/api/auth/login` (10/min por IP) y `/api/auth/register` (5/min por IP) — las unicas rutas que aceptan trafico anonimo sin JWT. Limitacion conocida: el estado vive en memoria del proceso, no es un limite global estricto en despliegues multi-instancia (no hay Redis/Upstash configurado en este proyecto).
+
+**Archivo:** `lib/http/validation.ts`
+
+| Funcion              | Descripcion                                                        | Parametros          | Retorno                          |
+| ---------------------- | --------------------------------------------------------------------- | ---------------------- | ------------------------------------ |
+| `isUuid(value)`      | Type guard: valida forma de UUID v4                                | `value: unknown`    | `value is string`                |
+
+Antes el mismo regex vivia copiado inline en 11 sitios de 9 rutas admin/workspaces (resolucion de slug-o-UUID en la URL) mas una definicion separada en `lib/services/task-status-service.ts` (que ahora re-exporta desde aca).
+
+**Archivo:** `lib/http/user-agent.ts`
+
+| Funcion                       | Descripcion                                   | Parametros            | Retorno   |
+| -------------------------------- | -------------------------------------------------- | ------------------------ | ------------ |
+| `detectDeviceType(userAgent)` | Detecta mobile/tablet/desktop desde User-Agent   | `userAgent: string`   | `string`  |
+| `detectBrowser(userAgent)`    | Detecta el navegador desde User-Agent            | `userAgent: string`   | `string`  |
+
+Usado al crear filas en `auth_sessions` (login y register). Antes duplicado byte a byte en ambas rutas.
+
+---
+
+### 1.14 Servicios de Agregacion (evitan N+1)
+
+**Archivo:** `lib/services/cycle-service.ts`
+
+| Funcion                                | Descripcion                                                                                   | Retorno                     |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------ |
+| `computeCycleStats(cycles, issues)`    | Agrega scope/completado/progreso por ciclo a partir de una lista de issues ya cargada en memoria | `(T & CycleStats)[]`          |
+
+**Archivo:** `lib/services/project-sparkline.ts`
+
+| Funcion                                       | Descripcion                                                                            | Retorno                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------- |
+| `groupHistoryByProject(rows, maxPointsPerProject?)` | Agrupa filas de historial de progreso por `project_id`, tope de 12 puntos por proyecto por defecto | `Map<string, ProgressHistoryRow[]>` |
+| `generateSparklineData(progress)`                | Genera puntos sinteticos de sparkline cuando un proyecto no tiene historial real            | `{ value: number }[]`               |
+
+Ambos se extrajeron de sus route handlers (`app/api/admin/teams/[teamId]/cycles/route.ts` y `app/api/admin/projects/route.ts`) para reemplazar un patron N+1 (una query extra por fila del listado) por una sola query batched con `.in()`, agregada en memoria. Quedan como funciones puras testeables sin mockear Supabase.
 
 ---
 
@@ -1113,11 +1180,11 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 
 ## 8. MIDDLEWARE
 
-**Archivo:** `middleware.ts`
+**Archivo:** `proxy.ts` (renombrado desde `middleware.ts` — convencion de esta version de Next.js, ver `apps/web/AGENTS.md`)
 
-| Funcion               | Descripcion                       |
-| --------------------- | --------------------------------- |
-| `middleware(request)` | Middleware de proteccion de rutas |
+| Funcion           | Descripcion                       |
+| ------------------ | --------------------------------- |
+| `proxy(request)`  | Middleware de proteccion de rutas, ejecuta en el edge en cada request |
 
 **Constantes:**
 | Constante | Descripcion |
@@ -1125,15 +1192,19 @@ Todas las paginas workspace usan `useWorkspace()` para obtener datos del workspa
 | `PUBLIC_PATHS` | Rutas que no requieren autenticacion |
 | `GUEST_ONLY_PATHS` | Rutas solo para invitados |
 | `ADMIN_PATHS` | Rutas que requieren rol admin |
+| `RATE_LIMITED_PATHS` | `/api/auth/login` (10/min por IP) y `/api/auth/register` (5/min por IP) — ver `lib/http/rate-limit.ts` |
 
 **Logica:**
 
 1. Permite archivos estaticos
-2. Permite rutas publicas
-3. Verifica token JWT en cookie o header
-4. Valida expiracion del token
-5. Verifica permisos de admin si aplica
-6. Redirige usuarios autenticados fuera de rutas guest-only
+2. Aplica rate limiting por IP si la ruta esta en `RATE_LIMITED_PATHS` (antes del chequeo de ruta publica, asi cubre login/register que son publicos)
+3. Permite rutas publicas
+4. Verifica token JWT en cookie o header
+5. Valida expiracion del token
+6. Verifica permisos de admin si aplica
+7. Redirige usuarios autenticados fuera de rutas guest-only
+
+**Headers de seguridad** (independiente del proxy): `next.config.ts` define `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, y `Permissions-Policy` restrictivo, aplicados a todas las rutas via `headers()`. Deliberadamente sin CSP (la app embebe Google Docs/Sheets/Slides en iframes propios y usa Supabase realtime + scripts inline de Next.js; una CSP mal calibrada rompe eso y no hay forma de verificarlo sin navegador en este repo).
 
 ---
 
