@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { getSofiaAdmin, getSofiaServiceRoleClient } from '@/lib/supabase/sofia-client';
 import { requireWorkspaceMember } from '@/lib/auth/require-role';
+import { syncAllOrgMembers } from '@/lib/services/workspace-service';
 
 const MANAGER_ROLES = ['owner', 'admin'] as const;
 const NODE_TYPES = ['organization', 'area', 'region', 'zone', 'team', 'custom'] as const;
@@ -12,6 +13,7 @@ type NodeType = typeof NODE_TYPES[number];
 // aquí) — cubren solo los campos que este archivo realmente lee.
 interface OrgNode {
   id: string;
+  name: string;
   depth: number;
   position: number;
   manager_id: string | null;
@@ -203,6 +205,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // La arquitectura organizacional de SofLIA es la fuente de verdad de los equipos,
+    // pero vincular un nodo tipo "team" a un equipo local de Project Hub es una acción
+    // explícita del administrador (ver action: 'import_teams' en el POST de abajo), no
+    // un efecto secundario silencioso de cargar esta página.
+    const localTeamRows = (localTeamsResult.data || []) as LocalTeamRow[];
+    const teamById = new Map(localTeamRows.map((team) => [team.team_id, team]));
+
     const memberById = new Map((membersResult.data || []).map((row: WorkspaceMemberHierarchyRow) => {
       const profile = Array.isArray(row.account_users) ? row.account_users[0] : row.account_users;
       return [row.user_id, {
@@ -216,7 +225,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }];
     }));
 
-    const teamById = new Map((localTeamsResult.data || []).map((team: LocalTeamRow) => [team.team_id, team]));
     const enrichedNodes = nodes.map((node) => {
       const nodeAssignments = assignments.filter((assignment) => assignment.node_id === node.id);
       const properties = node.properties && typeof node.properties === 'object' ? node.properties : {};
@@ -242,7 +250,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       };
     });
 
-    const localTeams = (localTeamsResult.data || []).map((team: LocalTeamRow) => ({
+    const localTeams = localTeamRows.map((team: LocalTeamRow) => ({
       id: team.team_id,
       name: team.name,
       slug: team.slug,
@@ -433,6 +441,121 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         });
       }
       return NextResponse.json({ node, localTeam }, { status: 201 });
+    }
+
+    if (action === 'import_teams') {
+      const structureId = cleanText(body.structureId, 60);
+      if (!structureId) return NextResponse.json({ error: 'La estructura es requerida' }, { status: 400 });
+
+      const { data: structure } = await sofia
+        .from('organization_structures')
+        .select('id')
+        .eq('id', structureId)
+        .eq('organization_id', workspace.sofia_org_id)
+        .maybeSingle();
+      if (!structure) return NextResponse.json({ error: 'La estructura no pertenece a esta organización' }, { status: 404 });
+
+      const requestedNodeIds = Array.isArray(body.nodeIds)
+        ? body.nodeIds.filter((id: unknown): id is string => typeof id === 'string')
+        : null;
+
+      let nodesQuery = sofia
+        .from('organization_nodes')
+        .select('id, name, manager_id, properties')
+        .eq('organization_id', workspace.sofia_org_id)
+        .eq('structure_id', structureId)
+        .eq('type', 'team');
+      if (requestedNodeIds) nodesQuery = nodesQuery.in('id', requestedNodeIds);
+      const { data: teamNodes, error: teamNodesError } = await nodesQuery;
+      if (teamNodesError) return NextResponse.json({ error: teamNodesError.message }, { status: 500 });
+
+      // Los managers/miembros de un nodo son IDs de usuario de SofLIA, que no
+      // necesariamente existen todavía en account_users/workspace_members de
+      // Project Hub (FK de teams.owner_id y team_members.user_id). Se sincronizan
+      // primero para que la importación no reviente con una FK violation por un
+      // manager que nunca inició sesión en Project Hub.
+      try {
+        await syncAllOrgMembers(workspace.workspace_id, workspace.sofia_org_id);
+      } catch (cause) {
+        console.error('No se pudo sincronizar miembros de SofLIA antes de importar equipos', cause);
+      }
+
+      const [{ data: existingTeams }, { data: localMembers }] = await Promise.all([
+        getSupabaseAdmin().from('teams').select('team_id').eq('workspace_id', workspace.workspace_id),
+        getSupabaseAdmin().from('workspace_members').select('user_id').eq('workspace_id', workspace.workspace_id),
+      ]);
+      const existingTeamIds = new Set((existingTeams || []).map((team) => team.team_id));
+      const validUserIds = new Set((localMembers || []).map((member) => member.user_id));
+
+      const imported: { nodeId: string; teamId: string; name: string }[] = [];
+      const skipped: { nodeId: string; name: string; reason: string }[] = [];
+
+      for (const node of teamNodes || []) {
+        const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
+        const linkedId = typeof props.project_hub_team_id === 'string' ? props.project_hub_team_id : null;
+        if (linkedId && existingTeamIds.has(linkedId)) {
+          skipped.push({ nodeId: node.id, name: node.name, reason: 'Ya está importado' });
+          continue;
+        }
+
+        try {
+          const ownerId = node.manager_id && validUserIds.has(node.manager_id) ? node.manager_id : payload.sub;
+          const created = await createLocalTeam({
+            workspaceId: workspace.workspace_id,
+            name: node.name,
+            description: typeof props.description === 'string' ? props.description : null,
+            color: typeof props.color === 'string' ? props.color : '#00D4B3',
+            ownerId,
+          });
+
+          const { data: nodeAssignments } = await sofia
+            .from('organization_node_users')
+            .select('user_id')
+            .eq('node_id', node.id);
+          for (const assignment of nodeAssignments || []) {
+            if (assignment.user_id === ownerId) continue;
+            if (!validUserIds.has(assignment.user_id)) continue;
+            await ensureLocalTeamMember(created.team_id, assignment.user_id, 'member');
+          }
+
+          await sofia
+            .from('organization_nodes')
+            .update({ properties: { ...props, project_hub_team_id: created.team_id } })
+            .eq('id', node.id);
+
+          imported.push({ nodeId: node.id, teamId: created.team_id, name: created.name });
+        } catch (cause) {
+          console.error('No se pudo importar el equipo para el nodo', node.id, cause);
+          skipped.push({ nodeId: node.id, name: node.name, reason: cause instanceof Error ? cause.message : 'Error desconocido' });
+        }
+      }
+
+      return NextResponse.json({ imported, skipped });
+    }
+
+    if (action === 'update_node_position') {
+      const nodeId = cleanText(body.nodeId, 60);
+      const x = typeof body.x === 'number' ? body.x : null;
+      const y = typeof body.y === 'number' ? body.y : null;
+      if (!nodeId || x === null || y === null) {
+        return NextResponse.json({ error: 'Nodo y coordenadas son requeridos' }, { status: 400 });
+      }
+
+      const { data: node } = await sofia
+        .from('organization_nodes')
+        .select('id, properties')
+        .eq('id', nodeId)
+        .eq('organization_id', workspace.sofia_org_id)
+        .maybeSingle();
+      if (!node) return NextResponse.json({ error: 'Nivel no encontrado' }, { status: 404 });
+
+      const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
+      const { error } = await sofia
+        .from('organization_nodes')
+        .update({ properties: { ...props, canvas_x: x, canvas_y: y } })
+        .eq('id', nodeId);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true });
     }
 
     if (action === 'assign_member') {

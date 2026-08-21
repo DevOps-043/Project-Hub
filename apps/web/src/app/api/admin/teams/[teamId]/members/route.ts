@@ -1,7 +1,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam, requireAuth } from '@/lib/auth/require-role';
 import { sanitizeFilterIdentifier } from '@/lib/http/sanitize';
 import { isUuid } from '@/lib/http/validation';
 
@@ -18,8 +18,8 @@ interface TeamMemberUserProfile {
 
 interface TeamMemberRow {
   role: string;
+  user_id: string;
   joined_at: string;
-  users: TeamMemberUserProfile;
 }
 
 interface TaskStatRow {
@@ -36,8 +36,11 @@ export async function GET(
   let { teamId } = await params;
 
   try {
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
+    // Chequeo barato de "hay un JWT válido" antes de tocar la DB para resolver
+    // el slug; el chequeo de permisos completo (que necesita el team_id real
+    // para ubicar su workspace) va después de la resolución.
+    const authCheck = await requireAuth(request);
+    if (!authCheck.ok) return authCheck.response;
 
     // RESOLUCIÓN DE TEAM ID (UUID o Slug)
     const isUUID = isUuid(teamId);
@@ -50,6 +53,9 @@ export async function GET(
        if (teamData) teamId = teamData.team_id;
     }
 
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
+
     // 1. Get Team Details
     const { data: team, error: teamError } = await supabase
       .from('teams')
@@ -61,88 +67,80 @@ export async function GET(
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
 
-    // 2. Get Team Members with User Details
+    // 2. Resolve memberships and profiles in separate queries. This avoids
+    // silently dropping members when an embedded relationship is unavailable.
     const { data: membersData, error: membersError } = await supabase
       .from('team_members')
-      .select(`
-        role,
-        joined_at,
-        users:account_users!team_members_user_id_fkey (
-          user_id,
-          first_name,
-          last_name_paternal,
-          display_name,
-          email,
-          avatar_url,
-          last_activity_at,
-          account_status
-        )
-      `)
-      .eq('team_id', teamId);
+      .select('user_id, role, joined_at')
+      .eq('team_id', teamId)
+      .eq('is_active', true)
+      .order('joined_at', { ascending: true });
 
     if (membersError) {
       console.error('Error fetching members:', membersError);
       return NextResponse.json({ error: membersError.message }, { status: 500 });
     }
 
-    // 3. Transform data and fetch task counts efficiently
-    // To avoid N+1 queries, we'll fetch task stats in a separate aggregated query or parallel promises if needed.
-    // For now, let's try to get task counts for these users within this team context.
-    
-    // Get all tasks for this team to count locally (efficient for small/medium teams)
-    // Or simpler: Just count total tasks assigned to these users in this team
-    const userIds = (membersData as unknown as TeamMemberRow[]).map((m) => m.users.user_id);
-    
-    const { data: taskStats, error: taskStatsError } = await supabase
-      .from('task_issues')
-      .select('assignee_id, status_id, task_statuses!inner(status_type)')
-      .eq('team_id', teamId)
-      .in('assignee_id', userIds);
+    const memberships = (membersData || []) as TeamMemberRow[];
+    const userIds = memberships.map((member) => member.user_id);
+    let profiles: TeamMemberUserProfile[] = [];
 
-    const tasksByUser: Record<string, { total: number; completed: number }> = {};
-    
-    // Initialize counters
-    userIds.forEach(id => {
-      tasksByUser[id] = { total: 0, completed: 0 };
-    });
+    if (userIds.length > 0) {
+      const { data: profileData, error: profilesError } = await supabase
+        .from('account_users')
+        .select('user_id, first_name, last_name_paternal, display_name, email, avatar_url, last_activity_at, account_status')
+        .in('user_id', userIds);
 
-    if (!taskStatsError && taskStats) {
-      (taskStats as unknown as TaskStatRow[]).forEach((task) => {
-        const userId = task.assignee_id;
-        if (userId && tasksByUser[userId]) {
-          tasksByUser[userId].total += 1;
-          if (task.task_statuses?.status_type === 'done' || task.task_statuses?.status_type === 'completed') {
-            tasksByUser[userId].completed += 1;
-          }
-        }
-      });
+      if (profilesError) {
+        console.error('Error fetching member profiles:', profilesError);
+        return NextResponse.json({ error: profilesError.message }, { status: 500 });
+      }
+      profiles = (profileData || []) as TeamMemberUserProfile[];
     }
 
-    const formattedMembers = (membersData as unknown as TeamMemberRow[]).map((item) => {
-      const user = item.users;
-      const stats = tasksByUser[user.user_id] || { total: 0, completed: 0 };
-      
-      // Determine online/active status based on last_activity_at (e.g., within last 5 minutes)
-      // This is a rough approximation
-      const lastActive = user.last_activity_at ? new Date(user.last_activity_at) : null;
-      const isOnline = lastActive && (new Date().getTime() - lastActive.getTime() < 1000 * 60 * 15); // 15 mins
-      
-      let computedStatus = 'offline';
-      if (isOnline) computedStatus = 'active';
-      // 'busy' logic would typically require more complex presence system or calendar check
+    const profilesById = new Map(profiles.map((profile) => [profile.user_id, profile]));
+    let taskStats: TaskStatRow[] = [];
+
+    if (userIds.length > 0) {
+      const { data, error } = await supabase
+        .from('task_issues')
+        .select('assignee_id, status_id, task_statuses!inner(status_type)')
+        .eq('team_id', teamId)
+        .in('assignee_id', userIds);
+
+      if (!error) taskStats = (data || []) as unknown as TaskStatRow[];
+    }
+
+    const tasksByUser: Record<string, { total: number; completed: number }> = {};
+    userIds.forEach((id) => { tasksByUser[id] = { total: 0, completed: 0 }; });
+
+    taskStats.forEach((task) => {
+      const userId = task.assignee_id;
+      if (!userId || !tasksByUser[userId]) return;
+      tasksByUser[userId].total += 1;
+      if (task.task_statuses?.status_type === 'done' || task.task_statuses?.status_type === 'completed') {
+        tasksByUser[userId].completed += 1;
+      }
+    });
+
+    const formattedMembers = memberships.map((item) => {
+      const user = profilesById.get(item.user_id);
+      const stats = tasksByUser[item.user_id] || { total: 0, completed: 0 };
+      const lastActive = user?.last_activity_at ? new Date(user.last_activity_at) : null;
+      const isOnline = Boolean(lastActive && Date.now() - lastActive.getTime() < 1000 * 60 * 15);
 
       return {
-        user_id: user.user_id,
-        first_name: user.first_name,
-        last_name_paternal: user.last_name_paternal,
-        display_name: user.display_name,
-        email: user.email,
-        avatar_url: user.avatar_url,
+        user_id: item.user_id,
+        first_name: user?.first_name || '',
+        last_name_paternal: user?.last_name_paternal || '',
+        display_name: user?.display_name || user?.email || 'Miembro',
+        email: user?.email || '',
+        avatar_url: user?.avatar_url || null,
         role: item.role,
-        status: computedStatus, 
+        status: isOnline ? 'active' : 'offline',
         joined_at: item.joined_at,
         tasks_count: stats.total,
-        completed_tasks_count: stats.completed
+        completed_tasks_count: stats.completed,
       };
     });
 
@@ -169,7 +167,7 @@ export async function POST(
   const { teamId } = await params;
 
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
     if (!auth.ok) return auth.response;
 
     const body = await request.json();

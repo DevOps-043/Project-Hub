@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
@@ -10,14 +10,14 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string; cycleId: string }> }
 ) {
   try {
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     const { teamId, cycleId } = await params;
 
     if (!teamId || !cycleId) {
       return NextResponse.json({ error: 'Team ID and Cycle ID are required' }, { status: 400 });
     }
+
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
 
     // Fetch the cycle
     const { data: cycle, error } = await supabaseAdmin
@@ -74,16 +74,16 @@ export async function PATCH(
   { params }: { params: Promise<{ teamId: string; cycleId: string }> }
 ) {
   try {
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     const { teamId, cycleId } = await params;
-    const body = await request.json();
 
     if (!teamId || !cycleId) {
       return NextResponse.json({ error: 'Team ID and Cycle ID are required' }, { status: 400 });
     }
 
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
+
+    const body = await request.json();
     const allowedFields = ['name', 'description', 'start_date', 'end_date', 'cooldown_days', 'status'];
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
@@ -125,14 +125,14 @@ export async function DELETE(
   { params }: { params: Promise<{ teamId: string; cycleId: string }> }
 ) {
   try {
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     const { teamId, cycleId } = await params;
 
     if (!teamId || !cycleId) {
       return NextResponse.json({ error: 'Team ID and Cycle ID are required' }, { status: 400 });
     }
+
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
 
     // First, remove cycle_id from all issues in this cycle
     await supabaseAdmin

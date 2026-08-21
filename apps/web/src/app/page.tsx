@@ -287,7 +287,7 @@ export default function HomePage() {
                         }
                         className="relative h-[72%] w-[72%]"
                     >
-                        <Image src="/Logo.png" alt="" fill className="object-contain drop-shadow-2xl" />
+                        <Image src="/Logo.png" alt="" fill sizes="(max-width: 768px) 40vw, 28vw" className="object-contain drop-shadow-2xl" />
                     </motion.div>
                     {!prefersReducedMotion &&
                         [0, 1, 2].map((i) => (

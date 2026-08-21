@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam } from '@/lib/auth/require-role';
 import { sanitizeSearchTerm, sanitizeFilterIdentifier } from '@/lib/http/sanitize';
 import { ensureDefaultTaskStatuses, resolveTaskStatusId, resolveTeamId } from '@/lib/services/task-status-service';
 import { isUuid } from '@/lib/http/validation';
@@ -21,13 +21,9 @@ export async function GET(
   try {
     let { teamId } = await params;
 
-    // Auth
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     // RESOLUCIÓN DE TEAM ID (UUID o Slug)
     const isUUID = isUuid(teamId);
-    
+
     if (!isUUID) {
        // Buscar por slug o nombre
        const { data: teamData, error: teamError } = await supabaseAdmin
@@ -50,6 +46,10 @@ export async function GET(
       return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
     }
     teamId = resolvedTeamId;
+
+    // Auth (después de resolver el team_id real, que la política necesita)
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
 
     // Query params
     const { searchParams } = new URL(request.url);
@@ -189,11 +189,6 @@ export async function POST(
   try {
     let { teamId } = await params;
 
-    // Auth
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-    const { payload } = auth;
-
     // RESOLUCIÓN DE TEAM ID PARA EL POST TAMBIÉN
     const isUUID = isUuid(teamId);
     if (!isUUID) {
@@ -210,6 +205,11 @@ export async function POST(
       return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
     }
     teamId = resolvedTeamId;
+
+    // Auth (después de resolver el team_id real, que la política necesita)
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const {

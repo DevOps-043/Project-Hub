@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { api } from '@/lib/api/client';
+import { useOptionalWorkspace } from '@/contexts/WorkspaceContext';
 
 interface User {
   id: string; // user_id
@@ -30,10 +31,11 @@ const ROLES = [
 
 export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }: AddMemberModalProps) {
   const { isDark } = useTheme();
-  // Usaremos los colores del sistema SOFIA hardcodeados por ahora para asegurar match con la guía
-  // En un caso real vendrían del contexto de organización
-  const primaryColor = '#0A2540';
-  const accentColor = '#00D4B3';
+  const workspaceContext = useOptionalWorkspace();
+  const workspaceSlug = workspaceContext?.workspace?.slug;
+  const colors = isDark ? themeColors.dark : themeColors.light;
+  const primaryColor = colors.primary;
+  const accentColor = colors.accent;
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -43,38 +45,35 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
+      const endpoint = workspaceSlug
+        ? `/api/workspaces/${workspaceSlug}/members?limit=1000`
+        : '/api/admin/users';
       const { data, error: apiError } = await api.get<{
         users: Array<{
           user_id?: string;
           id?: string;
           display_name?: string;
+          displayName?: string;
           email: string;
           avatar_url?: string;
+          avatarUrl?: string;
           first_name?: string;
+          firstName?: string;
           last_name_paternal?: string;
+          lastNamePaternal?: string;
         }>;
-      }>('/api/admin/users');
+      }>(endpoint);
       if (!apiError && data) {
-        const userList: Array<{
-          user_id?: string;
-          id?: string;
-          display_name?: string;
-          email: string;
-          avatar_url?: string;
-          first_name?: string;
-          last_name_paternal?: string;
-        }> = data.users || [];
-        // Mapear si es necesario para ajustar al tipo User
-        setUsers(userList.map((u) => ({
-            id: u.user_id || u.id || '',
-            display_name: u.display_name,
-            email: u.email,
-            avatar_url: u.avatar_url,
-            first_name: u.first_name,
-            last_name_paternal: u.last_name_paternal
+        setUsers((data.users || []).map((user) => ({
+          id: user.user_id || user.id || '',
+          display_name: user.display_name || user.displayName,
+          email: user.email,
+          avatar_url: user.avatar_url || user.avatarUrl,
+          first_name: user.first_name || user.firstName,
+          last_name_paternal: user.last_name_paternal || user.lastNamePaternal,
         })));
       }
     } catch (err) {
@@ -84,14 +83,14 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
     } finally {
       setLoading(false);
     }
-  };
+  }, [workspaceSlug]);
 
   // Fetch users for search
   useEffect(() => {
     if (isOpen) {
       fetchUsers();
     }
-  }, [isOpen]);
+  }, [isOpen, fetchUsers]);
 
   const filteredUsers = users.filter(user => {
       const searchLower = searchQuery.toLowerCase();
@@ -139,6 +138,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
     <AnimatePresence>
       <div 
         className="fixed inset-0 flex items-center justify-center"
+        data-sofia-modal-root
         style={{ zIndex: 99999 }}
       >
         {/* Backdrop transparent/blur per docs */}
@@ -147,6 +147,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
            animate={{ opacity: 1 }}
            exit={{ opacity: 0 }}
            className="absolute inset-0 backdrop-blur-sm"
+           data-sofia-overlay
            style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
            onClick={handleClose}
         />
@@ -158,6 +159,8 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ duration: 0.2 }}
           className="relative w-full max-w-4xl overflow-hidden rounded-2xl shadow-2xl border flex flex-col md:flex-row min-h-[500px]"
+          data-sofia-modal
+          data-modal-kind="member"
           style={{ 
             backgroundColor: isDark ? '#1E2329' : '#FFFFFF',
             borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'
@@ -168,6 +171,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
           {/* LEFT PANEL (Preview) - 320px fixed width */}
           <div 
             className="hidden md:flex flex-col w-80 p-8 border-r relative overflow-hidden"
+            data-member-summary
             style={{ 
               background: isDark 
                 ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08))'
@@ -247,10 +251,10 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
           </div>
 
           {/* RIGHT PANEL (Form) - Flex 1 */}
-          <div className="flex-1 flex flex-col h-full bg-inherit">
+          <div className="flex-1 flex flex-col h-full bg-inherit" data-member-main>
             
             {/* Header */}
-            <div className="px-8 py-6 border-b" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }}>
+            <div className="px-8 py-6 border-b" data-modal-section="header" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }}>
                 <div className="flex items-center justify-between">
                     <div>
                         <h2 className="text-xl font-bold" style={{ color: isDark ? 'white' : '#111827' }}>Añadir al Equipo</h2>
@@ -272,10 +276,10 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
             </div>
 
             {/* Content */}
-            <div className="flex-1 p-8 overflow-y-auto">
+            <div className="flex-1 p-8 overflow-y-auto" data-modal-section="body">
                 
                 {/* Step 1: Search User */}
-                <div className="mb-8">
+                <div className="mb-8" data-member-search>
                     <label className="block text-sm font-medium mb-2" style={{ color: isDark ? 'white' : '#374151' }}>
                         Buscar Usuario
                     </label>
@@ -338,7 +342,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
 
                 {/* Selected User Display (if picked from list, overrides search) */}
                 {selectedUser && (
-                    <div className="mb-8 p-3 rounded-xl flex items-center gap-3 border" style={{ borderColor: `${accentColor}40`, backgroundColor: `${accentColor}10` }}>
+                    <div className="mb-8 p-3 rounded-xl flex items-center gap-3 border" data-member-selected style={{ borderColor: `${accentColor}40`, backgroundColor: `${accentColor}10` }}>
                          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 text-sm font-bold">
                             {selectedUser.avatar_url ? <img src={selectedUser.avatar_url} alt={selectedUser.display_name || selectedUser.first_name || 'Avatar'} className="w-full h-full rounded-full" /> : (selectedUser.first_name?.[0] || 'U')}
                         </div>
@@ -360,7 +364,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
                 )}
 
                 {/* Step 2: Role Selection */}
-                <div className="mb-6">
+                <div className="mb-6" data-member-roles>
                     <label className="block text-sm font-medium mb-3" style={{ color: isDark ? 'white' : '#374151' }}>
                         Rol en el Equipo
                     </label>
@@ -398,7 +402,7 @@ export function AddMemberModal({ isOpen, onClose, onSuccess, teamId, teamName }:
             </div>
 
             {/* Footer */}
-            <div className="px-8 py-6 border-t flex justify-end gap-3" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }}>
+            <div className="px-8 py-6 border-t flex justify-end gap-3" data-modal-section="footer" style={{ borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }}>
                 <button
                     onClick={handleClose}
                     className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-white/5"

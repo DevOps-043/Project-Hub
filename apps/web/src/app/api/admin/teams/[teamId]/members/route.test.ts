@@ -86,8 +86,14 @@ describe('GET /api/admin/teams/[teamId]/members', () => {
       teams: [{ data: { team_id: TEAM_UUID, name: 'Core', color: '#00D4B3' } }],
       team_members: [{
         data: [
-          { role: 'owner', joined_at: '2026-01-01', users: { user_id: 'u1', first_name: 'A', last_name_paternal: 'B', display_name: null, email: 'a@x.com', avatar_url: null, last_activity_at: recentlyActive, account_status: 'active' } },
-          { role: 'member', joined_at: '2026-01-01', users: { user_id: 'u2', first_name: 'C', last_name_paternal: 'D', display_name: null, email: 'c@x.com', avatar_url: null, last_activity_at: longInactive, account_status: 'active' } },
+          { user_id: 'u1', role: 'owner', joined_at: '2026-01-01' },
+          { user_id: 'u2', role: 'member', joined_at: '2026-01-01' },
+        ],
+      }],
+      account_users: [{
+        data: [
+          { user_id: 'u1', first_name: 'A', last_name_paternal: 'B', display_name: null, email: 'a@x.com', avatar_url: null, last_activity_at: recentlyActive, account_status: 'active' },
+          { user_id: 'u2', first_name: 'C', last_name_paternal: 'D', display_name: null, email: 'c@x.com', avatar_url: null, last_activity_at: longInactive, account_status: 'active' },
         ],
       }],
       task_issues: [{

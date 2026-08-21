@@ -1,0 +1,217 @@
+.sidebarHeader,
+.brandLink,
+.brandCopy,
+.navItem,
+.sectionToggle,
+.teamButton,
+.teamSubnavItem,
+.allTeamsLink,
+.profileButton,
+.profileCopy,
+.menuItem,
+.userMenuIdentity,
+.userMenuIdentity > span:last-child {
+  display: flex;
+  align-items: center;
+}
+
+.sidebarHeader {
+  min-height: 4.45rem;
+  flex: 0 0 auto;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 0.75rem 0.58rem 0.82rem;
+}
+
+.brandLink { min-width: 0; gap: 0.68rem; color: var(--text-primary); }
+.brandLink:hover { color: var(--text-primary); }
+
+.brandMark {
+  display: flex;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.brandMark img { width: 100%; height: 100%; object-fit: contain; }
+
+.brandCopy,
+.profileCopy,
+.userMenuIdentity > span:last-child {
+  min-width: 0;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 0.04rem;
+}
+
+.brandCopy strong { font-size: 0.86rem; font-weight: 650; letter-spacing: -0.02em; }
+.brandCopy small { color: var(--text-secondary); font-family: var(--font-system-label); font-size: 0.49rem; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; }
+
+.collapseButton {
+  display: grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 0.75rem;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  transition: transform var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.collapseButton:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 36%, var(--border-default)); color: var(--accent); }
+.sidebarDivider, .menuDivider { height: 1px; background: linear-gradient(90deg, transparent, var(--border-default), transparent); }
+.sidebarDivider { margin: 0 0.75rem; }
+.scrollArea { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; padding-bottom: 0.5rem; scrollbar-width: none; }
+.scrollArea::-webkit-scrollbar { display: none; }
+.primaryNav { display: flex; flex-direction: column; gap: 0.22rem; padding: 0.72rem; }
+
+.navItem {
+  position: relative;
+  min-height: 2.7rem;
+  gap: 0.72rem;
+  padding: 0 0.78rem;
+  border: 1px solid transparent;
+  border-radius: 0.84rem;
+  color: var(--text-secondary);
+  font-size: 0.77rem;
+  font-weight: 540;
+  transition: transform var(--motion-fast) ease, color var(--motion-fast) ease, background-color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.navItem:hover { transform: translateX(0.12rem); background: color-mix(in srgb, var(--accent) 5%, transparent); color: var(--text-primary); }
+.navItem[data-active='true'] { border-color: color-mix(in srgb, var(--accent) 24%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.navIcon { display: grid; width: 1.25rem; height: 1.25rem; flex: 0 0 auto; place-items: center; }
+
+:global([data-collapsed='true']) .navItem { width: 2.78rem; align-self: center; justify-content: center; padding: 0; }
+:global([data-collapsed='true']) .navItem[data-active='true'] { box-shadow: inset 0 -2px 0 var(--accent); }
+
+.tooltip {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  top: 50%;
+  left: calc(100% + 0.7rem);
+  visibility: hidden;
+  padding: 0.48rem 0.65rem;
+  transform: translate(-0.2rem, -50%);
+  border: 1px solid var(--border-default);
+  border-radius: 0.66rem;
+  background: var(--surface-raised);
+  box-shadow: var(--elevation-3);
+  color: var(--text-primary);
+  font-size: 0.68rem;
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity var(--motion-fast) ease, transform var(--motion-fast) ease;
+  pointer-events: none;
+}
+
+.navItem:hover .tooltip, .navItem:focus-visible .tooltip { visibility: visible; transform: translate(0, -50%); opacity: 1; }
+.teamSection { padding: 0.25rem 0.72rem 0.6rem; }
+
+.sectionToggle {
+  width: 100%;
+  min-height: 2.2rem;
+  justify-content: space-between;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-system-label);
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chevronOpen { transform: rotate(90deg); }
+.sectionToggle svg, .teamButton > svg { transition: transform var(--motion-fast) ease; }
+.teamList { display: flex; flex-direction: column; gap: 0.16rem; margin-top: 0.2rem; }
+.teamGroup { min-width: 0; }
+
+.teamButton {
+  width: 100%;
+  min-height: 2.45rem;
+  gap: 0.5rem;
+  padding: 0 0.52rem;
+  border: 1px solid transparent;
+  border-radius: 0.74rem;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.teamButton:hover, .teamButton[data-active='true'] { background: color-mix(in srgb, var(--accent) 6%, transparent); color: var(--text-primary); }
+.teamButton[data-active='true'] { border-color: color-mix(in srgb, var(--accent) 15%, transparent); }
+.teamAvatar { display: grid; width: 1.35rem; height: 1.35rem; flex: 0 0 auto; place-items: center; border-radius: 0.42rem; color: #fff; font-size: 0.55rem; font-weight: 700; }
+.teamName { min-width: 0; flex: 1; overflow: hidden; font-size: 0.7rem; font-weight: 540; text-overflow: ellipsis; white-space: nowrap; }
+.teamCount { color: var(--text-secondary); font-family: var(--font-system-label); font-size: 0.55rem; }
+.teamSubnav { display: flex; flex-direction: column; gap: 0.12rem; margin: 0.15rem 0 0.3rem 1.35rem; padding-left: 0.48rem; border-left: 1px solid var(--border-default); }
+
+.teamSubnavItem {
+  min-height: 2.1rem;
+  gap: 0.48rem;
+  padding: 0 0.58rem;
+  border-radius: 0.64rem;
+  color: var(--text-secondary);
+  font-size: 0.67rem;
+}
+
+.teamSubnavItem:hover, .teamSubnavItem[data-active='true'] { background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--accent); }
+.noTeams { padding: 0.6rem; color: var(--text-secondary); font-size: 0.66rem; }
+.allTeamsLink { min-height: 2.35rem; gap: 0.55rem; padding: 0 0.5rem; border-radius: 0.72rem; color: var(--text-secondary); font-size: 0.68rem; }
+.allTeamsLink:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); color: var(--accent); }
+.addTeamIcon { display: grid; width: 1.35rem; height: 1.35rem; place-items: center; border: 1px dashed var(--text-secondary); border-radius: 0.42rem; }
+.teamSkeletons { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.3rem; }
+.teamSkeletons span { height: 2.15rem; border-radius: 0.7rem; background: linear-gradient(90deg, var(--surface-soft), color-mix(in srgb, var(--accent) 7%, var(--surface-soft)), var(--surface-soft)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+
+.profileArea { position: relative; flex: 0 0 auto; padding: 0.65rem 0.72rem 0.72rem; }
+.profileArea[data-collapsed='true'] { padding-inline: 0.55rem; }
+.profileButton { width: 100%; min-height: 3.6rem; gap: 0.68rem; padding: 0.55rem; border: 1px solid var(--border-default); border-radius: 1rem; background: var(--surface-soft); color: var(--text-secondary); text-align: left; }
+.profileButton:hover { border-color: color-mix(in srgb, var(--accent) 28%, var(--border-default)); }
+.profileArea[data-collapsed='true'] .profileButton { min-height: 3.35rem; justify-content: center; padding: 0.38rem; }
+.profileAvatar, .menuAvatar { position: relative; display: grid; width: 2.35rem; height: 2.35rem; flex: 0 0 auto; place-items: center; overflow: visible; border-radius: 0.78rem; background: linear-gradient(135deg, var(--org-primary-color), color-mix(in srgb, var(--org-primary-color) 45%, var(--accent))); color: var(--org-on-primary-color); font-size: 0.68rem; font-weight: 700; }
+.profileAvatar img, .menuAvatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.profilePresence { position: absolute; right: -0.1rem; bottom: -0.1rem; width: 0.58rem; height: 0.58rem; border: 2px solid var(--surface-soft); border-radius: 50%; background: var(--color-success); }
+.profileCopy { flex: 1; }
+.profileCopy strong { max-width: 9rem; overflow: hidden; color: var(--text-primary); font-size: 0.71rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.profileCopy small { max-width: 9rem; overflow: hidden; color: var(--text-secondary); font-size: 0.6rem; text-overflow: ellipsis; white-space: nowrap; }
+.userMenuBackdrop { position: fixed; z-index: calc(var(--z-dropdown) - 1); inset: 0; border: 0; background: transparent; }
+
+.userMenu {
+  position: absolute;
+  z-index: var(--z-dropdown);
+  right: 0.72rem;
+  bottom: calc(100% - 0.1rem);
+  left: 0.72rem;
+  overflow: hidden;
+  padding: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border-default));
+  border-radius: 1.1rem;
+  background: var(--surface-raised);
+  box-shadow: var(--elevation-3);
+  backdrop-filter: blur(1.2rem) saturate(125%);
+  animation: menuEnter 180ms var(--motion-ease) both;
+}
+
+.profileArea[data-collapsed='true'] .userMenu { right: auto; bottom: 0.55rem; left: calc(100% + 0.5rem); width: 18rem; }
+.userMenuIdentity { gap: 0.68rem; padding: 0.48rem 0.5rem 0.65rem; }
+.menuAvatar { width: 2.15rem; height: 2.15rem; }
+.userMenuIdentity strong { max-width: 12rem; overflow: hidden; color: var(--text-primary); font-size: 0.73rem; text-overflow: ellipsis; white-space: nowrap; }
+.userMenuIdentity small { color: var(--text-secondary); font-size: 0.6rem; }
+.menuDivider { margin: 0.2rem 0.2rem; }
+.menuItem { width: 100%; min-height: 2.55rem; gap: 0.6rem; padding: 0 0.62rem; border: 0; border-radius: 0.72rem; background: transparent; color: var(--text-secondary); font-size: 0.7rem; text-align: left; }
+.menuItem:hover { transform: translateX(0.1rem); background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--text-primary); }
+.logoutItem { color: var(--color-error); }
+.mobileBackdrop { position: fixed; z-index: 49; inset: 0; border: 0; background: var(--color-overlay); backdrop-filter: blur(0.55rem); }
+
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes menuEnter { from { opacity: 0; transform: translateY(0.35rem) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .userMenu, .teamSkeletons span { animation-duration: 1ms; }
+}

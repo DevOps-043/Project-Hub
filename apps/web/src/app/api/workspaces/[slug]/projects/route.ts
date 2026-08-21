@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { requireWorkspaceMember } from '@/lib/auth/require-role';
 import { parsePagination } from '@/lib/http/query';
 import { sanitizeSearchTerm } from '@/lib/http/sanitize';
+import { isUuid } from '@/lib/http/validation';
 
 type SupabaseAdminClient = ReturnType<typeof getSupabaseAdmin>;
 
@@ -96,6 +97,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const search = sanitizeSearchTerm(searchParams.get('search') || '');
+    const teamId = searchParams.get('team_id');
+    if (teamId && !isUuid(teamId)) {
+      return NextResponse.json({ error: 'Equipo inválido' }, { status: 400 });
+    }
+
     const { limit, offset } = parsePagination(searchParams, {
       defaultLimit: 50,
       maxLimit: 100,
@@ -144,6 +150,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (search) {
         filteredQuery = filteredQuery.or(`project_name.ilike.%${search}%,project_description.ilike.%${search}%,project_key.ilike.%${search}%`);
       }
+      if (teamId) filteredQuery = filteredQuery.eq('team_id', teamId);
+
 
       const { data, error } = await filteredQuery;
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -168,6 +176,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (search) {
       query = query.or(`project_name.ilike.%${search}%,project_description.ilike.%${search}%,project_key.ilike.%${search}%`);
     }
+    if (teamId) query = query.eq('team_id', teamId);
+
 
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

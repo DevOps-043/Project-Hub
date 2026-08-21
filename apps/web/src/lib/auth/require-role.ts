@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, type JWTPayload } from './jwt';
 import { getWorkspaceBySlug, getUserWorkspaceRole, type Workspace, type WorkspaceMember } from '@/lib/services/workspace-service';
+import { getSupabaseAdmin } from '@/lib/supabase/server';
 
 const ADMIN_PERMISSION_LEVELS = new Set(['super_admin', 'admin']);
 
@@ -80,6 +81,47 @@ export async function requireAdmin(request: NextRequest): Promise<AuthResult> {
   }
 
   return authResult;
+}
+
+/**
+ * Exige JWT válido Y (permission_level admin/super_admin GLOBAL, O ser
+ * miembro activo del workspace dueño de este equipo).
+ *
+ * Las rutas /api/admin/teams/:teamId/* las consume tanto el panel admin
+ * global (donde requireAdmin solo tiene sentido) como el panel scoped a
+ * organización (/[orgSlug]/admin/teams/:teamId/*), donde un owner de ESA
+ * org sin permission_level global admin/super_admin quedaba bloqueado con
+ * 403 aunque tuviera control total de su propio workspace — permission_level
+ * es una cuenta global, iris_role es un rol por workspace; son cosas
+ * distintas y esta ruta solo miraba la primera. `teamId` debe ser el UUID ya
+ * resuelto (no un slug), típicamente después de la resolución slug→UUID que
+ * cada ruta ya hace.
+ */
+export async function requireAdminOrWorkspaceMemberForTeam(request: NextRequest, teamId: string): Promise<AuthResult> {
+  const authResult = await requireAuth(request);
+  if (!authResult.ok) return authResult;
+
+  if (ADMIN_PERMISSION_LEVELS.has(authResult.payload.permissionLevel)) {
+    return authResult;
+  }
+
+  try {
+    const { data: team } = await getSupabaseAdmin()
+      .from('teams')
+      .select('workspace_id')
+      .eq('team_id', teamId)
+      .maybeSingle();
+
+    const member = team?.workspace_id ? await getUserWorkspaceRole(team.workspace_id, authResult.payload.sub) : null;
+    if (member) return authResult;
+  } catch {
+    // Non-admin and lookup failed or not a member
+  }
+
+  return {
+    ok: false,
+    response: NextResponse.json({ error: 'Acceso denegado', code: 'FORBIDDEN' }, { status: 403 }),
+  };
 }
 
 export type WorkspaceAuthResult =

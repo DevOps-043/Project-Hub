@@ -1,0 +1,23 @@
+.scroller { max-width: 100%; overflow: auto; border: 1px solid var(--border-default); border-radius: var(--radius-card); background: var(--surface-card); box-shadow: var(--elevation-1); scrollbar-color: color-mix(in srgb, var(--accent) 24%, transparent) transparent; }
+.timeline { width: calc(16rem + var(--track-width)); min-width: 100%; }
+.headerRow, .row { display: grid; grid-template-columns: 16rem var(--track-width); }
+.headerRow { position: sticky; z-index: 3; top: 0; min-height: 3.1rem; border-bottom: 1px solid var(--border-default); background: var(--surface-raised); }
+.stickyHeading, .projectName { position: sticky; z-index: 4; left: 0; display: flex; align-items: center; gap: 0.48rem; border-right: 1px solid var(--border-default); background: var(--surface-raised); box-shadow: 0.55rem 0 1rem rgb(2 12 23 / 0.035); }
+.stickyHeading { padding: 0 0.85rem; color: var(--text-secondary); font-family: var(--font-system-label); font-size: 0.56rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.monthTrack { position: relative; display: flex; min-width: var(--track-width); }
+.monthTrack > span { display: flex; align-items: center; justify-content: center; gap: 0.28rem; border-right: 1px solid var(--border-default); color: var(--text-secondary); font-family: var(--font-system-label); font-size: 0.56rem; font-weight: 600; }
+.monthTrack small { color: var(--color-subtle); font-size: 0.5rem; font-weight: 400; }
+.row { min-height: 3.45rem; border-bottom: 1px solid var(--border-default); }
+.row:last-child { border-bottom: 0; }
+.projectName { width: 100%; padding: 0 0.85rem; border-top: 0; border-bottom: 0; border-left: 0; color: var(--text-primary); text-align: left; }
+.projectName:hover { color: var(--accent); }
+.projectName > span { width: 0.58rem; height: 0.58rem; flex: 0 0 auto; border-radius: 0.2rem; box-shadow: 0 0 0 0.18rem color-mix(in srgb, currentColor 8%, transparent); }
+.projectName strong { overflow: hidden; font-size: 0.68rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.track { position: relative; min-width: var(--track-width); overflow: hidden; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(7.5rem - 1px), var(--border-default) calc(7.5rem - 1px), var(--border-default) 7.5rem); }
+.track:hover { background-color: color-mix(in srgb, var(--accent) 2.5%, transparent); }
+.todayLine { position: absolute; z-index: 2; top: 0; bottom: 0; left: var(--today-x); width: 1px; background: color-mix(in srgb, var(--accent) 62%, transparent); pointer-events: none; }
+.headerRow .todayLine b { position: absolute; top: 0.25rem; left: 0; padding: 0.14rem 0.3rem; transform: translateX(-50%); border-radius: 999px; background: var(--accent); color: var(--color-on-accent); font-family: var(--font-system-label); font-size: 0.48rem; font-style: normal; text-transform: uppercase; }
+.bar { position: absolute; z-index: 1; top: 0.72rem; left: var(--bar-left); display: flex; width: var(--bar-width); height: 2rem; align-items: center; padding: 0 0.58rem; overflow: hidden; border: 1px solid color-mix(in srgb, var(--bar-color) 42%, var(--border-default)); border-radius: 0.68rem; background: color-mix(in srgb, var(--bar-color) 14%, var(--surface-card)); color: var(--text-primary); box-shadow: 0 0.35rem 0.9rem color-mix(in srgb, var(--bar-color) 9%, transparent); }
+.bar:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--bar-color) 62%, var(--border-default)); }
+.bar span { overflow: hidden; font-size: 0.6rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 48rem) { .timeline { width: calc(12rem + var(--track-width)); } .headerRow, .row { grid-template-columns: 12rem var(--track-width); } }

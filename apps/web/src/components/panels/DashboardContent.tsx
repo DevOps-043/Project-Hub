@@ -6,9 +6,12 @@ import {
   ArrowUpRight,
   BarChart3,
   Building2,
+  FileText,
   CalendarDays,
+  ListChecks,
   FolderKanban,
   Loader2,
+  UserPlus,
   ShieldCheck,
   Users,
 } from 'lucide-react';
@@ -78,16 +81,24 @@ export function DashboardContent() {
 
   const quickActions = [
     ...(permissions.manageProjects
+      ? [{ label: 'Gestionar tareas', description: 'Prioriza trabajo, responsables y fechas.', icon: ListChecks, href: `${panelBase}/tasks` }]
+      : []),
+    ...(permissions.manageProjects
       ? [{ label: 'Nuevo proyecto', description: 'Crea y organiza un nuevo espacio de trabajo.', icon: FolderKanban, href: `${panelBase}/projects?create=true` }]
       : []),
     ...(permissions.manageTeams
-      ? [{ label: 'Crear equipo', description: 'Agrupa responsables y colaboradores.', icon: Users, href: `${panelBase}/teams?create=true` }]
+      ? [{ label: 'Organizar equipos', description: 'Diseña la estructura y conecta colaboradores.', icon: Users, href: `${panelBase}/teams` }]
+      : []),
+    ...(permissions.manageMembers
+      ? [{ label: 'Gestionar personas', description: 'Incorpora miembros y administra sus accesos.', icon: UserPlus, href: `${panelBase}/members` }]
       : []),
     ...(permissions.viewAnalytics
       ? [{ label: 'Ver analítica', description: 'Revisa avance, carga y rendimiento.', icon: BarChart3, href: `${panelBase}/analytics` }]
       : []),
+    ...(permissions.viewReports
+      ? [{ label: 'Consultar reportes', description: 'Obtén una lectura ejecutiva de la operación.', icon: FileText, href: `${panelBase}/reports` }]
+      : []),
   ];
-
   const statCards = [
     { label: 'Proyectos', caption: 'en el workspace', value: stats.projects, icon: FolderKanban, href: `${panelBase}/projects` },
     { label: 'Equipos', caption: 'grupos activos', value: stats.teams, icon: Users, href: `${panelBase}/teams` },

@@ -1,7 +1,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam } from '@/lib/auth/require-role';
 
 export async function GET(
   request: NextRequest,
@@ -12,7 +12,7 @@ export async function GET(
   const { teamId, memberId } = resolvedParams;
 
   try {
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
     if (!auth.ok) return auth.response;
 
     // 1. Get Member Details & Role

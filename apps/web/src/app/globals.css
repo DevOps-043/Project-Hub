@@ -96,6 +96,7 @@
   --font-system-display: var(--font-newsreader), Newsreader, Georgia, serif;
   --font-system-ui: var(--font-inter-tight), "Inter Tight", Inter, Arial, sans-serif;
   --font-system-label: var(--font-ibm-plex), "IBM Plex Sans", Arial, sans-serif;
+  --font-system-mono: var(--font-system-label);
   --font-family: var(--font-system-ui);
   
   /* Sizes */
@@ -146,6 +147,93 @@
   --shadow-lg: 0 8px 24px rgba(10, 37, 64, 0.12);
   --shadow-xl: 0 16px 48px rgba(10, 37, 64, 0.16);
   --shadow-2xl: 0 25px 50px -12px rgba(10, 37, 64, 0.25);
+
+  /* ============================================
+     SOFLIA 3.0 - TOKENS SEMANTICOS DE PRODUCTO
+     Los componentes consumen intención, no hex locales.
+     ============================================ */
+  --color-canvas: #f8fafc;
+  --color-canvas-deep: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f4f7f9;
+  --color-surface-raised: rgb(255 255 255 / 0.97);
+  --color-contrast: #1e293b;
+  --color-muted: #64748b;
+  --color-subtle: #8a99a8;
+  --color-border: rgb(10 37 64 / 0.12);
+  --color-border-strong: rgb(10 37 64 / 0.2);
+  --color-action: #0a2540;
+  --color-action-hover: #0d2f4d;
+  --color-on-action: #f8fafc;
+  --color-accent-readable: #008f7f;
+  --color-on-accent: #071512;
+  --color-overlay: rgb(3 12 22 / 0.58);
+  --color-shadow: rgb(2 12 23 / 0.14);
+
+  --org-primary-color: var(--color-primary);
+  --org-secondary-color: #16496b;
+  --org-accent-color: var(--color-accent);
+  --org-action-color: var(--color-action);
+  --org-on-primary-color: #f8fafc;
+  --org-on-action-color: var(--color-on-action);
+  --org-background-color: var(--color-canvas);
+  --org-card-background: var(--color-surface);
+  --org-text-color: var(--color-contrast);
+  --org-text-secondary: var(--color-muted);
+  --org-border-color: var(--color-border);
+
+  --surface-canvas: var(--org-background-color);
+  --surface-card: var(--org-card-background);
+  --surface-soft: var(--color-surface-soft);
+  --surface-raised: var(--color-surface-raised);
+  --surface-elevated: var(--surface-raised);
+  --surface-muted: var(--surface-soft);
+  --surface-hover: color-mix(in srgb, var(--color-accent) 7%, var(--surface-soft));
+  --surface-disabled: #e1e8e9;
+  --surface-brand-subtle: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  --text-primary: var(--org-text-color);
+  --text-secondary: var(--org-text-secondary);
+  --text-tertiary: var(--color-subtle);
+  --border-default: var(--org-border-color);
+  --border-subtle: color-mix(in srgb, var(--org-border-color) 65%, transparent);
+  --border-accent: color-mix(in srgb, var(--color-accent) 42%, transparent);
+  --action: var(--org-action-color);
+  --on-action: var(--org-on-action-color);
+  --accent: var(--org-accent-color);
+  --action-primary: var(--action);
+  --action-primary-hover: var(--color-action-hover);
+  --accent-readable: var(--color-accent-readable);
+  --focus-ring: var(--color-accent-readable);
+  --font-mono: var(--font-system-label);
+  --elevation-dropdown: var(--elevation-3);
+  --elevation-modal: var(--elevation-4);
+  --chart-primary: #05cdb4;
+  --chart-secondary: #3b82f6;
+  --chart-positive: #10b981;
+  --chart-warning: #e5a319;
+  --chart-danger: #ef5a5a;
+  --chart-neutral: #80909b;
+  --chart-grid: rgb(91 113 122 / 0.16);
+  --ink-strong: var(--text-primary);
+  --warning: var(--chart-warning);
+
+  --radius-control: 0.9rem;
+  --radius-card: 1.25rem;
+  --radius-panel: 1.55rem;
+  --radius-hero: 2rem;
+  --elevation-1: 0 0.45rem 1.4rem rgb(2 10 20 / 0.055);
+  --elevation-2: 0 1rem 3rem rgb(2 10 20 / 0.11);
+  --elevation-3: 0 1.5rem 4rem rgb(2 10 20 / 0.2);
+  --elevation-4: 0 2.5rem 7rem rgb(2 12 22 / 0.32);
+  --motion-fast: 170ms;
+  --motion-panel: 220ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --z-content: 1;
+  --z-sticky: 30;
+  --z-dropdown: 80;
+  --z-navbar: 120;
+  --z-panel: 1000;
+  --z-modal: 9999;
 }
 
 /* ============================================
@@ -157,6 +245,32 @@
   --color-gray-200: #1E2329;
   --color-gray-400: #A0A8B4;
   --color-gray-900: #FFFFFF;
+  --color-canvas: #0f1419;
+  --color-canvas-deep: #0a0d12;
+  --color-surface: #1e2329;
+  --color-surface-soft: #171d23;
+  --color-surface-raised: rgb(25 32 38 / 0.97);
+  --color-contrast: #f8fafc;
+  --color-muted: #96a5af;
+  --color-subtle: #71818d;
+  --color-border: rgb(255 255 255 / 0.1);
+  --color-border-strong: rgb(255 255 255 / 0.18);
+  --color-action: #0a2540;
+  --color-action-hover: #0d2f4d;
+  --color-on-action: #f8fafc;
+  --color-accent-readable: #00d4b3;
+  --color-on-accent: #071512;
+  --color-overlay: rgb(2 9 18 / 0.68);
+  --color-shadow: rgb(0 0 0 / 0.28);
+  --org-background-color: var(--color-canvas);
+  --org-card-background: var(--color-surface);
+  --org-text-color: var(--color-contrast);
+  --org-text-secondary: var(--color-muted);
+  --org-border-color: var(--color-border);
+  --elevation-1: 0 0.45rem 1.4rem rgb(0 0 0 / 0.12);
+  --elevation-2: 0 1rem 3rem rgb(0 0 0 / 0.18);
+  --elevation-3: 0 1.5rem 4rem rgb(0 0 0 / 0.26);
+  --surface-disabled: #27313a;
 }
 
 /* ============================================
@@ -186,9 +300,10 @@
     font-family: var(--font-family);
     font-size: var(--text-base);
     line-height: var(--leading-normal);
-    color: var(--color-gray-900);
-    background-color: var(--color-white);
+    color: var(--color-contrast);
+    background-color: var(--color-canvas);
     font-synthesis: none;
+    transition: color var(--motion-panel) ease, background-color var(--motion-panel) ease;
   }
 
   h1,
@@ -214,6 +329,21 @@
     font: inherit;
   }
 
+  button,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-subtle);
+    opacity: 1;
+  }
+
   a {
     color: var(--color-accent);
     text-decoration: none;
@@ -225,9 +355,82 @@
   }
 
   *:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    outline: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
   }
+}
+
+/* Landmarks shared by every productive Project Hub route. */
+[data-sofia-shell="true"] {
+  min-height: 100dvh;
+  color: var(--text-primary);
+  background:
+    radial-gradient(circle at 82% -8%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 32rem),
+    var(--surface-canvas);
+}
+
+[data-sofia-shell="true"] :where(input, textarea, select) {
+  color: var(--text-primary);
+  accent-color: var(--accent);
+}
+
+[data-sofia-shell="true"] :where(table) {
+  font-variant-numeric: tabular-nums;
+}
+
+[data-sofia-shell="true"] :where(th, [data-label]) {
+  font-family: var(--font-system-label);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Shared overlay language for every domain creation flow. One visual
+   contract keeps task, project and member interactions consistent while
+   each form retains its domain-specific state. */
+[data-sofia-overlay] {
+  background: color-mix(in srgb, var(--surface-canvas) 64%, transparent) !important;
+  backdrop-filter: blur(14px) saturate(115%);
+}
+
+[data-sofia-modal] {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-raised) 96%, transparent) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--elevation-modal) !important;
+}
+
+[data-sofia-modal] input,
+[data-sofia-modal] textarea,
+[data-sofia-modal] select {
+  color: var(--text-primary) !important;
+  background: var(--surface-muted) !important;
+  border-color: var(--border-default) !important;
+}
+
+[data-sofia-modal] input::placeholder,
+[data-sofia-modal] textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Workflow-specific layout lives in sofia-workflows.css. */
+
+[data-sofia-popover] {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-raised) 97%, transparent) !important;
+  border-color: var(--border-subtle) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--elevation-dropdown) !important;
+  backdrop-filter: blur(18px) saturate(125%);
 }
 
 /* ============================================
@@ -393,4 +596,3 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
-

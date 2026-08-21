@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
@@ -16,9 +16,9 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string; issueId: string }> }
 ) {
   try {
-    const { issueId } = await params;
+    const { teamId, issueId } = await params;
 
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
     if (!auth.ok) return auth.response;
 
     const { data: comments, error } = await supabaseAdmin
@@ -57,9 +57,9 @@ export async function POST(
   { params }: { params: Promise<{ teamId: string; issueId: string }> }
 ) {
   try {
-    const { issueId } = await params;
+    const { teamId, issueId } = await params;
 
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
     if (!auth.ok) return auth.response;
     const { payload } = auth;
 

@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam } from '@/lib/auth/require-role';
 
 export const runtime = 'nodejs';
 
@@ -19,7 +19,7 @@ export async function GET(
   try {
     const { teamId, issueId } = await params;
 
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
     if (!auth.ok) return auth.response;
 
     // Get issue with relations
@@ -201,7 +201,7 @@ export async function PATCH(
   try {
     const { teamId, issueId } = await params;
 
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
     if (!auth.ok) return auth.response;
     const { payload } = auth;
 
@@ -353,7 +353,7 @@ export async function DELETE(
   try {
     const { teamId, issueId } = await params;
 
-    const auth = await requireAdmin(request);
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
     if (!auth.ok) return auth.response;
 
     // Soft delete (archive)

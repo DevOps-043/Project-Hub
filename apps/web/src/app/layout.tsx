@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Sans, Inter_Tight, Newsreader } from 'next/font/google';
 import './globals.css';
+import './sofia-workflows.css';
 import ClientLayout from './ClientLayout';
 
 const interTight = Inter_Tight({
@@ -42,11 +43,11 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="es" suppressHydrationWarning>
+        <html lang="es" className={`${interTight.variable} ${newsreader.variable} ${ibmPlexSans.variable}`} suppressHydrationWarning>
             <head>
                 <meta name="referrer" content="no-referrer-when-downgrade" />
             </head>
-            <body className={`${interTight.variable} ${newsreader.variable} ${ibmPlexSans.variable}`}>
+            <body>
                 <ClientLayout>
                     {children}
                 </ClientLayout>

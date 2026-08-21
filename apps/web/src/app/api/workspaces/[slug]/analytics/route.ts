@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic';
 
 interface TaskRow {
   status_id: string;
+  team_id: string | null;
+  project_id: string | null;
+  due_date: string | null;
   completed_at: string | null;
   started_at: string | null;
   assignee_id: string | null;
@@ -105,7 +108,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Get workspace team IDs
     const { data: wsTeams } = await supabase
       .from('teams')
-      .select('team_id')
+      .select('team_id, name')
       .eq('workspace_id', workspace.workspace_id);
     const teamIds = (wsTeams || []).map(t => t.team_id);
 
@@ -125,7 +128,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (orFilters.length > 0) {
       const { data } = await supabase
         .from('task_issues')
-        .select('status_id, completed_at, started_at, assignee_id, issue_id, created_at, cycle_id, estimate_points')
+        .select('status_id, team_id, project_id, due_date, completed_at, started_at, assignee_id, issue_id, created_at, cycle_id, estimate_points')
         .or(orFilters.join(','));
       tasks = (data || []) as TaskRow[];
     }
@@ -299,10 +302,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const completedCount = Object.entries(taskStatusCounts).reduce((sum, [type, count]) => (
       isDoneStatus(type) ? sum + Number(count) : sum
     ), 0);
+    const now = Date.now();
+    const overdueTasks = tasks.filter((task) => (
+      task.due_date
+      && new Date(task.due_date).getTime() < now
+      && !isDoneStatus(statusMap[task.status_id]?.status_type)
+      && statusMap[task.status_id]?.status_type !== 'cancelled'
+    )).length;
+    const teamBreakdown = (wsTeams || []).map((team) => {
+      const teamTasks = tasks.filter((task) => task.team_id === team.team_id);
+      const completed = teamTasks.filter((task) => isDoneStatus(statusMap[task.status_id]?.status_type)).length;
+      return {
+        id: team.team_id,
+        name: team.name,
+        total: teamTasks.length,
+        completed,
+        completionRate: teamTasks.length ? Math.round(completed / teamTasks.length * 100) : 0,
+      };
+    }).sort((a, b) => b.total - a.total);
+
+
 
     const responsePayload = {
       summary: {
         totalTasks: tasks.length,
+        teamCount: teamIds.length,
+        memberCount: memberIds.length,
+        overdueTasks,
+        unassignedTasks: tasks.filter((task) => !task.assignee_id).length,
         avgCycleTime: avgCycleTimeDays,
         projectHealth,
         completionRate: tasks.length > 0 ? Math.round(completedCount / tasks.length * 100) : 0,
@@ -315,6 +342,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         active: projects.filter(p => ['active', 'in_progress', 'planning', 'on_hold'].includes(p.project_status)).length,
       },
       velocity: velocityData,
+      teams: teamBreakdown,
       workload: workloadData,
       heatmap: Object.entries(heatmapData).map(([date, count]) => ({ date, count })),
       leaderboard,

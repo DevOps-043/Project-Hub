@@ -13,6 +13,7 @@ import {
   parseGoogleUrl,
   uploadFileToDrive,
 } from '@/lib/google/document-utils';
+import { ATTACHMENT_ACCEPT, collectAttachmentFiles } from '@/lib/uploads/attachment-policy';
 import {
   Plus, Link2, CloudOff, Loader2, Upload, LinkIcon, X, FileText,
 } from 'lucide-react';
@@ -128,43 +129,35 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
   // ─── 2. Subir archivo local a Drive ────────────────────────
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const { files, error } = collectAttachmentFiles(e.target.files);
+    if (error) { alert(error); return; }
+    if (!files.length) return;
 
     setUploading(true);
     try {
-      // Obtener access token de Google
       const { data: tokenData, error: tokenError } = await api.get<{ accessToken: string }>('/api/auth/google/token');
-
       if (tokenError || !tokenData) {
         alert('No se pudo obtener acceso a Google. Reconecta tu cuenta.');
         return;
       }
 
-      const { accessToken } = tokenData;
-      const uploaded = await uploadFileToDrive(file, accessToken);
-
-      if (!uploaded) {
-        alert('Error al subir el archivo a Google Drive.');
-        return;
+      for (const file of files) {
+        const uploaded = await uploadFileToDrive(file, tokenData.accessToken);
+        if (!uploaded) throw new Error(`No se pudo subir ${file.name}`);
+        const { provider, docType } = classifyGoogleFile(uploaded.mimeType);
+        await linkDocument({
+          name: uploaded.name,
+          provider,
+          external_id: uploaded.id,
+          external_url: uploaded.webViewLink,
+          doc_type: docType,
+          mime_type: uploaded.mimeType,
+        });
       }
-
-      const { provider, docType } = classifyGoogleFile(uploaded.mimeType);
-
-      await linkDocument({
-        name: uploaded.name,
-        provider,
-        external_id: uploaded.id,
-        external_url: uploaded.webViewLink,
-        doc_type: docType,
-        mime_type: uploaded.mimeType,
-      });
-    } catch (error) {
-      console.error('Error subiendo archivo:', error);
-      alert('Error al subir el archivo.');
+    } catch (uploadError) {
+      alert(uploadError instanceof Error ? uploadError.message : 'No se pudieron subir los archivos.');
     } finally {
       setUploading(false);
-      // Reset input
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -299,6 +292,8 @@ export function IssueDocumentsView({ issueId, teamId, workspaceSlug }: IssueDocu
           <input
             ref={fileInputRef}
             type="file"
+            multiple
+            accept={ATTACHMENT_ACCEPT}
             className="hidden"
             onChange={handleFileUpload}
           />

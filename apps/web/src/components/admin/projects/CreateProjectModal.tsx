@@ -7,6 +7,7 @@ import { useGoogleConnection } from '@/shared/hooks/useGoogleConnection';
 import { GoogleDrivePicker } from '@/components/google/GoogleDrivePicker';
 import type { PickedFile } from '@/components/google/GoogleDrivePicker';
 import { classifyGoogleFile, parseGoogleUrl, uploadFileToDrive } from '@/lib/google/document-utils';
+import { ATTACHMENT_ACCEPT, collectAttachmentFiles } from '@/lib/uploads/attachment-policy';
 import { api } from '@/lib/api/client';
 import { CustomDatePicker } from './CustomDatePicker';
 import { ICONS, ICON_COLORS, PRIORITY_OPTIONS, STATUS_OPTIONS, IconSVGs } from './create-project-constants';
@@ -334,23 +335,32 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
   };
 
   const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const { files, error } = collectAttachmentFiles(e.target.files);
+    if (error) { alert(error); return; }
+    if (!files.length) return;
+
     setDocUploading(true);
     try {
       const { data: tokenData, error: tokenError } = await api.get<{ accessToken?: string }>('/api/auth/google/token');
       if (tokenError || !tokenData?.accessToken) { alert('No se pudo acceder a Google. Reconecta tu cuenta.'); return; }
-      const { accessToken } = tokenData;
-      const uploaded = await uploadFileToDrive(file, accessToken);
-      if (!uploaded) { alert('Error al subir el archivo a Drive.'); return; }
-      setPendingDocuments((prev) => [...prev, {
-        id: uploaded.id,
-        name: uploaded.name,
-        url: uploaded.webViewLink,
-        mimeType: uploaded.mimeType,
-      }]);
-    } catch (err) {
-      console.error('Error subiendo archivo:', err);
+
+      const additions: PickedFile[] = [];
+      for (const file of files) {
+        const uploaded = await uploadFileToDrive(file, tokenData.accessToken);
+        if (!uploaded) throw new Error(`No se pudo subir ${file.name}`);
+        additions.push({
+          id: uploaded.id,
+          name: uploaded.name,
+          url: uploaded.webViewLink,
+          mimeType: uploaded.mimeType,
+        });
+      }
+      setPendingDocuments((current) => {
+        const ids = new Set(current.map((document) => document.id));
+        return [...current, ...additions.filter((document) => !ids.has(document.id))];
+      });
+    } catch (uploadError) {
+      alert(uploadError instanceof Error ? uploadError.message : 'No se pudieron subir los archivos.');
     } finally {
       setDocUploading(false);
       if (docFileInputRef.current) docFileInputRef.current.value = '';
@@ -408,13 +418,14 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
   return (
     <>
     <AnimatePresence>
-      <div key="create-project-modal" className="fixed inset-0 flex items-center justify-center" style={{ zIndex: 99999 }}>
+      <div key="create-project-modal" className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 99999 }} data-sofia-modal-root>
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="absolute inset-0 backdrop-blur-sm"
+          data-sofia-overlay
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
           onClick={handleClose}
         />
@@ -426,6 +437,11 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ duration: 0.2 }}
           className="relative w-full max-w-3xl overflow-hidden rounded-2xl shadow-2xl border"
+          data-sofia-modal
+          data-modal-kind="project"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="create-project-title"
           style={{ 
             backgroundColor: isDark ? '#161920' : '#FFFFFF',
             borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)'
@@ -433,9 +449,14 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border }}>
+          <div className="flex items-center gap-3 px-6 py-4 border-b" style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border }} data-modal-section="header">
+            <div data-modal-heading>
+              <span>PORTAFOLIO · NUEVO PROYECTO</span>
+              <h2 id="create-project-title">Crear un espacio de trabajo</h2>
+              <p>Define el propósito, la planificación y el contexto del proyecto.</p>
+            </div>
             {/* Team Selector */}
-            <div className="relative">
+            <div className="relative" data-project-team>
               <button
                 onClick={() => setShowTeamDropdown(!showTeamDropdown)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors hover:bg-white/5"
@@ -483,12 +504,11 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
               )}
             </div>
 
-            <span style={{ color: colors.textMuted }}>/</span>
-            <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>New project</span>
-
             {/* Close button */}
             <button
               onClick={handleClose}
+              type="button"
+              aria-label="Cerrar creación de proyecto"
               className="ml-auto p-2 rounded-lg hover:bg-white/5 transition-colors"
               style={{ color: colors.textMuted }}
             >
@@ -500,9 +520,9 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
           </div>
 
           {/* Content */}
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]" data-modal-section="body">
             {/* Icon Picker */}
-            <div className="relative mb-4">
+            <div className="relative mb-4" data-project-icon>
               <button
                 onClick={() => setShowIconPicker(!showIconPicker)}
                 className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105"
@@ -555,7 +575,9 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
               type="text"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              placeholder="Project name"
+              placeholder="Nombre del proyecto"
+              aria-label="Nombre del proyecto"
+              data-project-name
               className="w-full text-3xl font-bold bg-transparent border-none outline-none mb-3 px-0 placeholder-gray-500"
               style={{ color: isDark ? '#FFFFFF' : '#111827' }}
             />
@@ -565,13 +587,19 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
               type="text"
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="Add a short summary..."
+              placeholder="Resume el resultado que quieres conseguir..."
+              aria-label="Resumen del proyecto"
+              data-project-summary
               className="w-full text-base bg-transparent border-none outline-none mb-8 px-0 placeholder-gray-500"
               style={{ color: isDark ? '#9CA3AF' : '#4B5563' }}
             />
 
             {/* Quick Actions Bar */}
-            <div className="flex flex-wrap gap-2 mb-6">
+            <div className="flex flex-wrap gap-2 mb-6" data-project-planning>
+              <div data-project-section-head>
+                <span>PLANIFICACIÓN</span>
+                <strong>Decisiones clave</strong>
+              </div>
               <div className="relative">
                 <button
                   onClick={() => setShowStatusDropdown(!showStatusDropdown)}
@@ -687,7 +715,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
 
               {/* Start Date Custom Picker */}
               <CustomDatePicker 
-                label="Start Date" 
+                label="Inicio"
                 value={startDate} 
                 onChange={setStartDate} 
                 isDark={isDark} 
@@ -704,7 +732,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
 
               {/* Target Date Custom Picker */}
               <CustomDatePicker 
-                label="Due Date" 
+                label="Entrega"
                 value={targetDate} 
                 onChange={setTargetDate} 
                 isDark={isDark} 
@@ -728,7 +756,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                   value={newLabel}
                   onChange={(e) => setNewLabel(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addLabel()}
-                  placeholder="Add label..."
+                  placeholder="Nueva etiqueta..."
                   className="bg-transparent border-none outline-none text-sm w-24 placeholder-gray-500"
                   style={{ color: isDark ? '#E5E7EB' : '#374151' }}
                 />
@@ -737,7 +765,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
 
             {/* Labels Display */}
             {labels.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 mb-4" data-project-labels>
                 {labels.map(label => (
                   <span
                     key={label}
@@ -752,11 +780,15 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
             )}
 
             {/* Description */}
-            <div className="relative group">
+            <div className="relative group" data-project-description>
+              <div data-project-section-head>
+                <span>CONTEXTO</span>
+                <strong>Objetivo y alcance</strong>
+              </div>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Write a description..."
+                placeholder="Describe el objetivo, el alcance y los criterios de éxito..."
                 className="w-full h-40 px-0 py-2 bg-transparent text-sm resize-none focus:outline-none placeholder-gray-600 leading-relaxed"
                 style={{ 
                   color: isDark ? '#D1D5DB' : '#4B5563'
@@ -765,7 +797,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
             </div>
 
             {/* Milestones Section */}
-            <div className={`mt-4 rounded-xl border transition-all ${showMilestoneForm ? 'p-4 bg-gray-50/5 dark:bg-white/5' : 'p-0 border-transparent'}`}
+            <div data-project-milestones className={`mt-4 rounded-xl border transition-all ${showMilestoneForm ? 'p-4 bg-gray-50/5 dark:bg-white/5' : 'p-0 border-transparent'}`}
                  style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border }}>
               
               {/* List of added milestones */}
@@ -796,10 +828,10 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                   className="w-full flex items-center justify-between p-4 rounded-xl border border-dashed hover:bg-white/5 transition-colors group"
                   style={{ borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)' }}
                  >
-                  <span className="text-sm font-medium group-hover:opacity-100 transition-opacity opacity-70">Milestones</span>
+                     <span className="text-sm font-medium group-hover:opacity-100 transition-opacity opacity-70">Hitos del proyecto</span>
                   <div className="flex items-center gap-2 text-xs font-medium bg-white/5 px-2 py-1 rounded opacity-70 group-hover:opacity-100 transition-all">
                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-                     Add milestone
+                     Añadir hito
                   </div>
                  </button>
               )}
@@ -811,7 +843,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                      <div className="p-1 rounded bg-[#00D4B3]/10 text-[#00D4B3]">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                      </div>
-                     <span className="text-sm font-bold">New Milestone</span>
+                     <span className="text-sm font-bold">Nuevo hito</span>
                   </div>
                   
                   <div className="space-y-4">
@@ -819,14 +851,14 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                       autoFocus
                       type="text"
                       className="w-full bg-transparent border-none outline-none text-sm font-medium placeholder-gray-500 p-0"
-                      placeholder="Milestone name"
+                      placeholder="Nombre del hito"
                       value={newMilestoneName}
                       onChange={(e) => setNewMilestoneName(e.target.value)}
                       style={{ color: isDark ? '#FFF' : '#000' }}
                     />
                     <textarea
                       className="w-full bg-transparent border-none outline-none text-sm opacity-80 placeholder-gray-500 p-0 resize-none h-20"
-                      placeholder="Add a description..."
+                      placeholder="Resultado esperado..."
                       value={newMilestoneDesc}
                       onChange={(e) => setNewMilestoneDesc(e.target.value)}
                       style={{ color: isDark ? '#EEE' : '#333' }}
@@ -837,14 +869,14 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                          onClick={() => { setShowMilestoneForm(false); setNewMilestoneName(''); setNewMilestoneDesc(''); }}
                          className="px-3 py-1.5 text-xs font-medium rounded hover:bg-white/10 opacity-70 hover:opacity-100"
                        >
-                         Cancel
+                         Cancelar
                        </button>
                        <button 
                          onClick={addMilestone}
                          disabled={!newMilestoneName.trim()}
                          className="px-3 py-1.5 text-xs font-medium rounded bg-[#6366F1] text-white hover:bg-[#5558DD] disabled:opacity-50 disabled:cursor-not-allowed"
                        >
-                         Add milestone
+                         Añadir hito
                        </button>
                     </div>
                   </div>
@@ -853,9 +885,9 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
             </div>
 
             {/* Documentos adjuntos */}
-            <div className="mt-6">
+            <div className="mt-6" data-project-documents>
               <label className="block text-sm font-medium mb-2" style={{ color: colors.textPrimary }}>
-                Documentos
+                Contexto documental
               </label>
 
               {!google.isConnected ? (
@@ -874,7 +906,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
               ) : (
                 <>
                 <div className="flex items-center gap-2 mb-2">
-                  <input ref={docFileInputRef} type="file" className="hidden" onChange={handleDocFileUpload} />
+                  <input ref={docFileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT} className="hidden" onChange={handleDocFileUpload} />
                   <button
                     type="button"
                     onClick={() => docFileInputRef.current?.click()}
@@ -1041,13 +1073,14 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
           <div
             className="flex items-center justify-end gap-3 px-6 py-4 border-t"
             style={{ borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border }}
+            data-modal-section="footer"
           >
             <button
               onClick={handleClose}
               className="px-4 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-white/5"
               style={{ color: colors.textSecondary }}
             >
-              Cancel
+              Cancelar
             </button>
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -1060,7 +1093,7 @@ export function CreateProjectModal({ isOpen, onClose, onSuccess, initialTeamId, 
                 boxShadow: '0 4px 15px rgba(10, 37, 64, 0.3)'
               }}
             >
-              {loading ? (aiAnalyzing ? 'Analizando...' : 'Creating...') : (pendingDocuments.length > 0 && teamId ? 'Crear proyecto + generar tareas' : 'Create project')}
+              {loading ? (aiAnalyzing ? 'Analizando...' : 'Creando...') : (pendingDocuments.length > 0 && teamId ? 'Crear proyecto + generar tareas' : 'Crear proyecto')}
             </motion.button>
           </div>
           )}

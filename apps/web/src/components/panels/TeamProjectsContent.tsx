@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { api } from '@/lib/api/client';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { CreateProjectModal } from '@/components/admin/projects/CreateProjectModal';
+import { useTeamPanel } from '@/components/teams/TeamPanelContext';
+import { TeamPanelEmptyState } from '@/components/teams/TeamPanelEmptyState';
+import { PROJECT_STATUS_CONFIG, PROJECT_HEALTH_CONFIG, softBg } from '@/components/teams/status-config';
+import { FolderKanban, Plus, Search } from 'lucide-react';
 
 // Types
 interface Project {
@@ -34,36 +37,6 @@ interface Project {
   lead_avatar_url?: string | null;
   member_count?: number;
 }
-
-interface Team {
-  team_id: string;
-  name: string;
-  slug: string;
-  color: string;
-}
-
-// Status config
-const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
-  planning: { label: 'Planificación', color: '#6B7280', bgColor: '#6B728020' },
-  active: { label: 'Activo', color: '#10B981', bgColor: '#10B98120' },
-  on_hold: { label: 'En pausa', color: '#F59E0B', bgColor: '#F59E0B20' },
-  completed: { label: 'Completado', color: '#3B82F6', bgColor: '#3B82F620' },
-  cancelled: { label: 'Cancelado', color: '#EF4444', bgColor: '#EF444420' },
-};
-
-const HEALTH_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-  on_track: { label: 'En tiempo', color: '#10B981', icon: '●' },
-  at_risk: { label: 'En riesgo', color: '#F59E0B', icon: '●' },
-  off_track: { label: 'Retrasado', color: '#EF4444', icon: '●' },
-};
-
-const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  none: { label: 'Sin prioridad', color: '#6B7280' },
-  low: { label: 'Baja', color: '#6B7280' },
-  medium: { label: 'Media', color: '#3B82F6' },
-  high: { label: 'Alta', color: '#F59E0B' },
-  urgent: { label: 'Urgente', color: '#EF4444' },
-};
 
 // Icon Components
 const IconSVGs: Record<string, React.ReactNode> = {
@@ -94,25 +67,13 @@ const ProjectIcon = ({ name, color, size = 40 }: { name: string; color: string; 
   </div>
 );
 
-interface TeamProjectsContentProps {
-  /** Ruta base del panel (p.ej. "/admin" o "/{orgSlug}/admin"). Default: "/admin". */
-  panelBase?: string;
-  /** Slug del workspace, si aplica (rutas /[orgSlug]/admin/*). */
-  workspaceSlug?: string;
-}
-
-export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: TeamProjectsContentProps = {}) {
-  const params = useParams();
-  const teamId = params.teamId as string;
+export function TeamProjectsContent() {
+  const { teamId, panelBase, workspaceSlug } = useTeamPanel();
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
 
-  const accentColor = '#00D4B3';
-  const primaryColor = '#0A2540';
-
   // State
   const [projects, setProjects] = useState<Project[]>([]);
-  const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -123,22 +84,6 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
   const fetchProjects = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch team info
-      const teamRes = await api.get<{ id: string; name: string; slug: string; color: string }>(
-        `/api/admin/teams/${teamId}`
-      );
-      if (!teamRes.error && teamRes.data) {
-        const teamData = teamRes.data;
-        // API returns id instead of team_id
-        setTeam({
-          team_id: teamData.id,
-          name: teamData.name,
-          slug: teamData.slug,
-          color: teamData.color
-        });
-      }
-
-      // Fetch projects for team
       const projectsRes = await api.get<{ projects?: Project[] }>(`/api/admin/projects?team_id=${teamId}`);
       if (!projectsRes.error && projectsRes.data) {
         setProjects(projectsRes.data.projects || []);
@@ -174,193 +119,116 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: accentColor }} />
+        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--color-accent)' }} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: colors.bgPrimary }}>
-      {/* Header */}
-      <header
-        className="sticky top-0 z-40 border-b backdrop-blur-xl"
-        style={{ backgroundColor: `${colors.bgPrimary}CC`, borderColor: colors.border }}
-      >
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href={`${panelBase}/teams/${teamId}/tasks`}
-                className="p-2 rounded-lg transition-colors hover:bg-white/5"
-                style={{ color: colors.textMuted }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M15 18l-6-6 6-6"/>
-                </svg>
-              </Link>
+    <div>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: colors.textMuted }} />
+          <input
+            type="text"
+            placeholder="Buscar proyecto..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 pr-4 py-2 rounded-xl border text-sm w-64"
+            style={{
+              backgroundColor: isDark ? '#0F1419' : '#F9FAFB',
+              borderColor: colors.border,
+              color: colors.textPrimary
+            }}
+          />
+        </div>
 
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Link href={`${panelBase}/teams/${teamId}/tasks`} className="text-sm hover:underline" style={{ color: accentColor }}>
-                    {team?.name || 'Equipo'}
-                  </Link>
-                  <span style={{ color: colors.textMuted }}>/</span>
-                  <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>
-                    Proyectos
-                  </span>
-                </div>
-                <h1 className="text-xl font-bold" style={{ color: colors.textPrimary }}>
-                  Proyectos del Equipo
-                </h1>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative">
-                <svg
-                  width="16" height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: colors.textMuted }}
-                >
-                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Buscar proyecto..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 rounded-xl border text-sm w-64"
-                  style={{
-                    backgroundColor: isDark ? '#0F1419' : '#F9FAFB',
-                    borderColor: colors.border,
-                    color: colors.textPrimary
-                  }}
-                />
-              </div>
-
-              {/* View Toggle */}
-              <div className="flex items-center rounded-lg border" style={{ borderColor: colors.border }}>
-                <button
-                  onClick={() => setView('grid')}
-                  className="p-2 transition-colors"
-                  style={{
-                    backgroundColor: view === 'grid' ? `${accentColor}20` : 'transparent',
-                    color: view === 'grid' ? accentColor : colors.textMuted
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setView('list')}
-                  className="p-2 transition-colors"
-                  style={{
-                    backgroundColor: view === 'list' ? `${accentColor}20` : 'transparent',
-                    color: view === 'list' ? accentColor : colors.textMuted
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-                    <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
-                    <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                  </svg>
-                </button>
-              </div>
-
-              {/* New Project Button */}
-              {/* New Project Button */}
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
-                style={{
-                  background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
-                  boxShadow: `0 4px 15px ${primaryColor}40`
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                Nuevo Proyecto
-              </button>
-            </div>
-          </div>
-
-          {/* Status Filters */}
-          <div className="flex items-center gap-2 mt-4">
+        <div className="flex items-center gap-3">
+          {/* View Toggle */}
+          <div className="flex items-center rounded-lg border" style={{ borderColor: colors.border }}>
             <button
-              onClick={() => setFilterStatus('all')}
-              className="px-3 py-1.5 rounded-lg text-sm transition-colors"
+              onClick={() => setView('grid')}
+              className="p-2 transition-colors"
               style={{
-                backgroundColor: filterStatus === 'all' ? `${accentColor}20` : 'transparent',
-                color: filterStatus === 'all' ? accentColor : colors.textMuted
+                backgroundColor: view === 'grid' ? softBg('var(--color-accent)') : 'transparent',
+                color: view === 'grid' ? 'var(--color-accent)' : colors.textMuted
               }}
             >
-              Todos ({projects.length})
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+              </svg>
             </button>
-            {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-              const count = projects.filter(p => p.project_status === key).length;
-              if (count === 0) return null;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setFilterStatus(key)}
-                  className="px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-2"
-                  style={{
-                    backgroundColor: filterStatus === key ? `${config.color}20` : 'transparent',
-                    color: filterStatus === key ? config.color : colors.textMuted
-                  }}
-                >
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: config.color }} />
-                  {config.label} ({count})
-                </button>
-              );
-            })}
+            <button
+              onClick={() => setView('list')}
+              className="p-2 transition-colors"
+              style={{
+                backgroundColor: view === 'list' ? softBg('var(--color-accent)') : 'transparent',
+                color: view === 'list' ? 'var(--color-accent)' : colors.textMuted
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+                <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+                <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+              </svg>
+            </button>
           </div>
+
+          {/* New Project Button */}
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
+            style={{ backgroundColor: 'var(--color-primary)' }}
+          >
+            <Plus size={16} />
+            Nuevo Proyecto
+          </button>
         </div>
-      </header>
+      </div>
+
+      {/* Status Filters */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
+        <button
+          onClick={() => setFilterStatus('all')}
+          className="px-3 py-1.5 rounded-lg text-sm transition-colors"
+          style={{
+            backgroundColor: filterStatus === 'all' ? softBg('var(--color-accent)') : 'transparent',
+            color: filterStatus === 'all' ? 'var(--color-accent)' : colors.textMuted
+          }}
+        >
+          Todos ({projects.length})
+        </button>
+        {Object.entries(PROJECT_STATUS_CONFIG).map(([key, config]) => {
+          const count = projects.filter(p => p.project_status === key).length;
+          if (count === 0) return null;
+          return (
+            <button
+              key={key}
+              onClick={() => setFilterStatus(key)}
+              className="px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-2"
+              style={{
+                backgroundColor: filterStatus === key ? softBg(config.color) : 'transparent',
+                color: filterStatus === key ? config.color : colors.textMuted
+              }}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: config.color }} />
+              {config.label} ({count})
+            </button>
+          );
+        })}
+      </div>
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {projects.length === 0 ? (
-          // Empty State
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-20"
-          >
-            <div
-              className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6"
-              style={{ backgroundColor: `${accentColor}15` }}
-            >
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={accentColor} strokeWidth="1.5">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-            </div>
-            <h3 className="text-xl font-semibold mb-2" style={{ color: colors.textPrimary }}>
-              Sin proyectos
-            </h3>
-            <p className="text-sm mb-6" style={{ color: colors.textMuted }}>
-              Este equipo aún no tiene proyectos asignados
-            </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium text-white"
-              style={{ backgroundColor: primaryColor }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              Crear Proyecto
-            </button>
-          </motion.div>
-        ) : view === 'grid' ? (
+      {projects.length === 0 ? (
+        <TeamPanelEmptyState
+          icon={<FolderKanban size={26} />}
+          title="Sin proyectos"
+          description="Este equipo aún no tiene proyectos asignados."
+          action={{ label: 'Crear proyecto', onClick: () => setShowCreateModal(true) }}
+        />
+      ) : view === 'grid' ? (
           // Grid View
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredProjects.map((project, index) => (
@@ -384,7 +252,7 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
                     <div className="flex items-center gap-3">
                       <ProjectIcon name={project.icon_name} color={project.icon_color} size={44} />
                       <div className="min-h-[42px] flex flex-col justify-center">
-                        <h3 className="font-semibold group-hover:text-[#00D4B3] transition-colors line-clamp-2" style={{ color: colors.textPrimary }}>
+                        <h3 className="font-semibold group-hover:text-(--color-accent) transition-colors line-clamp-2" style={{ color: colors.textPrimary }}>
                           {project.project_name}
                         </h3>
                         <span className="text-xs font-mono" style={{ color: colors.textMuted }}>
@@ -395,11 +263,11 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
                     <span
                       className="px-2 py-1 rounded-full text-xs font-medium"
                       style={{
-                        backgroundColor: STATUS_CONFIG[project.project_status]?.bgColor,
-                        color: STATUS_CONFIG[project.project_status]?.color
+                        backgroundColor: softBg(PROJECT_STATUS_CONFIG[project.project_status]?.color),
+                        color: PROJECT_STATUS_CONFIG[project.project_status]?.color
                       }}
                     >
-                      {STATUS_CONFIG[project.project_status]?.label}
+                      {PROJECT_STATUS_CONFIG[project.project_status]?.label}
                     </span>
                   </div>
 
@@ -427,7 +295,7 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
                         className="h-full rounded-full transition-all"
                         style={{
                           width: `${project.completion_percentage}%`,
-                          backgroundColor: accentColor
+                          backgroundColor: 'var(--color-accent)'
                         }}
                       />
                     </div>
@@ -436,12 +304,10 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
                   {/* Footer */}
                   <div className="flex items-center justify-between">
                     {/* Health */}
-                    <div className="flex items-center gap-1">
-                      <span style={{ color: HEALTH_CONFIG[project.health_status]?.color }}>
-                        {HEALTH_CONFIG[project.health_status]?.icon}
-                      </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: PROJECT_HEALTH_CONFIG[project.health_status]?.color }} />
                       <span className="text-xs" style={{ color: colors.textMuted }}>
-                        {HEALTH_CONFIG[project.health_status]?.label}
+                        {PROJECT_HEALTH_CONFIG[project.health_status]?.label}
                       </span>
                     </div>
 
@@ -493,11 +359,11 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
                   <span
                     className="px-2 py-1 rounded-full text-xs font-medium shrink-0"
                     style={{
-                      backgroundColor: STATUS_CONFIG[project.project_status]?.bgColor,
-                      color: STATUS_CONFIG[project.project_status]?.color
+                      backgroundColor: softBg(PROJECT_STATUS_CONFIG[project.project_status]?.color),
+                      color: PROJECT_STATUS_CONFIG[project.project_status]?.color
                     }}
                   >
-                    {STATUS_CONFIG[project.project_status]?.label}
+                    {PROJECT_STATUS_CONFIG[project.project_status]?.label}
                   </span>
 
                   {/* Progress */}
@@ -512,19 +378,17 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
                         className="h-full rounded-full"
                         style={{
                           width: `${project.completion_percentage}%`,
-                          backgroundColor: accentColor
+                          backgroundColor: 'var(--color-accent)'
                         }}
                       />
                     </div>
                   </div>
 
                   {/* Health */}
-                  <div className="flex items-center gap-1 shrink-0 w-24">
-                    <span style={{ color: HEALTH_CONFIG[project.health_status]?.color }}>
-                      {HEALTH_CONFIG[project.health_status]?.icon}
-                    </span>
+                  <div className="flex items-center gap-1.5 shrink-0 w-24">
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: PROJECT_HEALTH_CONFIG[project.health_status]?.color }} />
                     <span className="text-xs" style={{ color: colors.textMuted }}>
-                      {HEALTH_CONFIG[project.health_status]?.label}
+                      {PROJECT_HEALTH_CONFIG[project.health_status]?.label}
                     </span>
                   </div>
 
@@ -537,7 +401,6 @@ export function TeamProjectsContent({ panelBase = '/admin', workspaceSlug }: Tea
             ))}
           </div>
         )}
-      </main>
 
       <CreateProjectModal
         isOpen={showCreateModal}

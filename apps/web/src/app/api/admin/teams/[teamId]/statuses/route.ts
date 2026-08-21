@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam } from '@/lib/auth/require-role';
 import { ensureDefaultTaskStatuses, resolveTeamId } from '@/lib/services/task-status-service';
 
 export const runtime = 'nodejs';
@@ -18,14 +18,14 @@ export async function GET(
   try {
     let { teamId } = await params;
 
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     const resolvedTeamId = await resolveTeamId(supabaseAdmin, teamId);
     if (!resolvedTeamId) {
       return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
     }
     teamId = resolvedTeamId;
+
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
 
     const statuses = await ensureDefaultTaskStatuses(supabaseAdmin, teamId);
     return NextResponse.json({ statuses });
@@ -42,14 +42,14 @@ export async function POST(
   try {
     let { teamId } = await params;
 
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     const resolvedTeamId = await resolveTeamId(supabaseAdmin, teamId);
     if (!resolvedTeamId) {
       return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 });
     }
     teamId = resolvedTeamId;
+
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
 
     const body = await request.json();
     const { name, status_type, color, icon, is_closed } = body;

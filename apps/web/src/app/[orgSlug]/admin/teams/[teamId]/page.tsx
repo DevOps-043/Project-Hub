@@ -1,10 +1,5 @@
-import { redirect } from 'next/navigation';
+import { TeamOverviewContent } from '@/components/panels/TeamOverviewContent';
 
-export default async function AdminWorkspaceTeamPage({
-  params,
-}: {
-  params: Promise<{ orgSlug: string; teamId: string }>;
-}) {
-  const { orgSlug, teamId } = await params;
-  redirect(`/${orgSlug}/admin/teams/${teamId}/tasks`);
+export default function TeamOverviewPage() {
+  return <TeamOverviewContent />;
 }

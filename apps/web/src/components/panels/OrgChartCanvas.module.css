@@ -1,0 +1,233 @@
+.viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 36rem;
+  overflow: hidden;
+  cursor: grab;
+  background-color: var(--surface-canvas);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--border-subtle) 74%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border-subtle) 74%, transparent) 1px, transparent 1px);
+  background-size: 2rem 2rem;
+  touch-action: none;
+}
+
+.viewport::after {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 56% 50%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 24rem);
+  content: '';
+  pointer-events: none;
+}
+
+.viewport.panning { cursor: grabbing; }
+
+.content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  transform-origin: 0 0;
+}
+
+.edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 68%, var(--border-accent));
+  stroke-linecap: round;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0.2rem 0.45rem color-mix(in srgb, var(--accent) 22%, transparent));
+}
+
+.nodeWrap {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  width: 6rem;
+  justify-items: center;
+}
+
+.node {
+  position: relative;
+  display: grid;
+  width: 6rem;
+  height: 6rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 58%, var(--border-default));
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 25%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 40%),
+    var(--surface-elevated);
+  color: var(--accent-readable);
+  box-shadow:
+    0 1.15rem 2.4rem color-mix(in srgb, var(--ink-strong) 16%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 22%, transparent),
+    0 0 0 0.45rem color-mix(in srgb, var(--accent) 5%, transparent);
+  cursor: pointer;
+  touch-action: none;
+  transition: transform var(--motion-fast) ease, border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+
+.node[data-draggable='true'] { cursor: grab; }
+.node[data-draggable='true']:active { cursor: grabbing; }
+
+.node:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow:
+    0 1.35rem 2.75rem color-mix(in srgb, var(--ink-strong) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 24%, transparent),
+    0 0 0 0.55rem color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.nodeSelected {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow:
+    0 1.35rem 2.8rem color-mix(in srgb, var(--accent) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 28%, transparent),
+    0 0 0 0.55rem color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.nodeWrap[data-kind='organization'] .node {
+  background:
+    radial-gradient(circle at 35% 25%, color-mix(in srgb, white 18%, transparent), transparent 42%),
+    linear-gradient(145deg, color-mix(in srgb, var(--org-primary-color) 88%, black), var(--org-primary-color));
+  color: var(--accent);
+}
+
+.nodeWrap[data-kind='team'] .node {
+  border-color: color-mix(in srgb, var(--warning) 52%, var(--border-default));
+  background:
+    radial-gradient(circle at 35% 25%, color-mix(in srgb, var(--warning) 16%, transparent), transparent 42%),
+    var(--surface-elevated);
+  color: var(--warning);
+}
+
+.nodeCount {
+  position: absolute;
+  right: -0.12rem;
+  bottom: 0.5rem;
+  display: grid;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  padding-inline: 0.28rem;
+  border: 2px solid var(--surface-canvas);
+  border-radius: 999px;
+  background: var(--action);
+  color: var(--on-action);
+  font-family: var(--font-system-label);
+  font-size: 0.64rem;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.nodeLabel {
+  display: grid;
+  width: 10.5rem;
+  justify-items: center;
+  margin-top: 0.55rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border-default);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--surface-elevated) 92%, transparent);
+  box-shadow: var(--elevation-1);
+  text-align: center;
+  backdrop-filter: blur(0.7rem);
+}
+
+.nodeLabel small {
+  color: var(--accent-readable);
+  font-family: var(--font-system-label);
+  font-size: 0.54rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.nodeLabel strong {
+  max-width: 100%;
+  overflow: hidden;
+  margin-top: 0.12rem;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nodeLabel em {
+  margin-top: 0.12rem;
+  color: var(--text-tertiary);
+  font-size: 0.6rem;
+  font-style: normal;
+}
+
+.hint,
+.controls {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-default);
+  background: color-mix(in srgb, var(--surface-elevated) 88%, transparent);
+  box-shadow: var(--elevation-dropdown);
+  backdrop-filter: blur(0.9rem);
+}
+
+.hint {
+  top: 1rem;
+  left: 1rem;
+  gap: 0.45rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+}
+
+.hint svg { color: var(--accent); }
+
+.controls {
+  bottom: 1rem;
+  left: 1rem;
+  gap: 0.12rem;
+  padding: 0.28rem;
+  border-radius: 0.95rem;
+}
+
+.controls button {
+  display: flex;
+  width: 2.1rem;
+  height: 2.1rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.68rem;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.controls button:hover { background: var(--surface-soft); color: var(--accent-readable); }
+
+.zoomLabel {
+  min-width: 2.4rem;
+  color: var(--text-secondary);
+  font-family: var(--font-system-label);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (max-width: 48rem) {
+  .viewport { min-height: 31rem; }
+  .hint { max-width: calc(100% - 2rem); }
+}

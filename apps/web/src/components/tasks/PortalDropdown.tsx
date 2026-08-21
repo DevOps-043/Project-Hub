@@ -66,6 +66,8 @@ export function PortalDropdown({ isOpen, onClose, triggerRef, children, isDark, 
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
         className="fixed py-1 rounded-xl border shadow-2xl overflow-y-auto max-h-[300px]"
+        data-sofia-popover
+        role="menu"
         style={{
           zIndex: 100001,
           top: position.placement === 'top' ? undefined : position.top,
@@ -75,7 +77,7 @@ export function PortalDropdown({ isOpen, onClose, triggerRef, children, isDark, 
           maxHeight: '220px',
           backgroundColor: isDark ? '#1E2329' : '#ffffff',
           borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-          boxShadow: '0 10px 40px -10px rgba(0,0,0,0.5)'
+          boxShadow: 'var(--elevation-dropdown)'
         }}
       >
         {hasChildren ? children : (

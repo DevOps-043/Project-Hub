@@ -1,0 +1,3 @@
+.scope { --ink: var(--text-primary); --muted: var(--text-secondary); --line: var(--border-default); --surface: var(--surface-card); --soft: var(--surface-soft); --canvas: var(--surface-canvas); --accent: var(--org-accent-color); --accent-dark: var(--accent-readable); }
+.scope :is(h1, h2, h3) { font-family: var(--font-system-display); }
+.scope [role='dialog'] { box-shadow: var(--elevation-4); }

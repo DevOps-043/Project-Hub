@@ -1,0 +1,19 @@
+.page { position: relative; display: grid; min-block-size: 100vh; place-items: center; overflow: hidden; padding: 1.5rem; color: var(--text-primary); background: var(--surface-canvas); }
+.ambient { position: absolute; inset: 0; background: radial-gradient(circle at 72% 22%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 34%), linear-gradient(var(--border-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px); background-size: auto, 3rem 3rem, 3rem 3rem; opacity: .55; mask-image: linear-gradient(to bottom, #000, transparent 85%); }
+.card { position: relative; display: flex; inline-size: min(31rem, 100%); min-block-size: 31rem; align-items: center; flex-direction: column; justify-content: center; padding: 3rem; text-align: center; background: color-mix(in srgb, var(--surface-raised) 92%, transparent); border: 1px solid var(--border-default); border-radius: 2rem; box-shadow: var(--elevation-3); backdrop-filter: blur(24px); }
+.brand { position: absolute; inset-block-start: 1.25rem; inset-inline-start: 1.25rem; display: flex; align-items: center; gap: .6rem; text-align: start; }
+.brandMark { display: grid; place-items: center; inline-size: 2rem; block-size: 2rem; color: var(--color-on-accent); background: var(--accent); border-radius: .7rem; font-family: var(--font-system-display); font-size: 1.2rem; }
+.brand > span:last-child { display: grid; }
+.brand strong { font-size: .72rem; }
+.brand small { color: var(--text-tertiary); font-size: .58rem; }
+.icon { display: grid; place-items: center; inline-size: 4.2rem; block-size: 4.2rem; margin-block-end: 1.2rem; color: var(--accent-readable); background: var(--surface-brand-subtle); border: 1px solid var(--border-accent); border-radius: 1.35rem; }
+.icon i { inline-size: 1.6rem; block-size: 1.6rem; border: 2px solid color-mix(in srgb, var(--accent) 20%, transparent); border-block-start-color: var(--accent); border-radius: 50%; animation: spin .75s linear infinite; }
+.eyebrow { color: var(--accent-readable); font-family: var(--font-system-label); font-size: .63rem; font-weight: 650; letter-spacing: .14em; text-transform: uppercase; }
+.card h1 { margin: .65rem 0 .55rem; font-size: clamp(2rem, 5vw, 3rem); font-weight: 420; line-height: 1; }
+.card p { max-inline-size: 24rem; margin: 0; color: var(--text-secondary); font-size: .82rem; line-height: 1.65; }
+.actions { display: flex; justify-content: center; gap: .6rem; margin-block-start: 1.5rem; }
+.primary, .secondary, .actions > button { display: inline-flex; min-block-size: 2.65rem; align-items: center; justify-content: center; gap: .45rem; padding: 0 1rem; border-radius: .8rem; font-size: .74rem; font-weight: 650; text-decoration: none; }
+.primary, .actions > button { color: var(--on-action); background: var(--action); border: 1px solid var(--action); }
+.secondary { color: var(--text-primary); background: var(--surface-soft); border: 1px solid var(--border-default); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 520px) { .card { min-block-size: 28rem; padding: 2rem 1.3rem; } .actions { flex-direction: column; inline-size: 100%; } }

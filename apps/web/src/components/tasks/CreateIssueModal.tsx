@@ -13,6 +13,7 @@ import { api } from '@/lib/api/client';
 import { GoogleDrivePicker } from '@/components/google/GoogleDrivePicker';
 import type { PickedFile } from '@/components/google/GoogleDrivePicker';
 import { classifyGoogleFile, parseGoogleUrl, uploadFileToDrive } from '@/lib/google/document-utils';
+import { ATTACHMENT_ACCEPT, collectAttachmentFiles } from '@/lib/uploads/attachment-policy';
 import type { Status, Priority, Label, Member, Cycle, Project, ProjectDocument, PendingDocument } from './create-issue-types';
 import { StatusIcon, PriorityIcon } from './IssueStatusPriorityIcons';
 import { ESTIMATE_OPTIONS, DEFAULT_PRIORITIES, DEFAULT_STATUSES } from './create-issue-constants';
@@ -122,7 +123,6 @@ export default function CreateIssueModal({
       // 1. Fetch project documents and details if we have a projectId (independent of team)
       const targetProjectId = initialProjectId || projectId;
       if (targetProjectId && targetProjectId !== lastResolvedId.current) {
-        console.log(`[CreateIssueModal] Fetching docs for project: ${targetProjectId}`);
 
         // Determinar URL base (Workspace o Admin)
         const projectApiBase = workspaceSlug
@@ -137,7 +137,6 @@ export default function CreateIssueModal({
 
         if (!docResult.error && docResult.data) {
           const data = docResult.data;
-          console.log(`[CreateIssueModal] Found ${data.documents?.length || 0} docs for project ${targetProjectId}`);
           setProjectDocuments(data.documents || []);
         }
 
@@ -150,7 +149,6 @@ export default function CreateIssueModal({
              // Si el ID que tenemos es un slug/key, lo actualizamos al UUID real
              // Pero sin disparar un re-fetch infinito
              if (targetProjectId !== proj.project_id) {
-               console.log(`[CreateIssueModal] Project key ${targetProjectId} resolved to UUID ${proj.project_id}`);
                lastResolvedId.current = proj.project_id;
                setProjectId(proj.project_id);
              }
@@ -160,23 +158,23 @@ export default function CreateIssueModal({
 
       // 2. Fetch team-specific data if we have a teamId
       if (teamId) {
-        console.log(`[CreateIssueModal] Fetching team data for: ${teamId}`);
 
-        const [statusResult, priorityResult, labelResult, memberResult, cycleResult, projectResult] = await Promise.all([
+        const projectEndpoint = workspaceSlug
+          ? `/api/workspaces/${workspaceSlug}/projects?team_id=${encodeURIComponent(teamId)}&limit=100`
+          : `/api/admin/projects?team_id=${encodeURIComponent(teamId)}&limit=100`;
+        const [statusResult, labelResult, memberResult, cycleResult, projectResult] = await Promise.all([
           api.get<{ statuses?: Status[] }>(`/api/admin/teams/${teamId}/statuses`),
-          api.get<{ priorities?: Priority[] }>(`/api/admin/priorities`),
           api.get<{ labels?: Label[] }>(`/api/admin/teams/${teamId}/labels`),
           api.get<{ members?: Member[] }>(`/api/admin/teams/${teamId}/members`),
           api.get<{ cycles?: Cycle[] }>(`/api/admin/teams/${teamId}/cycles`),
-          api.get<{ projects?: Project[] }>(`/api/admin/projects?team_id=${teamId}`)
+          api.get<{ projects?: Project[] }>(projectEndpoint),
         ]);
 
-        if (statusResult.error) console.error('Status fetch error:', statusResult.error);
-        if (priorityResult.error) console.error('Priority fetch error:', priorityResult.error);
-        if (labelResult.error) console.error('Label fetch error:', labelResult.error);
-        if (memberResult.error) console.error('Member fetch error:', memberResult.error);
-        if (cycleResult.error) console.error('Cycle fetch error:', cycleResult.error);
-        if (projectResult.error) console.error('Project fetch error:', projectResult.error);
+        setPriorities(DEFAULT_PRIORITIES);
+        if (!priorityId) {
+          const medium = DEFAULT_PRIORITIES.find((priority) => priority.level === 3) || DEFAULT_PRIORITIES[0];
+          setPriorityId(medium?.priority_id || '');
+        }
 
         if (!statusResult.error && statusResult.data) {
           const data = statusResult.data;
@@ -193,17 +191,6 @@ export default function CreateIssueModal({
           if (!statusId) setStatusId(initialStatus || 'backlog');
         }
 
-        if (!priorityResult.error && priorityResult.data) {
-          const data = priorityResult.data;
-          const fetchedPriorities = data.priorities || [];
-          setPriorities(fetchedPriorities.length > 0 ? fetchedPriorities : DEFAULT_PRIORITIES);
-
-          if (!priorityId) {
-            const list = fetchedPriorities.length > 0 ? fetchedPriorities : DEFAULT_PRIORITIES;
-            const medium = list.find((p: Priority) => p.name.toLowerCase().includes('media') || p.level === 3);
-            setPriorityId(medium?.priority_id || list[0]?.priority_id || '');
-          }
-        }
 
         if (!labelResult.error && labelResult.data) {
           setLabels(labelResult.data.labels || []);
@@ -405,24 +392,35 @@ export default function CreateIssueModal({
   };
 
   const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const { files, error } = collectAttachmentFiles(e.target.files);
+    if (error) { alert(error); return; }
+    if (!files.length) return;
+
     setDocUploading(true);
     try {
       const { data: tokenData, error: tokenError } = await api.get<{ accessToken: string }>('/api/auth/google/token');
       if (tokenError || !tokenData) { alert('No se pudo acceder a Google. Reconecta tu cuenta.'); return; }
-      const { accessToken } = tokenData;
-      const uploaded = await uploadFileToDrive(file, accessToken);
-      if (!uploaded) { alert('Error al subir el archivo a Drive.'); return; }
-      const pickedFile: PickedFile = {
-        id: uploaded.id,
-        name: uploaded.name,
-        url: uploaded.webViewLink,
-        mimeType: uploaded.mimeType,
-      };
-      setPendingDocuments((prev) => [...prev, { file: pickedFile, source: 'upload' }]);
-    } catch (err) {
-      console.error('Error subiendo archivo:', err);
+
+      const additions: PendingDocument[] = [];
+      for (const file of files) {
+        const uploaded = await uploadFileToDrive(file, tokenData.accessToken);
+        if (!uploaded) throw new Error(`No se pudo subir ${file.name}`);
+        additions.push({
+          file: {
+            id: uploaded.id,
+            name: uploaded.name,
+            url: uploaded.webViewLink,
+            mimeType: uploaded.mimeType,
+          },
+          source: 'upload',
+        });
+      }
+      setPendingDocuments((current) => {
+        const ids = new Set(current.map((document) => document.file.id));
+        return [...current, ...additions.filter((document) => !ids.has(document.file.id))];
+      });
+    } catch (uploadError) {
+      alert(uploadError instanceof Error ? uploadError.message : 'No se pudieron subir los archivos.');
     } finally {
       setDocUploading(false);
       if (docFileInputRef.current) docFileInputRef.current.value = '';
@@ -489,14 +487,16 @@ export default function CreateIssueModal({
           key="create-issue-modal"
           className="fixed inset-0 flex items-center justify-center p-4 md:p-8 overflow-y-auto"
           style={{ zIndex: 9999 }}
+          data-sofia-modal-root
         >
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 backdrop-blur-sm"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          className="absolute inset-0 backdrop-blur-sm"
+          data-sofia-overlay
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
             onClick={handleClose}
           />
 
@@ -507,6 +507,11 @@ export default function CreateIssueModal({
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
             className="relative w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden border border-white/10 flex flex-col md:flex-row"
+            data-sofia-modal
+            data-modal-kind="issue"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-issue-title"
             style={{ 
               backgroundColor: isDark ? '#1a1f25' : '#ffffff',
               height: 'min(600px, 85vh)',
@@ -516,11 +521,12 @@ export default function CreateIssueModal({
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex flex-col md:flex-row w-full h-full overflow-hidden">
+            <div className="flex flex-col md:flex-row w-full h-full overflow-hidden" data-modal-layout>
               {/* Left Panel - Preview */}
               <div 
                 className="w-full md:w-72 p-6 border-b md:border-b-0 md:border-r flex flex-col shrink-0 overflow-y-auto"
-                style={{ 
+                data-modal-aside
+                style={{
                   borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
                   background: isDark 
                     ? `linear-gradient(135deg, ${primaryColor}40, ${accentColor}15)` 
@@ -563,10 +569,10 @@ export default function CreateIssueModal({
 
                 {/* Title */}
                 <h3 className="text-lg font-bold text-center mb-1" style={{ color: colors.textPrimary }}>
-                  Nueva Tarea
+                  Convertir una idea en acción
                 </h3>
                 <p className="text-xs text-center mb-6" style={{ color: colors.textMuted }}>
-                  Vista previa
+                  La tarea quedará lista para priorizar, asignar y ejecutar.
                 </p>
 
                 {/* Preview Info */}
@@ -643,11 +649,11 @@ export default function CreateIssueModal({
               </div>
 
               {/* Right Panel - Form */}
-              <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden" data-modal-main>
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: colors.border, backgroundColor: isDark ? 'rgba(26, 31, 37, 0.8)' : 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
+                <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: colors.border, backgroundColor: isDark ? 'rgba(26, 31, 37, 0.8)' : 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(8px)', zIndex: 10 }} data-modal-section="header">
                   <div>
-                    <h2 className="text-lg font-semibold" style={{ color: colors.textPrimary }}>
+                    <h2 id="create-issue-title" className="text-lg font-semibold" style={{ color: colors.textPrimary }}>
                       Detalles de la tarea
                     </h2>
                     <p className="text-xs" style={{ color: colors.textMuted }}>
@@ -656,6 +662,8 @@ export default function CreateIssueModal({
                   </div>
                   <button 
                     onClick={handleClose}
+                    type="button"
+                    aria-label="Cerrar creación de tarea"
                     className="p-2 rounded-lg transition-colors hover:bg-white/10"
                     style={{ color: colors.textMuted }}
                   >
@@ -664,16 +672,16 @@ export default function CreateIssueModal({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto scrollbar-hidden">
+                <div className="flex-1 overflow-y-auto scrollbar-hidden" data-modal-section="body">
                   <div className="p-6">
                     {loading ? (
                       <div className="flex items-center justify-center py-12">
                         <Loader2 className="w-8 h-8 animate-spin" style={{ color: accentColor }} />
                       </div>
                     ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-4" data-issue-grid>
                       {/* Title */}
-                      <div>
+                      <div data-issue-title>
                         <label className="block text-sm font-medium mb-1.5" style={{ color: colors.textPrimary }}>
                           Título <span style={{ color: '#EF4444' }}>*</span>
                         </label>
@@ -693,7 +701,7 @@ export default function CreateIssueModal({
                       </div>
 
                       {/* Description */}
-                      <div>
+                      <div data-issue-description>
                         <label className="block text-sm font-medium mb-1.5" style={{ color: colors.textPrimary }}>
                           Descripción
                         </label>
@@ -712,7 +720,7 @@ export default function CreateIssueModal({
                       </div>
 
                       {/* Grid de campos */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-3" data-issue-planning>
                         {/* Status */}
                         <div>
                           <label className="block text-sm font-medium mb-1.5" style={{ color: colors.textPrimary }}>Estado</label>
@@ -902,7 +910,7 @@ export default function CreateIssueModal({
 
                       {/* Labels */}
                       {labels.length > 0 && (
-                        <div>
+                        <div data-issue-labels>
                           <label className="block text-sm font-medium mb-2" style={{ color: colors.textPrimary }}>Etiquetas</label>
                           <div className="flex flex-wrap gap-2">
                             {labels.map(label => {
@@ -921,7 +929,7 @@ export default function CreateIssueModal({
 
                       {/* Project Documents */}
                       {projectDocuments.length > 0 && (
-                        <div>
+                        <div data-issue-project-documents>
                           <div className="flex items-center justify-between mb-2">
                              <label className="block text-sm font-medium" style={{ color: colors.textPrimary }}>Contexto del Proyecto</label>
                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-medium">Documentos disponibles</span>
@@ -962,7 +970,7 @@ export default function CreateIssueModal({
                       )}
 
                       {/* Documentos Externos (Google Drive) */}
-                      <div>
+                      <div data-issue-attachments>
                         <label className="block text-sm font-medium mb-2" style={{ color: colors.textPrimary }}>
                           Adjuntos Externos
                         </label>
@@ -985,7 +993,7 @@ export default function CreateIssueModal({
                         ) : (
                           <div className="space-y-3">
                             <div className="flex items-center gap-2">
-                              <input ref={docFileInputRef} type="file" className="hidden" onChange={handleDocFileUpload} />
+                              <input ref={docFileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT} className="hidden" onChange={handleDocFileUpload} />
                               <button
                                 type="button"
                                 onClick={() => docFileInputRef.current?.click()}
@@ -1028,7 +1036,7 @@ export default function CreateIssueModal({
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t shrink-0 mt-auto" style={{ borderColor: colors.border, backgroundColor: isDark ? 'rgba(26, 31, 37, 0.8)' : 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(8px)' }}>
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t shrink-0 mt-auto" style={{ borderColor: colors.border, backgroundColor: isDark ? 'rgba(26, 31, 37, 0.8)' : 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(8px)' }} data-modal-section="footer">
                 <button onClick={handleClose} className="px-4 py-2 rounded-xl text-sm font-medium transition-colors hover:bg-white/5" style={{ color: colors.textSecondary }}>Cancelar</button>
                 <button onClick={handleCreate} disabled={creating || !title.trim()}
                   className="px-6 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-50 transition-all hover:opacity-90 active:scale-95"

@@ -1,158 +1,198 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
+import { AlertTriangle, Bell, Check, CircleAlert, Info, X } from 'lucide-react';
 import { useAuthStore } from '@/core/stores/authStore';
-import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '@/lib/api/client';
+import styles from './NotificationCenter.module.css';
 
 interface Notification {
-    notification_id: string;
-    title: string;
-    message: string;
-    type: 'info' | 'success' | 'warning' | 'error';
-    category: string;
-    is_read: boolean;
-    created_at: string;
-    link?: string;
+  notification_id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  category: string;
+  is_read: boolean;
+  created_at: string;
+  link?: string;
 }
 
-export const NotificationCenter = () => {
-    const { isDark } = useTheme();
-    const { user } = useAuthStore();
-    const [notifications, setNotifications] = useState<Notification[]>([]);
-    const [unreadCount, setUnreadCount] = useState(0);
-    const [isOpen, setIsOpen] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const userId = user?.id;
-
-    const COLORS = {
-        bg: isDark ? '#1a1f25' : '#FFFFFF',
-        border: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-        text: isDark ? '#FFFFFF' : '#111827',
-        textMuted: isDark ? '#9CA3AF' : '#6B7280',
-        hover: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-        accent: '#00D4B3'
-    };
-
-    // Poll notifications
-    useEffect(() => {
-        if (!userId) return;
-
-        const fetchNotifications = async () => {
-            try {
-                const { data, error } = await api.get<Notification[]>(`/api/notifications?userId=${userId}&limit=20`);
-                if (!error && data) {
-                    setNotifications(data);
-                    setUnreadCount(data.filter((n: Notification) => !n.is_read).length);
-                }
-            } catch (err) {
-                console.error(err);
-            }
-        };
-
-        fetchNotifications();
-        const interval = setInterval(fetchNotifications, 10000); // Poll every 10s
-        return () => clearInterval(interval);
-    }, [userId]);
-
-    // Click outside to close
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const markAsRead = async (id: string) => {
-        // Optimistic update
-        setNotifications(prev => prev.map(n => n.notification_id === id ? { ...n, is_read: true } : n));
-        setUnreadCount(prev => Math.max(0, prev - 1));
-
-        await api.patch(`/api/notifications/${id}/read`);
-    };
-
-    const getIcon = (type: string) => {
-        switch (type) {
-            case 'success': return <span className="text-green-500">✓</span>;
-            case 'warning': return <span className="text-yellow-500">⚠</span>;
-            case 'error': return <span className="text-red-500">!</span>;
-            default: return <span className="text-blue-500">i</span>;
-        }
-    };
-
-    return (
-        <div className="relative" ref={containerRef}>
-            <button 
-                onClick={() => setIsOpen(!isOpen)}
-                className="relative p-2 rounded-xl transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-                style={{ color: isDark ? '#9CA3AF' : '#6B7280' }}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                </svg>
-                {unreadCount > 0 && (
-                    <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-[#0F1419]" />
-                )}
-            </button>
-
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute top-full right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border shadow-2xl z-50"
-                        style={{ 
-                            background: COLORS.bg,
-                            borderColor: COLORS.border
-                        }}
-                    >
-                        <div className="p-3 border-b flex justify-between items-center sticky top-0 backdrop-blur-md" 
-                             style={{ borderColor: COLORS.border, background: isDark ? 'rgba(26, 31, 37, 0.9)' : 'rgba(255, 255, 255, 0.9)' }}>
-                            <h3 className="font-semibold text-sm" style={{ color: COLORS.text }}>Notificaciones</h3>
-                            {unreadCount > 0 && <span className="text-xs bg-red-500 text-white px-1.5 rounded-full">{unreadCount}</span>}
-                        </div>
-                        
-                        <div className="divide-y" style={{ borderColor: COLORS.border }}>
-                            {notifications.length === 0 ? (
-                                <div className="p-8 text-center text-sm" style={{ color: COLORS.textMuted }}>
-                                    No tienes notificaciones
-                                </div>
-                            ) : (
-                                notifications.map(notification => (
-                                    <div 
-                                        key={notification.notification_id}
-                                        className={`p-3 transition-colors relative group ${!notification.is_read ? 'bg-blue-500/5' : ''}`}
-                                        style={{ color: COLORS.text }}
-                                        onClick={() => !notification.is_read && markAsRead(notification.notification_id)}
-                                    >
-                                        <div className="flex gap-3">
-                                            <div className="mt-0.5">{getIcon(notification.type)}</div>
-                                            <div className="flex-1">
-                                                <p className={`text-sm ${!notification.is_read ? 'font-medium' : ''}`}>{notification.title}</p>
-                                                {notification.message && (
-                                                    <p className="text-xs mt-0.5 line-clamp-2" style={{ color: COLORS.textMuted }}>{notification.message}</p>
-                                                )}
-                                                <p className="text-[10px] mt-1.5 opacity-60">
-                                                    {new Date(notification.created_at).toLocaleDateString()}
-                                                </p>
-                                            </div>
-                                            {!notification.is_read && (
-                                                <div className="w-2 h-2 rounded-full bg-blue-500 mt-2"></div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
-    );
+const typeIcons = {
+  info: Info,
+  success: Check,
+  warning: AlertTriangle,
+  error: CircleAlert,
 };
+
+const tokenNames = [
+  '--org-primary-color',
+  '--org-accent-color',
+  '--org-action-color',
+  '--org-on-action-color',
+] as const;
+
+export function NotificationCenter() {
+  const router = useRouter();
+  const userId = useAuthStore((state) => state.user?.id);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [panelStyle, setPanelStyle] = useState<CSSProperties>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+
+  const fetchNotifications = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await api.get<Notification[]>(`/api/notifications?userId=${userId}&limit=20`);
+      if (!response.error && response.data) setNotifications(response.data);
+    } catch {
+      // Notifications are secondary and must not interrupt the workspace.
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    setMounted(true);
+    fetchNotifications();
+    if (!userId) return;
+    const intervalId = window.setInterval(fetchNotifications, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, [fetchNotifications, userId]);
+
+  const updatePanelPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const shell = trigger.closest<HTMLElement>('[data-sofia-shell="true"]');
+    const computed = window.getComputedStyle(shell || document.documentElement);
+    const copiedTokens = Object.fromEntries(tokenNames.map((token) => [token, computed.getPropertyValue(token).trim()]));
+    setPanelStyle({
+      ...copiedTokens,
+      top: `${Math.min(rect.bottom + 9, window.innerHeight - 120)}px`,
+      right: `${Math.max(12, window.innerWidth - rect.right)}px`,
+    } as CSSProperties);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updatePanelPosition();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    const update = () => updatePanelPosition();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    document.addEventListener('keydown', closeOnEscape);
+    window.requestAnimationFrame(() => panelRef.current?.focus());
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isOpen, updatePanelPosition]);
+
+  const markAsRead = async (notification: Notification) => {
+    if (!notification.is_read) {
+      setNotifications((current) => current.map((item) => item.notification_id === notification.notification_id ? { ...item, is_read: true } : item));
+      await api.patch(`/api/notifications/${notification.notification_id}/read`);
+    }
+    if (notification.link) {
+      setIsOpen(false);
+      router.push(notification.link);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const unread = notifications.filter((notification) => !notification.is_read);
+    if (!unread.length) return;
+    setNotifications((current) => current.map((notification) => ({ ...notification, is_read: true })));
+    await Promise.allSettled(unread.map((notification) => api.patch(`/api/notifications/${notification.notification_id}/read`)));
+  };
+
+  const portal = isOpen && mounted ? createPortal(
+    <>
+      <button className={styles.backdrop} type="button" onClick={() => setIsOpen(false)} aria-label="Cerrar notificaciones" />
+      <div
+        ref={panelRef}
+        id="project-hub-notifications"
+        className={styles.panel}
+        style={panelStyle}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="notifications-title"
+        tabIndex={-1}
+      >
+        <header className={styles.header}>
+          <div>
+            <p className={styles.eyebrow}>Actividad</p>
+            <h2 id="notifications-title">Notificaciones</h2>
+          </div>
+          <div className={styles.headerActions}>
+            {unreadCount ? (
+              <button type="button" className={styles.markAll} onClick={markAllAsRead}>Marcar leídas</button>
+            ) : null}
+            <button type="button" className={styles.iconButton} onClick={() => setIsOpen(false)} aria-label="Cerrar notificaciones">
+              <X size={17} aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+
+        <div className={styles.list}>
+          {notifications.length ? notifications.map((notification) => {
+            const TypeIcon = typeIcons[notification.type] || Info;
+            return (
+              <button
+                key={notification.notification_id}
+                type="button"
+                className={styles.notification}
+                data-read={notification.is_read ? 'true' : 'false'}
+                data-tone={notification.type}
+                onClick={() => markAsRead(notification)}
+              >
+                <span className={styles.typeIcon}><TypeIcon size={16} strokeWidth={1.8} aria-hidden="true" /></span>
+                <span className={styles.copy}>
+                  <strong>{notification.title}</strong>
+                  {notification.message ? <span>{notification.message}</span> : null}
+                  <time dateTime={notification.created_at}>{new Date(notification.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</time>
+                </span>
+                {!notification.is_read ? <span className={styles.unreadDot} aria-label="No leída" /> : null}
+              </button>
+            );
+          }) : (
+            <div className={styles.empty}>
+              <span className={styles.emptyIcon}><Bell size={23} strokeWidth={1.6} aria-hidden="true" /></span>
+              <strong>Todo está al día</strong>
+              <p>Las actualizaciones de proyectos, equipos y tareas aparecerán aquí.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </>,
+    document.body,
+  ) : null;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={styles.trigger}
+        onClick={() => setIsOpen((current) => !current)}
+        aria-label={unreadCount ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'}
+        aria-expanded={isOpen}
+        aria-controls="project-hub-notifications"
+      >
+        <Bell size={18} strokeWidth={1.8} aria-hidden="true" />
+        {unreadCount ? <span className={styles.badge}>{unreadCount > 99 ? '99+' : unreadCount}</span> : null}
+      </button>
+      {portal}
+    </>
+  );
+}

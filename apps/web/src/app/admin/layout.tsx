@@ -51,7 +51,7 @@ function AdminLayoutContent({ children }: AdminLayoutProps) {
   }, []);
 
   return (
-    <div className={shellStyles.shell}>
+    <div className={shellStyles.shell} data-sofia-shell="true">
         {/* Sidebar - Fijo a la izquierda */}
         <AdminSidebar
           isCollapsed={isMobile ? false : sidebarCollapsed}

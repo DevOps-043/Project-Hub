@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam } from '@/lib/auth/require-role';
 import { sanitizeFilterIdentifier } from '@/lib/http/sanitize';
 import { computeCycleStats } from '@/lib/services/cycle-service';
 import { isUuid } from '@/lib/http/validation';
@@ -13,14 +13,14 @@ export async function GET(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     let { teamId } = await params;
 
     if (!teamId) {
       return NextResponse.json({ error: 'Team ID is required' }, { status: 400 });
     }
+
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
 
     // RESOLUCIÓN DE TEAM ID (UUID o Slug)
     const isUUID = isUuid(teamId);
@@ -75,16 +75,16 @@ export async function POST(
   { params }: { params: Promise<{ teamId: string }> }
 ) {
   try {
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     const { teamId } = await params;
-    const body = await request.json();
 
     if (!teamId) {
       return NextResponse.json({ error: 'Team ID is required' }, { status: 400 });
     }
 
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
+
+    const body = await request.json();
     const { name, description, start_date, end_date, cooldown_days } = body;
 
     if (!name || !start_date || !end_date) {

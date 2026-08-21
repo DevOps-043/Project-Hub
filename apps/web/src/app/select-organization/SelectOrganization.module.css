@@ -1,0 +1,30 @@
+.page { position: relative; display: grid; min-block-size: 100vh; place-items: center; overflow: hidden; padding: 1.5rem; color: var(--text-primary); background: var(--surface-canvas); }
+.ambient { position: absolute; inset: 0; background: radial-gradient(circle at 75% 20%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 32%), linear-gradient(var(--border-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px); background-size: auto, 3rem 3rem, 3rem 3rem; opacity: .6; mask-image: linear-gradient(#000, transparent); }
+.shell { position: relative; inline-size: min(42rem, 100%); overflow: hidden; background: color-mix(in srgb, var(--surface-raised) 94%, transparent); border: 1px solid var(--border-default); border-radius: 2rem; box-shadow: var(--elevation-3); backdrop-filter: blur(24px); }
+.shell > header, .shell > footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; background: var(--surface-soft); }
+.shell > header { border-block-end: 1px solid var(--border-default); }
+.brand { display: flex; align-items: center; gap: .65rem; }
+.brand > span { display: grid; place-items: center; inline-size: 2.2rem; block-size: 2.2rem; color: var(--color-on-accent); background: var(--accent); border-radius: .75rem; font-family: var(--font-system-display); font-size: 1.25rem; }
+.brand div { display: grid; }
+.brand strong { font-size: .76rem; }
+.brand small { color: var(--text-tertiary); font-size: .58rem; }
+.shell > header button { display: inline-flex; align-items: center; gap: .4rem; color: var(--text-secondary); background: transparent; border: 0; font-size: .68rem; font-weight: 600; }
+.intro { padding: 2.2rem 2.2rem 1.4rem; }
+.intro > span { color: var(--accent-readable); font-family: var(--font-system-label); font-size: .62rem; font-weight: 650; letter-spacing: .13em; text-transform: uppercase; }
+.intro h1 { margin: .55rem 0 .4rem; font-size: clamp(2.2rem, 6vw, 3.4rem); font-weight: 420; line-height: 1; }
+.intro p { margin: 0; color: var(--text-secondary); font-size: .78rem; }
+.list { display: grid; gap: .55rem; max-block-size: 25rem; overflow: auto; padding: .5rem 2.2rem 2.2rem; }
+.list button { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; align-items: center; gap: .8rem; inline-size: 100%; padding: .85rem; color: var(--text-primary); background: var(--surface-card); border: 1px solid var(--border-default); border-radius: 1rem; text-align: start; transition: border-color var(--motion-fast), transform var(--motion-fast), box-shadow var(--motion-fast); }
+.list button:hover { border-color: var(--border-accent); box-shadow: var(--elevation-1); transform: translateY(-1px); }
+.workspaceMark { display: grid; place-items: center; inline-size: 3rem; block-size: 3rem; overflow: hidden; color: var(--accent-readable); background: var(--surface-brand-subtle); border: 1px solid var(--border-accent); border-radius: .85rem; }
+.workspaceMark img { inline-size: 100%; block-size: 100%; object-fit: cover; }
+.list button > span:nth-child(2) { display: grid; min-inline-size: 0; }
+.list strong { overflow: hidden; font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+.list small { display: flex; align-items: center; gap: .3rem; margin-block-start: .18rem; color: var(--text-tertiary); font-size: .63rem; }
+.list button > svg { color: var(--text-tertiary); }
+.empty { display: grid; min-block-size: 14rem; place-items: center; align-content: center; padding: 2rem; text-align: center; }
+.empty > svg { color: var(--accent-readable); }
+.empty h2 { margin: .8rem 0 .25rem; font-size: 1.35rem; }
+.empty p { margin: 0; color: var(--text-secondary); font-size: .74rem; }
+.shell > footer { color: var(--text-tertiary); border-block-start: 1px solid var(--border-default); font-size: .63rem; }
+@media (max-width: 540px) { .intro { padding: 1.7rem 1.2rem 1rem; } .list { padding: .5rem 1.2rem 1.7rem; } .shell > header button { inline-size: 2rem; overflow: hidden; white-space: nowrap; } }

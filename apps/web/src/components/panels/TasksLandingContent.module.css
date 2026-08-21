@@ -1,0 +1,10 @@
+.count { color: var(--text-tertiary); font-size: .7rem; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.card { display: flex; min-block-size: 15.5rem; flex-direction: column; }
+.avatar { display: grid; place-items: center; inline-size: 3rem; block-size: 3rem; margin-block-end: 1rem; color: var(--team-color); background: color-mix(in srgb, var(--team-color) 11%, var(--surface-card)); border: 1px solid color-mix(in srgb, var(--team-color) 48%, var(--border-default)); border-radius: 1rem; font-size: .72rem; font-weight: 750; }
+.card small { color: var(--accent-readable); font-family: var(--font-system-label); font-size: .6rem; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; }
+.card h2 { margin: .35rem 0 .3rem; font-size: 1.45rem; font-weight: 430; }
+.card p { margin: 0 0 1.2rem; color: var(--text-secondary); font-size: .73rem; line-height: 1.55; }
+.card a { display: inline-flex; align-items: center; gap: .35rem; margin-block-start: auto; color: var(--accent-readable); font-size: .72rem; font-weight: 650; text-decoration: none; }
+@media (max-width: 980px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }

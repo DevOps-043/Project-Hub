@@ -1,0 +1,55 @@
+.actionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  background: var(--surface-card);
+  box-shadow: var(--elevation-1);
+}
+
+.actionCard {
+  position: relative;
+  display: flex;
+  min-height: 7rem;
+  align-items: center;
+  gap: 0.82rem;
+  padding: 1rem;
+  border: 0;
+  border-right: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  transition: background-color var(--motion-fast) ease, transform var(--motion-fast) ease;
+}
+
+.actionCard:nth-child(3n) { border-right: 0; }
+.actionCard:nth-child(-n + 3) { border-bottom: 1px solid var(--border-default); }
+.actionCard:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.actionIcon {
+  display: grid;
+  width: 1.65rem;
+  height: 1.65rem;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--accent);
+  filter: drop-shadow(0 0.35rem 0.7rem color-mix(in srgb, var(--accent) 20%, transparent));
+}
+.actionCopy { display: flex; min-width: 0; flex-direction: column; gap: 0.18rem; padding-right: 1.2rem; }
+.actionCopy strong { font-size: 0.79rem; font-weight: 600; }
+.actionCopy span { overflow: hidden; color: var(--text-secondary); font-size: 0.68rem; line-height: 1.45; text-overflow: ellipsis; }
+.actionArrow { position: absolute; top: 0.8rem; right: 0.8rem; color: var(--text-secondary); transition: transform var(--motion-fast) ease, color var(--motion-fast) ease; }
+.actionCard:hover .actionArrow { transform: translate(2px, -2px); color: var(--accent); }
+
+@media (max-width: 72rem) {
+  .actionGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .actionCard:nth-child(n) { border-right: 1px solid var(--border-default); border-bottom: 1px solid var(--border-default); }
+  .actionCard:nth-child(2n) { border-right: 0; }
+  .actionCard:nth-last-child(-n + 2) { border-bottom: 0; }
+}
+
+@media (max-width: 35rem) {
+  .actionGrid { grid-template-columns: 1fr; }
+  .actionCard, .actionCard:nth-child(n) { border-right: 0; border-bottom: 1px solid var(--border-default); }
+  .actionCard:last-child { border-bottom: 0; }
+}

@@ -77,6 +77,9 @@ export function PortalCalendar({ isOpen, onClose, triggerRef, value, onChange, i
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
         className="fixed p-4 rounded-xl border shadow-2xl"
+        data-sofia-popover
+        role="dialog"
+        aria-label="Seleccionar fecha límite"
         style={{
           zIndex: 100001,
           top: position.placement === 'top' ? undefined : position.top,
@@ -96,6 +99,7 @@ export function PortalCalendar({ isOpen, onClose, triggerRef, value, onChange, i
             <button
               onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
               type="button"
+              aria-label="Mes anterior"
               className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
               style={{ color: colors.textMuted }}
             >
@@ -106,6 +110,7 @@ export function PortalCalendar({ isOpen, onClose, triggerRef, value, onChange, i
             <button
               onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
               type="button"
+              aria-label="Mes siguiente"
               className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
               style={{ color: colors.textMuted }}
             >

@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/server';
-import { requireAdmin } from '@/lib/auth/require-role';
+import { requireAdminOrWorkspaceMemberForTeam } from '@/lib/auth/require-role';
 import { sanitizeFilterIdentifier } from '@/lib/http/sanitize';
 import { isUuid } from '@/lib/http/validation';
 
@@ -19,9 +19,6 @@ export async function GET(
   try {
     let { teamId } = await params;
 
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-
     // RESOLUCIÓN DE TEAM ID (UUID o Slug)
     const isUUID = isUuid(teamId);
     if (!isUUID) {
@@ -32,6 +29,9 @@ export async function GET(
          .single();
        if (teamData) teamId = teamData.team_id;
     }
+
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
 
     const { data: labels, error } = await supabaseAdmin
       .from('task_labels')
@@ -58,10 +58,6 @@ export async function POST(
   try {
     let { teamId } = await params;
 
-    const auth = await requireAdmin(request);
-    if (!auth.ok) return auth.response;
-    const { payload } = auth;
-
     // RESOLUCIÓN DE TEAM ID
     const isUUID = isUuid(teamId);
     if (!isUUID) {
@@ -72,6 +68,10 @@ export async function POST(
          .single();
        if (teamData) teamId = teamData.team_id;
     }
+
+    const auth = await requireAdminOrWorkspaceMemberForTeam(request, teamId);
+    if (!auth.ok) return auth.response;
+    const { payload } = auth;
 
     const body = await request.json();
     const { name, color, description } = body;

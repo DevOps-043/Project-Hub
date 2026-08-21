@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { AddMemberModal } from '@/components/admin/teams/AddMemberModal';
 import { api } from '@/lib/api/client';
+import { useTeamPanel } from './TeamPanelContext';
+import { TeamPanelEmptyState } from './TeamPanelEmptyState';
+import { softBg } from './status-config';
+import { Search, UserPlus, Users } from 'lucide-react';
 
 // Types
 interface TeamMember {
@@ -24,21 +27,16 @@ interface TeamMember {
   team_id?: string;
 }
 
-interface Team {
-  id: string;
-  name: string;
-  color: string;
-}
-
 interface MemberCardProps {
   member: TeamMember;
   teamId: string;
-  orgSlug?: string;
+  panelBase: string;
   isDark: boolean;
   colors: typeof themeColors.dark;
-  accentColor: string;
   index: number;
 }
+
+const accentColor = 'var(--color-accent)';
 
 /**
  * Lista de miembros de equipo. Compartida entre /admin/teams/[teamId]/members
@@ -46,21 +44,12 @@ interface MemberCardProps {
  * duplicadas casi idénticas salvo por el prefijo de ruta de los enlaces.
  */
 export default function TeamMembersView() {
-  const params = useParams();
-  const teamId = params.teamId as string;
-  const orgSlug = params.orgSlug as string | undefined;
+  const { teamId, panelBase, team, canManage } = useTeamPanel();
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
 
-  const accentColor = '#00D4B3';
-  const primaryColor = '#0A2540';
-
-  const projectsHref = orgSlug ? `/${orgSlug}/admin/teams/${teamId}/projects` : `/admin/teams/${teamId}/projects`;
-  const teamsListHref = orgSlug ? `/${orgSlug}/admin/teams` : `/admin/teams`;
-
   // State
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [view, setView] = useState<'grid' | 'list'>('grid');
@@ -70,13 +59,12 @@ export default function TeamMembersView() {
   const fetchTeamData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await api.get<{ team: Team; members: TeamMember[] }>(`/api/admin/teams/${teamId}/members`);
+      const { data, error } = await api.get<{ members: TeamMember[] }>(`/api/admin/teams/${teamId}/members`);
 
       if (error || !data) {
-        throw new Error('Failed to fetch team members');
+        throw new Error(error || 'Failed to fetch team members');
       }
 
-      setTeam(data.team);
       setMembers(data.members);
 
     } catch (error) {
@@ -105,150 +93,110 @@ export default function TeamMembersView() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: colors.bgPrimary }}>
-      {/* Header */}
-      <header
-        className="sticky top-0 z-40 border-b backdrop-blur-xl"
-        style={{ backgroundColor: `${colors.bgPrimary}CC`, borderColor: colors.border }}
-      >
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                href={projectsHref}
-                className="p-2 rounded-lg transition-colors hover:bg-white/5"
-                style={{ color: colors.textMuted }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M15 18l-6-6 6-6"/>
-                </svg>
-              </Link>
-
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Link href={teamsListHref} className="text-sm hover:underline" style={{ color: accentColor }}>{team?.name || 'Equipo'}</Link>
-                  <span style={{ color: colors.textMuted }}>/</span>
-                  <span className="text-sm font-medium" style={{ color: colors.textPrimary }}>Miembros</span>
-                </div>
-                <h1 className="text-xl font-bold" style={{ color: colors.textPrimary }}>
-                  Miembros del Equipo
-                </h1>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-               {/* Search */}
-               <div className="relative">
-                <svg
-                  width="16" height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: colors.textMuted }}
-                >
-                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                <input
-                  type="text"
-                  placeholder="Buscar miembro..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 rounded-xl border text-sm w-64 focus:outline-none focus:ring-1"
-                  style={{
-                    backgroundColor: isDark ? '#0F1419' : '#F9FAFB',
-                    borderColor: colors.border,
-                    color: colors.textPrimary,
-                    boxShadow: 'none'
-                  }}
-                />
-              </div>
-
-               {/* View Toggle */}
-               <div className="flex items-center rounded-lg border" style={{ borderColor: colors.border }}>
-                <button
-                  onClick={() => setView('grid')}
-                  className="p-2 transition-colors"
-                  style={{
-                    backgroundColor: view === 'grid' ? `${accentColor}20` : 'transparent',
-                    color: view === 'grid' ? accentColor : colors.textMuted
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setView('list')}
-                  className="p-2 transition-colors"
-                  style={{
-                    backgroundColor: view === 'list' ? `${accentColor}20` : 'transparent',
-                    color: view === 'list' ? accentColor : colors.textMuted
-                  }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-                    <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
-                    <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                  </svg>
-                </button>
-              </div>
-
-              <button
-                onClick={() => setShowAddMemberModal(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
-                style={{
-                  background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
-                  boxShadow: `0 4px 15px ${primaryColor}40`
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                Añadir Miembro
-              </button>
-            </div>
-          </div>
+    <div>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: colors.textMuted }} />
+          <input
+            type="text"
+            placeholder="Buscar miembro..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 pr-4 py-2 rounded-xl border text-sm w-64 focus:outline-none focus:ring-1"
+            style={{
+              backgroundColor: isDark ? '#0F1419' : '#F9FAFB',
+              borderColor: colors.border,
+              color: colors.textPrimary,
+              boxShadow: 'none'
+            }}
+          />
         </div>
-      </header>
+
+        <div className="flex items-center gap-3">
+           {/* View Toggle */}
+           <div className="flex items-center rounded-lg border" style={{ borderColor: colors.border }}>
+            <button
+              onClick={() => setView('grid')}
+              className="p-2 transition-colors"
+              style={{
+                backgroundColor: view === 'grid' ? softBg(accentColor) : 'transparent',
+                color: view === 'grid' ? accentColor : colors.textMuted
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+              </svg>
+            </button>
+            <button
+              onClick={() => setView('list')}
+              className="p-2 transition-colors"
+              style={{
+                backgroundColor: view === 'list' ? softBg(accentColor) : 'transparent',
+                color: view === 'list' ? accentColor : colors.textMuted
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+                <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+                <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+              </svg>
+            </button>
+          </div>
+
+          {canManage ? (
+            <button
+              onClick={() => setShowAddMemberModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
+              style={{ backgroundColor: 'var(--color-primary)' }}
+            >
+              <UserPlus size={16} /> Añadir miembro
+            </button>
+          ) : null}
+        </div>
+      </div>
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {view === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredMembers.map((member, index) => (
-                <MemberCard key={member.user_id} member={member} teamId={teamId} orgSlug={orgSlug} isDark={isDark} colors={colors} accentColor={accentColor} index={index} />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-3">
-             {filteredMembers.map((member, index) => (
-                <MemberRow key={member.user_id} member={member} teamId={teamId} orgSlug={orgSlug} isDark={isDark} colors={colors} accentColor={accentColor} index={index} />
-            ))}
-          </div>
-        )}
-      </main>
+      {filteredMembers.length === 0 ? (
+        <TeamPanelEmptyState
+          icon={<Users size={26} />}
+          title={searchQuery ? 'Sin resultados' : 'Sin miembros todavía'}
+          description={searchQuery ? 'Ningún miembro coincide con tu búsqueda.' : 'Añade personas a este equipo para empezar a colaborar.'}
+          action={searchQuery || !canManage ? null : { label: 'Añadir miembro', onClick: () => setShowAddMemberModal(true) }}
+        />
+      ) : view === 'grid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredMembers.map((member, index) => (
+              <MemberCard key={member.user_id} member={member} teamId={teamId} panelBase={panelBase} isDark={isDark} colors={colors} index={index} />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+           {filteredMembers.map((member, index) => (
+              <MemberRow key={member.user_id} member={member} teamId={teamId} panelBase={panelBase} isDark={isDark} colors={colors} index={index} />
+          ))}
+        </div>
+      )}
 
        {/* Modal */}
-       <AddMemberModal
-        isOpen={showAddMemberModal}
-        onClose={() => setShowAddMemberModal(false)}
-        onSuccess={fetchTeamData}
-        teamId={teamId}
-        teamName={team?.name}
-      />
+       {canManage ? (
+         <AddMemberModal
+          isOpen={showAddMemberModal}
+          onClose={() => setShowAddMemberModal(false)}
+          onSuccess={fetchTeamData}
+          teamId={teamId}
+          teamName={team?.name}
+        />
+       ) : null}
     </div>
   );
 }
 
 // Sub-components
-function MemberCard({ member, teamId, orgSlug, isDark, colors, accentColor, index }: MemberCardProps) {
+function MemberCard({ member, teamId, panelBase, isDark, colors, index }: MemberCardProps) {
     const initials = (member.first_name?.[0] || 'U') + (member.last_name_paternal?.[0] || '');
-    const profileHref = orgSlug
-      ? `/${orgSlug}/admin/teams/${member.team_id || teamId}/members/${member.user_id}`
-      : `/admin/teams/${member.team_id || teamId}/members/${member.user_id}`;
+    const profileHref = `${panelBase}/teams/${member.team_id || teamId}/members/${member.user_id}`;
 
     return (
         <motion.div
@@ -264,11 +212,10 @@ function MemberCard({ member, teamId, orgSlug, isDark, colors, accentColor, inde
              {/* Role Badge */}
              <div className="absolute top-4 right-4">
                 <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium border ${
-                        member.role === 'lead'
-                        ? 'bg-purple-500/10 text-purple-500 border-purple-500/20'
-                        : 'bg-gray-500/10 text-gray-500 border-gray-500/20'
-                    }`}
+                    className="px-2 py-1 rounded-full text-xs font-medium border"
+                    style={member.role === 'lead'
+                        ? { backgroundColor: softBg(accentColor), color: accentColor, borderColor: softBg(accentColor, 20) }
+                        : { backgroundColor: softBg('#6B7280'), color: '#6B7280', borderColor: softBg('#6B7280', 20) }}
                 >
                     {member.role === 'lead' ? 'Team Lead' : member.role}
                 </span>
@@ -279,9 +226,9 @@ function MemberCard({ member, teamId, orgSlug, isDark, colors, accentColor, inde
                     <div
                         className="w-20 h-20 rounded-2xl flex items-center justify-center text-xl font-bold mb-2 shadow-lg"
                         style={{
-                            background: `linear-gradient(135deg, ${accentColor}20, ${accentColor}40)`,
+                            background: `linear-gradient(135deg, ${softBg(accentColor, 20)}, ${softBg(accentColor, 40)})`,
                             color: accentColor,
-                            border: `1px solid ${accentColor}40`
+                            border: `1px solid ${softBg(accentColor, 40)}`
                         }}
                     >
                          {member.avatar_url ? (
@@ -331,7 +278,7 @@ function MemberCard({ member, teamId, orgSlug, isDark, colors, accentColor, inde
     );
 }
 
-function MemberRow({ member, isDark, colors, accentColor, index }: MemberCardProps) {
+function MemberRow({ member, isDark, colors, index }: MemberCardProps) {
     const initials = (member.first_name?.[0] || 'U') + (member.last_name_paternal?.[0] || '');
 
     return (
@@ -349,7 +296,7 @@ function MemberRow({ member, isDark, colors, accentColor, index }: MemberCardPro
                 <div
                     className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm"
                     style={{
-                        background: `linear-gradient(135deg, ${accentColor}20, ${accentColor}40)`,
+                        background: `linear-gradient(135deg, ${softBg(accentColor, 20)}, ${softBg(accentColor, 40)})`,
                         color: accentColor,
                     }}
                 >
@@ -375,11 +322,10 @@ function MemberRow({ member, isDark, colors, accentColor, index }: MemberCardPro
 
                  <div className="hidden md:block">
                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
-                            member.role === 'lead'
-                            ? 'bg-purple-500/10 text-purple-500 border-purple-500/20'
-                            : 'bg-gray-500/10 text-gray-500 border-gray-500/20'
-                        }`}
+                        className="px-2 py-0.5 rounded-full text-xs font-medium border"
+                        style={member.role === 'lead'
+                            ? { backgroundColor: softBg(accentColor), color: accentColor, borderColor: softBg(accentColor, 20) }
+                            : { backgroundColor: softBg('#6B7280'), color: '#6B7280', borderColor: softBg('#6B7280', 20) }}
                     >
                         {member.role === 'lead' ? 'Team Lead' : member.role}
                     </span>

@@ -1,13 +1,12 @@
-import React from 'react';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, Plus } from 'lucide-react';
-import { useTheme } from '@/contexts/ThemeContext';
+import { CalendarDays, Flag, Plus } from 'lucide-react';
+import styles from './ProjectBoardView.module.css';
 
 interface Project {
   project_id: string;
   project_name: string;
   project_key: string;
-  project_status: string; // planning, active, etc.
+  project_status: string;
   priority_level: string;
   target_date: string | null;
   lead?: { name: string; avatar?: string; color: string; initials: string };
@@ -20,114 +19,66 @@ interface ProjectBoardViewProps {
   onAddProject?: (status: string) => void;
 }
 
-const COLUMN_CONFIG = [
-  { id: 'planning', label: 'Planned', color: '#D1D5DB' }, // gray-300
-  { id: 'active', label: 'In Progress', color: '#F59E0B' }, // amber-500
-  { id: 'completed', label: 'Completed', color: '#3B82F6' }, // blue-500
-  { id: 'cancelled', label: 'Canceled', color: '#EF4444' }, // red-500
+const columns = [
+  { id: 'planning', label: 'Planificados', tone: 'neutral' },
+  { id: 'active', label: 'En progreso', tone: 'warning' },
+  { id: 'completed', label: 'Completados', tone: 'success' },
+  { id: 'cancelled', label: 'Cerrados', tone: 'error' },
 ];
+
+function matchesColumn(project: Project, columnId: string) {
+  if (columnId === 'planning') return ['planning', 'on_hold'].includes(project.project_status);
+  if (columnId === 'cancelled') return ['cancelled', 'archived'].includes(project.project_status);
+  return project.project_status === columnId;
+}
 
 export function ProjectBoardView({ projects, basePath = '/admin', onAddProject }: ProjectBoardViewProps) {
   const router = useRouter();
-  const { isDark } = useTheme();
-
-  // Estilos dinámicos
-  const textColor = isDark ? 'text-gray-200' : 'text-gray-900';
-  const subTextColor = isDark ? 'text-gray-500' : 'text-gray-500';
-  
-  // Card Styles
-  const cardBg = isDark ? 'bg-[#1E2329]' : 'bg-white';
-  const cardBorder = isDark ? 'border-white/5' : 'border-gray-200';
-  const cardHoverBorder = isDark ? 'hover:border-gray-600' : 'hover:border-blue-400';
-  const cardShadow = isDark ? 'shadow-sm' : 'shadow-sm';
-
-  // Agrupar proyectos por columna
-  const columns = COLUMN_CONFIG.map(col => ({
-    ...col,
-    items: projects.filter(p => {
-        if (col.id === 'planning' && (p.project_status === 'planning' || p.project_status === 'on_hold')) return true;
-        if (col.id === 'cancelled' && (p.project_status === 'cancelled' || p.project_status === 'archived')) return true;
-        return p.project_status === col.id;
-    })
-  }));
 
   return (
-    <div className="flex h-full overflow-x-auto pb-4 gap-6 min-w-full">
-      {columns.map(col => (
-        <div key={col.id} className="min-w-[280px] w-[280px] shrink-0 flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-3 px-1">
-            <div className="flex items-center gap-2">
-              <div 
-                className="w-3 h-3 rounded-full border-2" 
-                style={{ borderColor: col.color }} 
-              />
-              <span className={`font-medium text-sm ${textColor}`}>{col.label}</span>
-              <span className="text-xs text-gray-400 ml-1">{col.items.length}</span>
-            </div>
-            <div className="flex gap-1">
-              <button 
-                onClick={() => onAddProject?.(col.id)}
-                className={`text-gray-400 hover:text-gray-500 p-1 rounded ${isDark ? 'hover:bg-white/5' : 'hover:bg-gray-200'} transition-colors`}
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* Cards Container */}
-          <div className="flex flex-col gap-3 min-h-[50px]">
-            {col.items.map(project => (
-              <div
-                key={project.project_id}
-                onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}
-                className={`group relative ${cardBg} border ${cardBorder} p-3 rounded-lg ${cardShadow} ${cardHoverBorder} transition-all cursor-pointer flex flex-col gap-2`}
-              >
-                <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <span className="font-mono opacity-70">{project.project_key}</span>
-                    </div>
-                </div>
-                
-                <div className={`font-medium text-sm ${textColor} leading-snug`}>
-                    {project.project_name}
-                </div>
-
-                {/* Footer: Priority, Date, Lead */}
-                <div className="mt-1 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                         {/* Priority Indicator */}
-                         <div className={`w-4 h-4 rounded flex items-center justify-center border ${isDark ? 'border-white/10' : 'border-black/5'} ${
-                            project.priority_level === 'urgent' ? 'bg-red-500/20 text-red-500' :
-                            project.priority_level === 'high' ? 'bg-orange-500/20 text-orange-500' :
-                            isDark ? 'bg-gray-700/30 text-gray-500' : 'bg-gray-100 text-gray-600'
-                         }`}>
-                             <span className="text-[8px] font-bold uppercase">{project.priority_level?.[0] || '-'}</span>
-                         </div>
-                         {/* Target Date */}
-                         {project.target_date && (
-                            <span className={`text-[10px] ${subTextColor}`}>
-                                {new Date(project.target_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                            </span>
-                         )}
-                    </div>
-
-                    {/* Lead Avatar */}
-                    {project.lead && (
-                        <div 
-                            className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white border ${isDark ? 'border-[#1E2329]' : 'border-white'}`}
-                            style={{ backgroundColor: project.lead.color }}
-                            title={project.lead.name}
-                        >
-                            {project.lead.initials}
-                        </div>
-                    )}
-                </div>
+    <div className={styles.board} aria-label="Tablero de proyectos">
+      {columns.map((column) => {
+        const items = projects.filter((project) => matchesColumn(project, column.id));
+        return (
+          <section key={column.id} className={styles.column} data-tone={column.tone} aria-labelledby={`column-${column.id}`}>
+            <header className={styles.columnHeader}>
+              <div className={styles.columnTitle}>
+                <span className={styles.columnDot} aria-hidden="true" />
+                <h3 id={`column-${column.id}`}>{column.label}</h3>
+                <span className={styles.columnCount}>{items.length}</span>
               </div>
-            ))}
-          </div>
-        </div>
-      ))}
+              <button type="button" className={styles.addButton} onClick={() => onAddProject?.(column.id)} aria-label={`Crear proyecto en ${column.label}`}>
+                <Plus size={15} aria-hidden="true" />
+              </button>
+            </header>
+
+            <div className={styles.cardList}>
+              {items.map((project) => (
+                <button key={project.project_id} type="button" className={styles.card} onClick={() => router.push(`${basePath}/projects/${project.project_id}`)}>
+                  <span className={styles.cardTopline}>
+                    <span className={styles.projectKey}>{project.project_key}</span>
+                    <span className={styles.priority} data-priority={project.priority_level}>
+                      <Flag size={12} aria-hidden="true" /> {project.priority_level === 'none' ? 'Sin prioridad' : project.priority_level}
+                    </span>
+                  </span>
+                  <strong>{project.project_name}</strong>
+                  <span className={styles.cardFooter}>
+                    <span className={styles.date}><CalendarDays size={13} aria-hidden="true" />{project.target_date ? new Date(project.target_date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : 'Sin fecha'}</span>
+                    {project.lead ? (
+                      <span className={styles.avatar} style={{ backgroundColor: project.lead.color }} title={project.lead.name}>
+                        {project.lead.avatar ? (
+                          <img src={project.lead.avatar} alt="" />
+                        ) : project.lead.initials}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              ))}
+              {!items.length ? <p className={styles.columnEmpty}>No hay proyectos en esta etapa.</p> : null}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

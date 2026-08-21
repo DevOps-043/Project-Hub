@@ -2,199 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { Building2, ChevronRight, Shield, LogOut, Loader2 } from 'lucide-react';
-import Image from 'next/image';
-import { useAuthStore, WorkspaceInfo } from '@/core/stores/authStore';
+import { ArrowRight, Building2, LogOut, ShieldCheck } from 'lucide-react';
+import { useAuthStore, type WorkspaceInfo } from '@/core/stores/authStore';
 import { api } from '@/lib/api/client';
+import { LoadingState } from '@/components/product';
+import styles from './SelectOrganization.module.css';
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Propietario',
-  admin: 'Administrador',
-  manager: 'Gerente',
-  leader: 'Líder',
-  member: 'Miembro',
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  owner: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
-  admin: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-  manager: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  leader: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-  member: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-};
+const roleLabels: Record<string, string> = { owner: 'Propietario', admin: 'Administrador', manager: 'Gerente', leader: 'Líder', member: 'Miembro' };
 
 export default function SelectOrganizationPage() {
   const router = useRouter();
-  const { user, workspaces, isAuthenticated, isInitialized, logout, initialize } = useAuthStore();
-  const [isLoading, setIsLoading] = useState(true);
-  const [fetchedWorkspaces, setFetchedWorkspaces] = useState<WorkspaceInfo[]>([]);
-
+  const { user, workspaces, isAuthenticated, isInitialized, logout, initialize, setWorkspaces } = useAuthStore();
+  const [loading, setLoading] = useState(true); const [available, setAvailable] = useState<WorkspaceInfo[]>([]);
+  useEffect(() => { (async () => { if (!isInitialized) await initialize(); setLoading(false); })(); }, [initialize, isInitialized]);
   useEffect(() => {
-    const init = async () => {
-      if (!isInitialized) {
-        await initialize();
-      }
-      setIsLoading(false);
-    };
-    init();
-  }, [isInitialized, initialize]);
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push('/auth/sign-in');
-      return;
-    }
-
-    // Si tenemos workspaces del store, usarlos
-    if (workspaces.length > 0) {
-      setFetchedWorkspaces(workspaces);
-      return;
-    }
-
-    // Si no hay workspaces en el store, intentar fetch del API
-    if (isAuthenticated && workspaces.length === 0) {
-      api.get<{ workspaces?: WorkspaceInfo[] }>('/api/workspaces')
-        .then(({ data, error }) => {
-          if (!error && data?.workspaces) {
-            const mapped: WorkspaceInfo[] = data.workspaces.map((ws: WorkspaceInfo) => ({
-              id: ws.id,
-              name: ws.name,
-              slug: ws.slug,
-              logoUrl: ws.logoUrl,
-              role: ws.role,
-            }));
-            setFetchedWorkspaces(mapped);
-            useAuthStore.getState().setWorkspaces(mapped);
-          }
-        })
-        .catch(console.error);
-    }
-  }, [isLoading, isAuthenticated, workspaces, router]);
-
-  const handleSelectOrg = (workspace: WorkspaceInfo) => {
-    router.push(`/${workspace.slug}/dashboard`);
-  };
-
-  const handleLogout = async () => {
-    await logout();
-    router.push('/auth/sign-in');
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] dark:bg-[#0A0D12]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#0A2540] dark:text-[#00D4B3]" />
-      </div>
-    );
-  }
-
-  const displayWorkspaces = fetchedWorkspaces.length > 0 ? fetchedWorkspaces : workspaces;
-
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#F8FAFC] dark:bg-[#0A0D12] relative">
-      {/* Patrón de fondo */}
-      <div
-        className="fixed inset-0 opacity-[0.02] dark:opacity-[0.05] pointer-events-none text-[#0A2540] dark:text-gray-600"
-        style={{
-          backgroundImage: `linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)`,
-          backgroundSize: '40px 40px',
-        }}
-      />
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="relative w-full max-w-xl"
-      >
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <Image src="/Logo.png" alt="Project Hub" width={64} height={64} className="w-16 h-16" />
-          </div>
-          <h1 className="text-2xl font-bold text-[#0A2540] dark:text-white mb-2">
-            Selecciona tu organización
-          </h1>
-          <p className="text-[#6B7280] dark:text-gray-400">
-            Hola, <span className="font-medium text-[#0A2540] dark:text-white">{user?.name || user?.email}</span>. Elige el espacio de trabajo al que deseas acceder.
-          </p>
-        </div>
-
-        {/* Lista de organizaciones */}
-        <div className="space-y-3">
-          {displayWorkspaces.length === 0 ? (
-            <div className="bg-white dark:bg-[#1E2329] rounded-xl p-8 text-center border border-[#E5E7EB] dark:border-white/10">
-              <Building2 className="w-12 h-12 mx-auto mb-3 text-[#9CA3AF]" />
-              <p className="text-[#6B7280] dark:text-gray-400 mb-1">
-                No tienes organizaciones asignadas.
-              </p>
-              <p className="text-sm text-[#9CA3AF]">
-                Contacta a tu administrador para obtener acceso.
-              </p>
-            </div>
-          ) : (
-            displayWorkspaces.map((workspace, index) => (
-              <motion.button
-                key={workspace.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.08 }}
-                onClick={() => handleSelectOrg(workspace)}
-                className="w-full bg-white dark:bg-[#1E2329] rounded-xl p-4 border border-[#E5E7EB] dark:border-white/10 hover:border-[#0A2540] dark:hover:border-[#00D4B3] hover:shadow-md transition-all flex items-center gap-4 group text-left"
-              >
-                {/* Logo/Avatar de la org */}
-                <div className="w-12 h-12 rounded-lg bg-[#F3F4F6] dark:bg-[#0F1419] flex items-center justify-center shrink-0 overflow-hidden">
-                  {workspace.logoUrl ? (
-                    <Image
-                      src={workspace.logoUrl}
-                      alt={workspace.name}
-                      width={48}
-                      height={48}
-                      unoptimized
-                      className="w-full h-full object-cover rounded-lg"
-                    />
-                  ) : (
-                    <Building2 className="w-6 h-6 text-[#9CA3AF]" />
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-[#0A2540] dark:text-white truncate">
-                    {workspace.name}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                        ROLE_COLORS[workspace.role] || ROLE_COLORS.member
-                      }`}
-                    >
-                      <Shield className="w-3 h-3" />
-                      {ROLE_LABELS[workspace.role] || workspace.role}
-                    </span>
-                    <span className="text-xs text-[#9CA3AF]">/{workspace.slug}</span>
-                  </div>
-                </div>
-
-                {/* Arrow */}
-                <ChevronRight className="w-5 h-5 text-[#9CA3AF] group-hover:text-[#0A2540] dark:group-hover:text-[#00D4B3] transition-colors shrink-0" />
-              </motion.button>
-            ))
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="mt-6 text-center">
-          <button
-            onClick={handleLogout}
-            className="inline-flex items-center gap-2 text-sm text-[#9CA3AF] hover:text-red-500 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            Cerrar sesión
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
+    if (loading) return;
+    if (!isAuthenticated) { router.replace('/auth/sign-in'); return; }
+    if (workspaces.length) { setAvailable(workspaces); return; }
+    api.get<{ workspaces?: WorkspaceInfo[] }>('/api/workspaces').then((response) => { if (response.data?.workspaces) { setAvailable(response.data.workspaces); setWorkspaces(response.data.workspaces); } });
+  }, [isAuthenticated, loading, router, setWorkspaces, workspaces]);
+  if (loading) return <LoadingState label="Consultando tus organizaciones…" />;
+  return <main className={styles.page}><div className={styles.ambient} aria-hidden="true" /><section className={styles.shell}><header><div className={styles.brand}><span>S</span><div><strong>Project Hub</strong><small>by SofLIA</small></div></div><button type="button" onClick={async () => { await logout(); router.push('/auth/sign-in'); }}><LogOut size={15} aria-hidden /> Cerrar sesión</button></header><div className={styles.intro}><span>Espacios de trabajo</span><h1>Elige una organización</h1><p>Hola, {user?.name || user?.email}. Selecciona el entorno en el que quieres continuar.</p></div>{available.length ? <div className={styles.list}>{available.map((workspace) => <button key={workspace.id} type="button" onClick={() => router.push(`/${workspace.slug}/dashboard`)}><span className={styles.workspaceMark}>{workspace.logoUrl ? <img src={workspace.logoUrl} alt="" /> : <Building2 size={20} aria-hidden />}</span><span><strong>{workspace.name}</strong><small><ShieldCheck size={12} aria-hidden /> {roleLabels[workspace.role] || workspace.role}</small></span><ArrowRight size={17} aria-hidden /></button>)}</div> : <div className={styles.empty}><Building2 size={25} aria-hidden /><h2>No hay organizaciones asignadas</h2><p>Solicita a un administrador que te agregue a un espacio de trabajo.</p></div>}<footer><span>Acceso seguro</span><span>{available.length} {available.length === 1 ? 'organización disponible' : 'organizaciones disponibles'}</span></footer></section></main>;
 }

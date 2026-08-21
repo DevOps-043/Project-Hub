@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme, themeColors } from '@/contexts/ThemeContext';
 import { api } from '@/lib/api/client';
+import { useTeamPanel } from '@/components/teams/TeamPanelContext';
+import { TeamPanelEmptyState } from '@/components/teams/TeamPanelEmptyState';
 import CreateIssueModal from '@/components/tasks/CreateIssueModal';
+import { ListChecks } from 'lucide-react';
 
 // Types
 interface Status {
@@ -45,11 +47,6 @@ interface Issue {
   estimate_points: number | null;
   created_at: string;
   updated_at: string;
-}
-
-interface Team {
-  identifier: string;
-  name: string;
 }
 
 // Icons
@@ -115,23 +112,14 @@ const PriorityIcon = ({ level, color }: { level: number; color: string }) => {
   );
 };
 
-interface TeamTasksContentProps {
-  /** Ruta base del panel (p.ej. "/admin" o "/{orgSlug}/admin"). Default: "/admin". */
-  panelBase?: string;
-  /** Slug del workspace, si aplica (rutas /[orgSlug]/admin/*). */
-  workspaceSlug?: string;
-}
-
-export function TeamTasksContent({ panelBase = '/admin', workspaceSlug }: TeamTasksContentProps = {}) {
-  const params = useParams();
-  const teamId = params.teamId as string;
+export function TeamTasksContent() {
+  const { teamId, panelBase, workspaceSlug } = useTeamPanel();
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
 
   // State
   const [issues, setIssues] = useState<Issue[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);
-  const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'list' | 'board'>('list');
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'backlog'>('all');
@@ -141,14 +129,13 @@ export function TeamTasksContent({ panelBase = '/admin', workspaceSlug }: TeamTa
   // Fetch issues
   const fetchIssues = useCallback(async () => {
     try {
-      const { data, error } = await api.get<{ issues?: Issue[]; statuses?: Status[]; team?: Team }>(
+      const { data, error } = await api.get<{ issues?: Issue[]; statuses?: Status[] }>(
         `/api/admin/teams/${teamId}/issues`
       );
 
       if (!error && data) {
         setIssues(data.issues || []);
         setStatuses(data.statuses || []);
-        setTeam(data.team ?? null);
         // Expand all statuses by default
         setExpandedStatuses(new Set(data.statuses?.map((s: Status) => s.status_id) || []));
       }
@@ -209,22 +196,10 @@ export function TeamTasksContent({ panelBase = '/admin', workspaceSlug }: TeamTa
   }
 
   return (
-    <div className="min-h-screen">
+    <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          {/* Team badge */}
-          <Link
-            href={`${panelBase}/teams/${teamId}`}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors"
-            style={{
-              backgroundColor: isDark ? 'rgba(0,212,179,0.1)' : 'rgba(0,212,179,0.05)',
-              color: '#00D4B3'
-            }}
-          >
-            <span className="text-sm font-medium">{team?.name || 'Equipo'}</span>
-          </Link>
-
           {/* Tabs */}
           <div className="flex items-center gap-1 p-1 rounded-lg" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }}>
             {[
@@ -235,12 +210,8 @@ export function TeamTasksContent({ panelBase = '/admin', workspaceSlug }: TeamTa
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as 'all' | 'active' | 'backlog')}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                  activeTab === tab.id
-                    ? 'bg-[#00D4B3] text-white'
-                    : `hover:bg-white/5`
-                }`}
-                style={{ color: activeTab === tab.id ? 'white' : colors.textSecondary }}
+                className="px-3 py-1.5 text-sm font-medium rounded-md transition-all"
+                style={{ backgroundColor: activeTab === tab.id ? 'var(--color-primary)' : 'transparent', color: activeTab === tab.id ? '#FFFFFF' : colors.textSecondary }}
               >
                 {tab.label}
               </button>
@@ -283,7 +254,7 @@ export function TeamTasksContent({ panelBase = '/admin', workspaceSlug }: TeamTa
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all text-white hover:opacity-90"
-            style={{ backgroundColor: '#0A2540' }}
+            style={{ backgroundColor: 'var(--color-primary)' }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="12" y1="5" x2="12" y2="19"/>
@@ -574,33 +545,12 @@ export function TeamTasksContent({ panelBase = '/admin', workspaceSlug }: TeamTa
 
       {/* Empty State - Show when no issues */}
       {issues.length === 0 && !loading && (
-        <div className="flex flex-col items-center justify-center py-20">
-          <div className="flex items-center gap-2 mb-6 opacity-30">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ color: colors.textMuted }}>
-              <circle cx="12" cy="12" r="10"/>
-              <circle cx="10" cy="10" r="2"/>
-              <circle cx="14" cy="10" r="2"/>
-              <path d="M8 15c1 1 2.5 2 4 2s3-1 4-2"/>
-            </svg>
-          </div>
-          <h3 className="text-lg font-semibold mb-2" style={{ color: colors.textPrimary }}>
-            Tareas activas
-          </h3>
-          <p className="text-center max-w-md mb-6" style={{ color: colors.textMuted }}>
-            Las tareas activas representan trabajo que est&#225; actualmente en progreso o que deber&#237;a trabajarse pr&#243;ximamente.
-          </p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all text-white hover:opacity-90"
-            style={{ backgroundColor: '#0A2540' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Crear nueva tarea
-          </button>
-        </div>
+        <TeamPanelEmptyState
+          icon={<ListChecks size={26} />}
+          title="Sin tareas todavía"
+          description="Las tareas representan trabajo que está en progreso o que debería trabajarse próximamente."
+          action={{ label: 'Crear nueva tarea', onClick: () => setShowCreateModal(true) }}
+        />
       )}
 
       {/* Create Issue Modal */}

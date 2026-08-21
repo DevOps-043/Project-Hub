@@ -311,6 +311,7 @@ const CalendarPicker = ({ selectedDate, onSelect, accentColor, colors, isDark }:
 interface IssueDetailViewProps {
   /** Ruta base del panel (p.ej. "/admin" o "/{orgSlug}/admin"), ya resuelta por el wrapper de ruta. */
   panelBase: string;
+  workspaceSlug?: string;
 }
 
 /**
@@ -321,7 +322,7 @@ interface IssueDetailViewProps {
  * WorkspaceProvider (layout de /[orgSlug]/*), y este componente también se monta
  * fuera de ese árbol en las rutas /admin/* planas.
  */
-export default function IssueDetailView({ panelBase }: IssueDetailViewProps) {
+export default function IssueDetailView({ panelBase, workspaceSlug }: IssueDetailViewProps) {
   const params = useParams();
   const teamId = params.teamId as string;
   const issueId = params.issueId as string;
@@ -704,7 +705,7 @@ export default function IssueDetailView({ panelBase }: IssueDetailViewProps) {
 
             {/* Documents Section */}
             <div className="mb-8 border-t pt-8" style={{ borderColor: colors.border }}>
-              <IssueDocumentsView issueId={issueId} teamId={teamId} />
+              <IssueDocumentsView issueId={issueId} teamId={teamId} workspaceSlug={workspaceSlug} />
             </div>
 
             {/* Activity Section */}

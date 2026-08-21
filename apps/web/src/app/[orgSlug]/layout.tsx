@@ -7,8 +7,10 @@ import { AdminNavbar } from '@/components/admin/AdminNavbar';
 import { AuthGuard } from '@/components/auth/AuthGuard';
 import { WorkspaceProvider, WorkspaceData, WorkspaceRole } from '@/contexts/WorkspaceContext';
 import { api } from '@/lib/api/client';
-import { Loader2 } from 'lucide-react';
+import { Building2, ShieldAlert } from 'lucide-react';
 import shellStyles from '@/components/admin/AdminShell.module.css';
+import { resolveOrganizationTheme } from '@/lib/theme/organization-brand';
+import { SystemState } from '@/components/system/SystemState';
 
 const MOBILE_BREAKPOINT = 1024;
 
@@ -100,52 +102,26 @@ function WorkspaceLayoutContent({ children }: WorkspaceLayoutProps) {
   }, []);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0F1419]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#00D4B3]" />
-      </div>
-    );
+    return <SystemState loading eyebrow="Organización" title="Preparando tu espacio" description="Estamos sincronizando permisos, identidad y preferencias de diseño." />;
   }
 
   if (error === 'not_found') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0F1419] text-white">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Workspace no encontrado</h1>
-          <p className="text-gray-400 mb-4">El espacio de trabajo &quot;{orgSlug}&quot; no existe.</p>
-          <button
-            onClick={() => router.push('/select-organization')}
-            className="px-4 py-2 bg-[#00D4B3] text-black rounded-lg font-medium hover:bg-[#00b89c] transition-colors"
-          >
-            Volver a seleccionar
-          </button>
-        </div>
-      </div>
-    );
+    return <SystemState icon={Building2} eyebrow="Organización" title="No encontramos este espacio" description={`El espacio “${orgSlug}” no existe o dejó de estar disponible.`} action={<button type="button" onClick={() => router.push('/select-organization')}>Elegir otra organización</button>} />;
   }
 
   if (error === 'forbidden') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0F1419] text-white">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Sin acceso</h1>
-          <p className="text-gray-400 mb-4">No tienes permisos para acceder a este workspace.</p>
-          <button
-            onClick={() => router.push('/select-organization')}
-            className="px-4 py-2 bg-[#00D4B3] text-black rounded-lg font-medium hover:bg-[#00b89c] transition-colors"
-          >
-            Volver a seleccionar
-          </button>
-        </div>
-      </div>
-    );
+    return <SystemState icon={ShieldAlert} eyebrow="Acceso restringido" title="No tienes acceso a este espacio" description="Tu cuenta está activa, pero no pertenece a esta organización." action={<button type="button" onClick={() => router.push('/select-organization')}>Elegir otra organización</button>} />;
   }
 
   if (!workspace) return null;
 
   return (
     <WorkspaceProvider workspace={workspace} userRole={userRole}>
-      <div className={shellStyles.shell}>
+      <div
+        className={shellStyles.shell}
+        data-sofia-shell="true"
+        style={resolveOrganizationTheme(workspace.brandColor, workspace.settings)}
+      >
           <AdminSidebar
             isCollapsed={isMobile ? false : sidebarCollapsed}
             onToggle={toggleSidebar}

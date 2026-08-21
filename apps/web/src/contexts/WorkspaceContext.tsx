@@ -83,6 +83,10 @@ export function useWorkspace(): WorkspaceContextType {
   return context;
 }
 
+export function useOptionalWorkspace(): WorkspaceContextType | null {
+  return useContext(WorkspaceContext);
+}
+
 export function getPermissionsForRole(role: WorkspaceRole): WorkspacePermissions {
   return ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.member;
 }

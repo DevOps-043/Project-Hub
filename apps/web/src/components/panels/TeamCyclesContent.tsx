@@ -1,29 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
-import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme, themeColors } from "@/contexts/ThemeContext";
 import { api } from "@/lib/api/client";
-import {
-  format,
-  formatDistanceToNow,
-  differenceInDays,
-  isWithinInterval,
-  isBefore,
-  isAfter,
-} from "date-fns";
+import { useTeamPanel } from "@/components/teams/TeamPanelContext";
+import { TeamPanelEmptyState } from "@/components/teams/TeamPanelEmptyState";
+import { CYCLE_STATUS_CONFIG, softBg } from "@/components/teams/status-config";
+import { format, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   Plus,
   Calendar,
   Clock,
-  ChevronRight,
   MoreHorizontal,
   Circle,
   CheckCircle2,
-  Target,
   Layers,
   X,
 } from "lucide-react";
@@ -44,35 +36,13 @@ interface Cycle {
 }
 
 // Status badge component
-const StatusBadge = ({ status }: { status: string; colors?: typeof themeColors.dark }) => {
-  const statusConfig: Record<
-    string,
-    { bg: string; text: string; label: string }
-  > = {
-    upcoming: {
-      bg: "rgba(59, 130, 246, 0.15)",
-      text: "#3B82F6",
-      label: "Próximo",
-    },
-    active: { bg: "rgba(0, 212, 179, 0.15)", text: "#00D4B3", label: "Activo" },
-    completed: {
-      bg: "rgba(139, 92, 246, 0.15)",
-      text: "#8B5CF6",
-      label: "Completado",
-    },
-    cancelled: {
-      bg: "rgba(156, 163, 175, 0.15)",
-      text: "#9CA3AF",
-      label: "Cancelado",
-    },
-  };
-
-  const config = statusConfig[status] || statusConfig.upcoming;
+const StatusBadge = ({ status }: { status: string }) => {
+  const config = CYCLE_STATUS_CONFIG[status] || CYCLE_STATUS_CONFIG.upcoming;
 
   return (
     <span
       className="px-2.5 py-1 rounded-full text-xs font-medium"
-      style={{ backgroundColor: config.bg, color: config.text }}
+      style={{ backgroundColor: softBg(config.color), color: config.color }}
     >
       {config.label}
     </span>
@@ -103,24 +73,14 @@ const ProgressBar = ({
   </div>
 );
 
-interface TeamCyclesContentProps {
-  /** Ruta base del panel (p.ej. "/admin" o "/{orgSlug}/admin"). Default: "/admin". */
-  panelBase?: string;
-}
-
-export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentProps = {}) {
-  const params = useParams();
-  const teamId = params.teamId as string;
-
+export function TeamCyclesContent() {
+  const { teamId } = useTeamPanel();
   const { isDark } = useTheme();
   const colors = isDark ? themeColors.dark : themeColors.light;
-  const accentColor = "#00D4B3";
-  const primaryColor = "#0A2540";
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [team, setTeam] = useState<{ name?: string } | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -147,22 +107,9 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
     }
   }, [teamId]);
 
-  // Fetch team info
-  const fetchTeam = useCallback(async () => {
-    try {
-      const { data, error } = await api.get<{ team?: { name?: string } }>(`/api/admin/teams/${teamId}`);
-      if (!error && data) {
-        setTeam(data.team ?? null);
-      }
-    } catch (error) {
-      console.error("Error fetching team:", error);
-    }
-  }, [teamId]);
-
   useEffect(() => {
     fetchCycles();
-    fetchTeam();
-  }, [fetchCycles, fetchTeam]);
+  }, [fetchCycles]);
 
   // Create cycle
   const handleCreateCycle = async (e: React.FormEvent) => {
@@ -207,99 +154,37 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
       <div className="flex items-center justify-center min-h-[60vh]">
         <div
           className="w-10 h-10 border-3 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: accentColor }}
+          style={{ borderColor: "var(--color-accent)" }}
         />
       </div>
     );
   }
 
   return (
-    <div
-      className="min-h-screen pb-12"
-      style={{ backgroundColor: colors.bgPrimary }}
-    >
-      {/* Header */}
-      <header
-        className="sticky top-0 z-40 border-b backdrop-blur-xl"
-        style={{
-          backgroundColor: `${colors.bgPrimary}CC`,
-          borderColor: colors.border,
-        }}
-      >
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div
-                className="flex items-center gap-2 text-sm mb-1"
-                style={{ color: colors.textMuted }}
-              >
-                <Link
-                  href={`${panelBase}/teams`}
-                  className="hover:underline"
-                >
-                  Equipos
-                </Link>
-                <ChevronRight size={14} />
-                <span>Cycles</span>
-              </div>
-              <h1
-                className="text-2xl font-bold"
-                style={{ color: colors.textPrimary }}
-              >
-                Cycles
-              </h1>
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm text-white"
-              style={{
-                background: `linear-gradient(135deg, ${accentColor} 0%, #00B89C 100%)`,
-                boxShadow: `0 4px 15px ${accentColor}40`,
-              }}
-            >
-              <Plus size={18} />
-              Nuevo Cycle
-            </motion.button>
-          </div>
-        </div>
-      </header>
+    <div>
+      {/* Toolbar */}
+      <div className="flex items-center justify-end mb-6">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm text-white"
+          style={{ backgroundColor: "var(--color-primary)" }}
+        >
+          <Plus size={18} />
+          Nuevo Cycle
+        </motion.button>
+      </div>
 
       {/* Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {cycles.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-20"
-          >
-            <div
-              className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6"
-              style={{ backgroundColor: `${accentColor}15` }}
-            >
-              <Layers size={40} style={{ color: accentColor }} />
-            </div>
-            <h3
-              className="text-xl font-semibold mb-2"
-              style={{ color: colors.textPrimary }}
-            >
-              No hay cycles aún
-            </h3>
-            <p className="text-sm mb-6" style={{ color: colors.textMuted }}>
-              Crea tu primer cycle para organizar el trabajo del equipo en
-              sprints
-            </p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-6 py-2.5 rounded-xl font-medium text-white"
-              style={{ backgroundColor: accentColor }}
-            >
-              Crear primer Cycle
-            </button>
-          </motion.div>
-        ) : (
+      {cycles.length === 0 ? (
+        <TeamPanelEmptyState
+          icon={<Layers size={26} />}
+          title="Sin ciclos todavía"
+          description="Crea tu primer ciclo para organizar el trabajo del equipo en sprints."
+          action={{ label: "Crear primer ciclo", onClick: () => setShowCreateModal(true) }}
+        />
+      ) : (
           <div className="space-y-8">
             {/* Active Cycle */}
             {activeCycle && (
@@ -318,7 +203,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                     backgroundColor: isDark
                       ? "rgba(0, 212, 179, 0.05)"
                       : "rgba(0, 212, 179, 0.03)",
-                    borderColor: `${accentColor}30`,
+                    borderColor: softBg("var(--color-accent)", 30),
                   }}
                 >
                   <div className="flex items-start justify-between mb-4">
@@ -326,8 +211,8 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                       <div className="flex items-center gap-3 mb-2">
                         <Circle
                           size={18}
-                          style={{ color: accentColor }}
-                          fill={accentColor}
+                          style={{ color: "var(--color-accent)" }}
+                          fill="var(--color-accent)"
                         />
                         <h3
                           className="text-lg font-semibold"
@@ -335,10 +220,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                         >
                           {activeCycle.name}
                         </h3>
-                        <StatusBadge
-                          status={activeCycle.status}
-                          colors={colors}
-                        />
+                        <StatusBadge status={activeCycle.status} />
                       </div>
                       <div
                         className="flex items-center gap-4 text-sm"
@@ -376,7 +258,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
 
                   <ProgressBar
                     percent={activeCycle.progress_percent}
-                    accentColor={accentColor}
+                    accentColor="var(--color-accent)"
                   />
 
                   <div
@@ -406,7 +288,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                       </span>
                       <p
                         className="font-semibold"
-                        style={{ color: accentColor }}
+                        style={{ color: "var(--color-accent)" }}
                       >
                         {activeCycle.completed_count} issues
                       </p>
@@ -449,7 +331,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                           >
                             {cycle.name}
                           </span>
-                          <StatusBadge status={cycle.status} colors={colors} />
+                          <StatusBadge status={cycle.status} />
                         </div>
                         <div
                           className="flex items-center gap-4 text-sm"
@@ -509,13 +391,13 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                           >
                             {cycle.name}
                           </span>
-                          <StatusBadge status={cycle.status} colors={colors} />
+                          <StatusBadge status={cycle.status} />
                         </div>
                         <div
                           className="flex items-center gap-6 text-sm"
                           style={{ color: colors.textMuted }}
                         >
-                          <span style={{ color: accentColor }}>
+                          <span style={{ color: "var(--color-accent)" }}>
                             {cycle.progress_percent}% success
                           </span>
                           <span>{cycle.completed_count} completed</span>
@@ -529,17 +411,17 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
             )}
           </div>
         )}
-      </main>
 
       {/* Create Modal */}
       <AnimatePresence>
         {showCreateModal && (
-          <>
+          <div data-sofia-modal-root>
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+              data-sofia-overlay
               onClick={() => setShowCreateModal(false)}
             />
             <motion.div
@@ -547,18 +429,22 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg p-6 rounded-2xl border z-50"
+              data-sofia-modal
+              data-modal-kind="cycle"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="create-cycle-title"
               style={{
                 backgroundColor: colors.bgPrimary,
                 borderColor: colors.border,
               }}
             >
-              <div className="flex items-center justify-between mb-6">
-                <h2
-                  className="text-xl font-bold"
-                  style={{ color: colors.textPrimary }}
-                >
-                  Crear Nuevo Cycle
-                </h2>
+              <div className="flex items-center justify-between mb-6" data-modal-section="header">
+                <div data-modal-heading>
+                  <span>RITMO DE ENTREGA</span>
+                  <h2 id="create-cycle-title">Diseñar un nuevo ciclo</h2>
+                  <p>Define una ventana de trabajo clara para alinear foco y capacidad.</p>
+                </div>
                 <button
                   onClick={() => setShowCreateModal(false)}
                   className="p-2 rounded-lg hover:bg-white/5"
@@ -568,13 +454,13 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                 </button>
               </div>
 
-              <form onSubmit={handleCreateCycle} className="space-y-4">
-                <div>
+              <form onSubmit={handleCreateCycle} className="space-y-4" data-cycle-form>
+                <div data-cycle-identity>
                   <label
                     className="block text-sm font-medium mb-2"
                     style={{ color: colors.textSecondary }}
                   >
-                    Nombre del Cycle
+                    Nombre del ciclo
                   </label>
                   <input
                     type="text"
@@ -593,7 +479,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                   />
                 </div>
 
-                <div>
+                <div data-cycle-description>
                   <label
                     className="block text-sm font-medium mb-2"
                     style={{ color: colors.textSecondary }}
@@ -605,7 +491,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                     onChange={(e) =>
                       setFormData({ ...formData, description: e.target.value })
                     }
-                    placeholder="Objetivos del cycle..."
+                    placeholder="Objetivos y resultado esperado..."
                     rows={3}
                     className="w-full px-4 py-3 rounded-xl border text-sm resize-none"
                     style={{
@@ -616,7 +502,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4" data-cycle-window>
                   <div>
                     <label
                       className="block text-sm font-medium mb-2"
@@ -663,7 +549,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                   </div>
                 </div>
 
-                <div>
+                <div data-cycle-cooldown>
                   <label
                     className="block text-sm font-medium mb-2"
                     style={{ color: colors.textSecondary }}
@@ -692,7 +578,7 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                   </select>
                 </div>
 
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-3 pt-4" data-modal-section="footer">
                   <button
                     type="button"
                     onClick={() => setShowCreateModal(false)}
@@ -710,14 +596,14 @@ export function TeamCyclesContent({ panelBase = "/admin" }: TeamCyclesContentPro
                     type="submit"
                     disabled={submitting}
                     className="flex-1 px-4 py-3 rounded-xl font-medium text-sm text-white disabled:opacity-50"
-                    style={{ backgroundColor: accentColor }}
+                    style={{ backgroundColor: "var(--color-primary)" }}
                   >
-                    {submitting ? "Creando..." : "Crear Cycle"}
+                    {submitting ? "Creando..." : "Crear ciclo"}
                   </button>
                 </div>
               </form>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
     </div>
