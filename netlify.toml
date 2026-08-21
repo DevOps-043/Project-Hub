@@ -19,7 +19,12 @@
 # Environment variables for build
 [build.environment]
   NODE_VERSION = "20"
-  NPM_FLAGS = "--legacy-peer-deps"
+  # --include=dev: Netlify fija NODE_ENV=production antes del install, lo que
+  # hace que npm omita devDependencies (@types/node, @types/react, etc.) que
+  # "next build" sigue necesitando para su chequeo de TypeScript aunque el
+  # build sea de producción. Sin esto, el build falla en "Running TypeScript"
+  # pidiendo @types/node aunque esté declarado en package.json.
+  NPM_FLAGS = "--legacy-peer-deps --include=dev"
 
 # Headers for security
 [[headers]]
