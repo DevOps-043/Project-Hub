@@ -13,6 +13,9 @@
     "dependencies": {
         "@google/generative-ai": "^0.24.1",
         "@iris/shared": "*",
+        "@types/node": "^20.19.43",
+        "@types/react": "^19.2.18",
+        "@types/react-dom": "^19.2.4",
         "@react-pdf/renderer": "^4.3.1",
         "@supabase/ssr": "^0.12.4",
         "@supabase/supabase-js": "^2.76.1",
@@ -41,9 +44,6 @@
         "zustand": "^5.0.2"
     },
     "devDependencies": {
-        "@types/node": "^20.19.43",
-        "@types/react": "^19.2.18",
-        "@types/react-dom": "^19.2.4",
         "@vitest/ui": "^4.1.11",
         "eslint": "^9.39.5",
         "eslint-config-next": "^16.3.1",
