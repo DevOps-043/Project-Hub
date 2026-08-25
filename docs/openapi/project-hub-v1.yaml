@@ -1,0 +1,148 @@
+openapi: 3.1.0
+info:
+  title: Project Hub API
+  version: 1.0.0
+  description: API federada para proyectos nuevos de SofLIA-HUB.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Comprueba API y conexión server-side con la base principal
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '503': { $ref: '#/components/responses/Error' }
+  /auth/sofia/exchange:
+    post:
+      security: []
+      summary: Canjea una sesión SOFIA verificada
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sofia_access_token]
+              properties:
+                sofia_access_token: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/refresh:
+    post:
+      security: []
+      summary: Rota un refresh token
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /auth/logout:
+    post:
+      security: []
+      summary: Revoca una sesión de Project Hub
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /workspaces/{workspaceId}/projects:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }]
+    get:
+      summary: Lista proyectos visibles con cursor
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string, maxLength: 255 } }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Crea un proyecto y solicita su carpeta Lia
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /workspaces/{workspaceId}/projects/{projectId}:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+      - { $ref: '#/components/parameters/ProjectId' }
+    get: { summary: Obtiene un proyecto, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    patch: { summary: Actualiza o archiva un proyecto, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    delete: { summary: Archiva un proyecto, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/tasks:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }]
+    get: { summary: Lista tareas, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    post: { summary: Crea una tarea, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/tasks/{taskId}:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/TaskId' }]
+    patch: { summary: Actualiza una tarea, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/members:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }]
+    get: { summary: Lista miembros activos, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    post: { summary: Agrega o reactiva un miembro, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/members/{memberId}:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/MemberId' }]
+    patch: { summary: Cambia el rol del miembro, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    delete: { summary: Remueve y revoca al miembro, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/evidence:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }]
+    get: { summary: Lista evidencia, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    post: { summary: Agrega Drive, URL u otra referencia, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/evidence/{evidenceId}:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/EvidenceId' }]
+    get: { summary: Obtiene evidencia e items, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    delete: { summary: Archiva evidencia, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/files/intents:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }]
+    post: { summary: Crea hasta diez intenciones privadas, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/files/complete:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }]
+    post: { summary: Valida bytes, MIME, tamaño y hash, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/files/{evidenceId}/download:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/EvidenceId' }]
+    get: { summary: Emite una descarga firmada de corta duración, responses: { '200': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/browser-collections:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }]
+    get: { summary: Lista versiones de investigaciones, responses: { '200': { $ref: '#/components/responses/Success' } } }
+    post: { summary: Guarda una versión inmutable, responses: { '201': { $ref: '#/components/responses/Success' } } }
+  /workspaces/{workspaceId}/projects/{projectId}/meeting-imports:
+    parameters:
+      - { $ref: '#/components/parameters/WorkspaceId' }
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 200 } }
+    post:
+      summary: Importa evidencia y tareas de una reunión aprobada
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Error' }
+  /workspaces/{workspaceId}/projects/{projectId}/analytics:
+    parameters: [{ $ref: '#/components/parameters/WorkspaceId' }, { $ref: '#/components/parameters/ProjectId' }]
+    get: { summary: Devuelve progreso, carga, actividad y evidencia, responses: { '200': { $ref: '#/components/responses/Success' } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    WorkspaceId: { name: workspaceId, in: path, required: true, schema: { type: string, format: uuid } }
+    ProjectId: { name: projectId, in: path, required: true, schema: { type: string, format: uuid } }
+    TaskId: { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
+    MemberId: { name: memberId, in: path, required: true, schema: { type: string, format: uuid } }
+    EvidenceId: { name: evidenceId, in: path, required: true, schema: { type: string, format: uuid } }
+  schemas:
+    Envelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data: {}
+        meta:
+          type: object
+          properties:
+            correlation_id: { type: string, format: uuid }
+            next_cursor: { type: [string, 'null'] }
+            has_more: { type: boolean }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+  responses:
+    Success:
+      description: Operación exitosa
+      content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } }
+    Error:
+      description: Error validado
+      content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } }

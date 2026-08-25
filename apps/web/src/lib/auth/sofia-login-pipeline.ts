@@ -93,6 +93,7 @@ async function syncSofiaUserToIris(sofiaUser: SofiaUser): Promise<AccountUser> {
 
   if (existingUser) {
     const updateData: Record<string, unknown> = {
+      sofia_user_id: sofiaUser.user_id,
       first_name: sofiaUser.first_name,
       last_name_paternal: sofiaUser.last_name_paternal,
       last_name_maternal: sofiaUser.last_name_maternal,
@@ -150,6 +151,7 @@ async function syncSofiaUserToIris(sofiaUser: SofiaUser): Promise<AccountUser> {
     .from('account_users')
     .insert({
       user_id: sofiaUser.user_id,
+      sofia_user_id: sofiaUser.user_id,
       first_name: sofiaUser.first_name,
       last_name_paternal: sofiaUser.last_name_paternal,
       last_name_maternal: sofiaUser.last_name_maternal || null,

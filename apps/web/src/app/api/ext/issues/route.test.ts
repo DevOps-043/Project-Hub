@@ -1,152 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
-import { createFakeSupabaseAdmin } from '@/lib/supabase/test-utils';
+import { NextRequest, NextResponse } from 'next/server';
 import { generateTokenPair } from '@/lib/auth/jwt';
 import type { AccountUser } from '@/lib/supabase/server';
 
-const state = vi.hoisted(() => ({ from: vi.fn() }));
-
+const state = vi.hoisted(() => ({ listV1: vi.fn(), createV1: vi.fn(), updateV1: vi.fn() }));
 vi.mock('@/lib/supabase/server', () => ({
-  supabaseAdmin: { from: (...args: unknown[]) => state.from(...args) },
+  getSupabaseAdmin: () => ({ from: (table: string) => chain(() => ({ data: table === 'pm_projects' ? { workspace_id: '10000000-0000-4000-8000-000000000001' } : table === 'task_issues' ? { project_id: '20000000-0000-4000-8000-000000000002' } : { member_id: 'm1' } })) }),
 }));
+vi.mock('../../v1/workspaces/[workspaceId]/projects/[projectId]/tasks/route', () => ({ GET: (...args: unknown[]) => state.listV1(...args), POST: (...args: unknown[]) => state.createV1(...args) }));
+vi.mock('../../v1/workspaces/[workspaceId]/projects/[projectId]/tasks/[taskId]/route', () => ({ PATCH: (...args: unknown[]) => state.updateV1(...args) }));
 
-import { GET, POST, PATCH } from './route';
-
-function makeUser(overrides: Partial<AccountUser> = {}): AccountUser {
-  return {
-    user_id: 'user-1',
-    first_name: 'Fernando',
-    last_name_paternal: 'Suarez',
-    last_name_maternal: null,
-    display_name: 'Fernando Suarez',
-    username: 'fernando',
-    email: 'fernando@example.com',
-    password_hash: 'irrelevant',
-    permission_level: 'user',
-    company_role: null,
-    department: null,
-    account_status: 'active',
-    is_email_verified: true,
-    email_verified_at: null,
-    avatar_url: null,
-    phone_number: null,
-    timezone: 'America/Mexico_City',
-    locale: 'es-MX',
-    last_login_at: null,
-    last_activity_at: null,
-    failed_login_attempts: 0,
-    locked_until: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    ...overrides,
-  };
-}
-
-interface SimpleRequestInit {
-  method?: string;
-  headers?: Record<string, string>;
-  body?: string;
-}
-
-async function extRequest(url: string, init: SimpleRequestInit = {}) {
-  const { accessToken } = await generateTokenPair(makeUser());
-  return new NextRequest(url, {
-    ...init,
-    headers: { ...(init.headers || {}), authorization: `Bearer ${accessToken}` },
-  });
-}
+import { GET, PATCH, POST } from './route';
 
 beforeEach(() => {
-  state.from.mockReset();
+  state.listV1.mockReset().mockResolvedValue(NextResponse.json({ data: [{ issue_id: 'i1' }], meta: {} }));
+  state.createV1.mockReset().mockResolvedValue(NextResponse.json({ data: { issue_id: 'i2' }, meta: {} }, { status: 201 }));
+  state.updateV1.mockReset().mockResolvedValue(NextResponse.json({ data: { issue_id: 'i1' }, meta: {} }));
 });
 
-describe('GET /api/ext/issues', () => {
-  it('rejects with 401 when unauthenticated', async () => {
-    const req = new NextRequest('https://app.example.com/api/ext/issues?project_id=p1');
-    expect((await GET(req)).status).toBe(401);
+describe('adaptador /api/ext/issues', () => {
+  it('exige project_id', async () => expect((await GET(await request('https://x/api/ext/issues'))).status).toBe(400));
+  it('delega un listado con autorización de proyecto', async () => {
+    const response = await GET(await request('https://x/api/ext/issues?project_id=20000000-0000-4000-8000-000000000002'));
+    expect(response.status).toBe(200); expect((await response.json()).issues).toHaveLength(1); expect(state.listV1).toHaveBeenCalled();
   });
-
-  it('rejects with 400 when project_id is missing', async () => {
-    const req = await extRequest('https://app.example.com/api/ext/issues');
-    expect((await GET(req)).status).toBe(400);
+  it('crea por v1 y elimina campos fuera del contrato', async () => {
+    await POST(await request('https://x/api/ext/issues', { method: 'POST', body: JSON.stringify({ project_id: '20000000-0000-4000-8000-000000000002', title: 'Tarea', creator_id: 'attacker' }) }));
+    const body = await (state.createV1.mock.calls[0][0] as NextRequest).json();
+    expect(body.title).toBe('Tarea'); expect(body).not.toHaveProperty('creator_id');
   });
-
-  it('lists non-archived issues for the project', async () => {
-    const fake = createFakeSupabaseAdmin({ task_issues: [{ data: [{ issue_id: 'i1' }] }] });
-    state.from.mockImplementation(fake.from);
-    const req = await extRequest('https://app.example.com/api/ext/issues?project_id=p1');
-    const json = await (await GET(req)).json();
-    expect(json.issues).toHaveLength(1);
-  });
-});
-
-describe('POST /api/ext/issues', () => {
-  it('rejects with 400 when project_id or title is missing', async () => {
-    const req = await extRequest('https://app.example.com/api/ext/issues', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ project_id: 'p1' }),
-    });
-    expect((await POST(req)).status).toBe(400);
-  });
-
-  it('assigns the next sequence_number and sets creator_id from the token', async () => {
-    const fake = createFakeSupabaseAdmin({
-      task_issues: [{ data: { sequence_number: 4 } }, { data: { issue_id: 'new-i1', sequence_number: 5 } }],
-    });
-    state.from.mockImplementation(fake.from);
-
-    const req = await extRequest('https://app.example.com/api/ext/issues', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ project_id: 'p1', title: 'Fix bug' }),
-    });
-    expect((await POST(req)).status).toBe(201);
-
-    const insertCall = fake.calls.find((c) => c.table === 'task_issues' && c.method === 'insert');
-    const inserted = insertCall?.args[0] as { sequence_number: number; creator_id: string };
-    expect(inserted.sequence_number).toBe(5);
-    expect(inserted.creator_id).toBe('user-1');
+  it('PATCH conserva solo la allowlist', async () => {
+    await PATCH(await request('https://x/api/ext/issues', { method: 'PATCH', body: JSON.stringify({ issue_id: '30000000-0000-4000-8000-000000000003', title: 'Nueva', project_id: 'otro', creator_id: 'attacker' }) }));
+    const body = await (state.updateV1.mock.calls[0][0] as NextRequest).json();
+    expect(body).toEqual({ title: 'Nueva' });
   });
 });
 
-describe('PATCH /api/ext/issues', () => {
-  it('rejects with 400 when issue_id is missing', async () => {
-    const req = await extRequest('https://app.example.com/api/ext/issues', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'New title' }),
-    });
-    expect((await PATCH(req)).status).toBe(400);
-  });
+function chain(result: () => unknown) { const value: Record<string, any> = {}; for (const name of ['select', 'eq', 'maybeSingle']) value[name] = () => name === 'maybeSingle' ? Promise.resolve(result()) : value; return value; }
+async function request(url: string, init: RequestInit = {}) { const { accessToken } = await generateTokenPair(user()); return new NextRequest(url, { ...init, headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' } }); }
+function user(): AccountUser { return { user_id: 'user-1', first_name: 'Ana', last_name_paternal: 'Test', last_name_maternal: null, display_name: 'Ana', username: 'ana_test', email: 'ana@example.com', password_hash: 'x', permission_level: 'user', company_role: null, department: null, account_status: 'active', is_email_verified: true, email_verified_at: null, avatar_url: null, phone_number: null, timezone: 'America/Mexico_City', locale: 'es-MX', last_login_at: null, last_activity_at: null, failed_login_attempts: 0, locked_until: null, created_at: '', updated_at: '' }; }
 
-  it('rejects with 400 when no allowed field is present', async () => {
-    const req = await extRequest('https://app.example.com/api/ext/issues', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ issue_id: 'i1', some_unlisted_field: 'x' }),
-    });
-    expect((await PATCH(req)).status).toBe(400);
-  });
-
-  // Mass-assignment guard: fields outside the explicit allowlist (e.g. an
-  // attacker trying to overwrite creator_id or project_id via PATCH) must
-  // never reach the update payload.
-  it('strips any field not in the allowlist before updating', async () => {
-    const fake = createFakeSupabaseAdmin({ task_issues: [{ data: { issue_id: 'i1', title: 'New title' } }] });
-    state.from.mockImplementation(fake.from);
-
-    const req = await extRequest('https://app.example.com/api/ext/issues', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ issue_id: 'i1', title: 'New title', creator_id: 'attacker', project_id: 'other-project' }),
-    });
-    expect((await PATCH(req)).status).toBe(200);
-
-    const updateCall = fake.calls.find((c) => c.table === 'task_issues' && c.method === 'update');
-    const updated = updateCall?.args[0] as Record<string, unknown>;
-    expect(updated.title).toBe('New title');
-    expect(updated).not.toHaveProperty('creator_id');
-    expect(updated).not.toHaveProperty('project_id');
-  });
-});

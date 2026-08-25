@@ -43,3 +43,6 @@ next-env.d.ts
 *.log
 *.cache
 .turbo
+
+# Supabase CLI local linkage and runtime metadata
+**/supabase/.temp/

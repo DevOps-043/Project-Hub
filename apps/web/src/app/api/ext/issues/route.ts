@@ -1,202 +1,64 @@
-/**
- * API Route: /api/ext/issues
- * 
- * Endpoint para que la extensión SOFLIA pueda:
- * - GET: Listar issues de un proyecto
- * - POST: Crear nuevos issues
- * - PATCH: Actualizar issues existentes
- * 
- * Autenticación: JWT del Project Hub (Bearer token)
- */
-
+/** Adaptador temporal de tareas /api/v1. Nunca consulta issues globalmente. */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
+import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { GET as listV1, POST as createV1 } from '../../v1/workspaces/[workspaceId]/projects/[projectId]/tasks/route';
+import { PATCH as updateV1 } from '../../v1/workspaces/[workspaceId]/projects/[projectId]/tasks/[taskId]/route';
 
-export const runtime = 'nodejs';
+const HEADERS = { Deprecation: 'true', Sunset: 'Wed, 31 Dec 2026 23:59:59 GMT', Link: '</api/v1>; rel="successor-version"' };
 
-// Middleware de autenticación
-async function authenticateExtension(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { error: 'Token no proporcionado', status: 401 };
-  }
-
-  const token = authHeader.substring(7);
-  const payload = await verifyToken(token);
-
-  if (!payload || payload.type !== 'access') {
-    return { error: 'Token inválido o expirado', status: 401 };
-  }
-
-  return { userId: payload.sub, payload };
+async function resolve(request: NextRequest, projectId: string) {
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  const payload = token ? await verifyToken(token) : null;
+  if (!payload || payload.type !== 'access') return { status: 401 as const };
+  const { data: project } = await getSupabaseAdmin().from('pm_projects').select('workspace_id').eq('project_id', projectId).maybeSingle();
+  if (!project?.workspace_id) return { status: 404 as const };
+  const { data: member } = await getSupabaseAdmin().from('workspace_members').select('member_id').eq('workspace_id', project.workspace_id)
+    .eq('user_id', payload.sub).eq('is_active', true).maybeSingle();
+  return member ? { status: 200 as const, workspaceId: project.workspace_id as string } : { status: 403 as const };
 }
 
-/**
- * GET /api/ext/issues?project_id=xxx
- */
+function respond(response: Response, body: unknown) { return NextResponse.json(body, { status: response.status, headers: HEADERS }); }
+
 export async function GET(request: NextRequest) {
-  try {
-    const auth = await authenticateExtension(request);
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const projectId = searchParams.get('project_id');
-    const statusId = searchParams.get('status_id');
-    const assigneeId = searchParams.get('assignee_id');
-
-    if (!projectId) {
-      return NextResponse.json({ error: 'project_id es requerido' }, { status: 400 });
-    }
-
-    let query = supabaseAdmin
-      .from('task_issues')
-      .select('*')
-      .eq('project_id', projectId)
-      .is('archived_at', null)
-      .order('sequence_number', { ascending: true });
-
-    if (statusId) query = query.eq('status_id', statusId);
-    if (assigneeId) query = query.eq('assignee_id', assigneeId);
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[EXT] Error obteniendo issues:', error);
-      return NextResponse.json({ error: 'Error al obtener issues' }, { status: 500 });
-    }
-
-    return NextResponse.json({ issues: data || [] });
-  } catch (error) {
-    console.error('[EXT] Error:', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
-  }
+  const projectId = request.nextUrl.searchParams.get('project_id');
+  if (!projectId) return NextResponse.json({ error: 'project_id es requerido' }, { status: 400, headers: HEADERS });
+  const context = await resolve(request, projectId);
+  if (context.status !== 200) return NextResponse.json({ error: context.status === 401 ? 'No autorizado' : 'Sin acceso al proyecto' }, { status: context.status, headers: HEADERS });
+  const response = await listV1(request, { params: Promise.resolve({ workspaceId: context.workspaceId!, projectId }) });
+  const body = await response.json();
+  return respond(response, response.ok ? { issues: body.data || [], meta: body.meta } : body);
 }
 
-/**
- * POST /api/ext/issues - Crea un nuevo issue
- */
 export async function POST(request: NextRequest) {
-  try {
-    const auth = await authenticateExtension(request);
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const body = await request.json();
-    const { 
-      project_id, title, description, 
-      status_id, priority_id, assignee_id,
-      cycle_id, milestone_id, estimate_points,
-      start_date, due_date,
-    } = body;
-
-    if (!project_id || !title) {
-      return NextResponse.json(
-        { error: 'project_id y title son requeridos' }, 
-        { status: 400 }
-      );
-    }
-
-    // Obtener el siguiente sequence_number
-    const { data: lastIssue } = await supabaseAdmin
-      .from('task_issues')
-      .select('sequence_number')
-      .eq('project_id', project_id)
-      .order('sequence_number', { ascending: false })
-      .limit(1)
-      .single();
-
-    const nextSequence = (lastIssue?.sequence_number || 0) + 1;
-
-    const issueData = {
-      project_id,
-      title,
-      description: description || null,
-      status_id: status_id || null,
-      priority_id: priority_id || null,
-      assignee_id: assignee_id || null,
-      creator_id: auth.userId,
-      cycle_id: cycle_id || null,
-      milestone_id: milestone_id || null,
-      estimate_points: estimate_points || null,
-      start_date: start_date || null,
-      due_date: due_date || null,
-      sequence_number: nextSequence,
-    };
-
-    const { data, error } = await supabaseAdmin
-      .from('task_issues')
-      .insert(issueData)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[EXT] Error creando issue:', error);
-      return NextResponse.json({ error: 'Error al crear issue' }, { status: 500 });
-    }
-
-    return NextResponse.json({ issue: data }, { status: 201 });
-  } catch (error) {
-    console.error('[EXT] Error:', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
-  }
+  const legacy = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const projectId = typeof legacy.project_id === 'string' ? legacy.project_id : '';
+  if (!projectId || !legacy.title) return NextResponse.json({ error: 'project_id y title son requeridos' }, { status: 400, headers: HEADERS });
+  const context = await resolve(request, projectId);
+  if (context.status !== 200) return NextResponse.json({ error: 'Sin acceso al proyecto' }, { status: context.status, headers: HEADERS });
+  const adapted = new NextRequest(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify({
+    title: legacy.title, description: legacy.description, status_id: legacy.status_id,
+    priority_id: legacy.priority_id, assignee_id: legacy.assignee_id, due_date: legacy.due_date,
+  }) });
+  const response = await createV1(adapted, { params: Promise.resolve({ workspaceId: context.workspaceId!, projectId }) });
+  const body = await response.json();
+  return respond(response, response.ok ? { issue: body.data, meta: body.meta } : body);
 }
 
-/**
- * PATCH /api/ext/issues - Actualiza un issue existente
- */
 export async function PATCH(request: NextRequest) {
-  try {
-    const auth = await authenticateExtension(request);
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const body = await request.json();
-    const { issue_id, ...updates } = body;
-
-    if (!issue_id) {
-      return NextResponse.json({ error: 'issue_id es requerido' }, { status: 400 });
-    }
-
-    // Campos permitidos para actualización
-    const allowedFields = [
-      'title', 'description', 'status_id', 'priority_id', 
-      'assignee_id', 'cycle_id', 'milestone_id', 'estimate_points',
-      'start_date', 'due_date', 'completed_at',
-    ];
-
-    const filteredUpdates: Record<string, any> = {};
-    for (const field of allowedFields) {
-      if (updates[field] !== undefined) {
-        filteredUpdates[field] = updates[field];
-      }
-    }
-
-    if (Object.keys(filteredUpdates).length === 0) {
-      return NextResponse.json({ error: 'No hay campos válidos para actualizar' }, { status: 400 });
-    }
-
-    filteredUpdates.updated_at = new Date().toISOString();
-
-    const { data, error } = await supabaseAdmin
-      .from('task_issues')
-      .update(filteredUpdates)
-      .eq('issue_id', issue_id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[EXT] Error actualizando issue:', error);
-      return NextResponse.json({ error: 'Error al actualizar issue' }, { status: 500 });
-    }
-
-    return NextResponse.json({ issue: data });
-  } catch (error) {
-    console.error('[EXT] Error:', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
-  }
+  const legacy = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const taskId = typeof legacy.issue_id === 'string' ? legacy.issue_id : '';
+  if (!taskId) return NextResponse.json({ error: 'issue_id es requerido' }, { status: 400, headers: HEADERS });
+  const { data: issue } = await getSupabaseAdmin().from('task_issues').select('project_id').eq('issue_id', taskId).maybeSingle();
+  if (!issue?.project_id) return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404, headers: HEADERS });
+  const context = await resolve(request, issue.project_id);
+  if (context.status !== 200) return NextResponse.json({ error: 'Sin acceso al proyecto' }, { status: context.status, headers: HEADERS });
+  const allowed = ['title', 'description', 'status_id', 'priority_id', 'assignee_id', 'due_date'];
+  const updates = Object.fromEntries(Object.entries(legacy).filter(([key]) => allowed.includes(key)));
+  if (!Object.keys(updates).length) return NextResponse.json({ error: 'No hay campos válidos para actualizar' }, { status: 400, headers: HEADERS });
+  const adapted = new NextRequest(request.url, { method: 'PATCH', headers: request.headers, body: JSON.stringify(updates) });
+  const response = await updateV1(adapted, { params: Promise.resolve({ workspaceId: context.workspaceId!, projectId: issue.project_id, taskId }) });
+  const body = await response.json();
+  return respond(response, response.ok ? { issue: body.data, meta: body.meta } : body);
 }
+

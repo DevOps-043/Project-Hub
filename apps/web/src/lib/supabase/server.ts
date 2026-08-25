@@ -80,6 +80,7 @@ export const supabaseAdmin = {
 // Tipos para la tabla account_users
 export interface AccountUser {
   user_id: string;
+  sofia_user_id?: string | null;
   first_name: string;
   last_name_paternal: string;
   last_name_maternal: string | null;

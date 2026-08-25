@@ -18,7 +18,8 @@
 
 # Environment variables for build
 [build.environment]
-  NODE_VERSION = "20"
+  # Alineado con package.json y con el requisito actual de Supabase JS.
+  NODE_VERSION = "22"
   NPM_FLAGS = "--legacy-peer-deps"
 
 # Headers for security

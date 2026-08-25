@@ -1,116 +1,42 @@
-/**
- * API Route: /api/ext/projects
- * 
- * Endpoint para que la extensión SOFLIA pueda:
- * - GET: Listar proyectos del usuario autenticado
- * - POST: Crear nuevos proyectos
- * 
- * Autenticación: 
- * - Acepta JWT del Project Hub (Bearer token)
- * - Verifica que el usuario exista en Project Hub
- */
-
+/** Adaptador temporal de /api/v1. Remover después del periodo de deprecación. */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/server';
 import { verifyToken } from '@/lib/auth/jwt';
+import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { GET as listV1, POST as createV1 } from '../../v1/workspaces/[workspaceId]/projects/route';
 
-export const runtime = 'nodejs';
+const DEPRECATION_HEADERS = { Deprecation: 'true', Sunset: 'Wed, 31 Dec 2026 23:59:59 GMT', Link: '</api/v1>; rel="successor-version"' };
 
-// Middleware de autenticación para la extensión
-async function authenticateExtension(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { error: 'Token no proporcionado', status: 401 };
-  }
-
-  const token = authHeader.substring(7);
-  const payload = await verifyToken(token);
-
-  if (!payload || payload.type !== 'access') {
-    return { error: 'Token inválido o expirado', status: 401 };
-  }
-
-  return { userId: payload.sub, payload };
+async function legacyContext(request: NextRequest) {
+  const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
+  const payload = token ? await verifyToken(token) : null;
+  if (!payload || payload.type !== 'access') return null;
+  const requested = request.nextUrl.searchParams.get('workspace_id') || request.headers.get('x-workspace-id');
+  const query = getSupabaseAdmin().from('workspace_members').select('workspace_id').eq('user_id', payload.sub).eq('is_active', true);
+  const { data } = requested ? await query.eq('workspace_id', requested).limit(1) : await query.limit(2);
+  if (!data?.length || (!requested && data.length !== 1)) return { workspaceId: null };
+  return { workspaceId: data[0].workspace_id as string };
 }
 
-/**
- * GET /api/ext/projects - Lista los proyectos
- */
 export async function GET(request: NextRequest) {
-  try {
-    const auth = await authenticateExtension(request);
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const teamId = searchParams.get('team_id');
-
-    let query = supabaseAdmin
-      .from('pm_projects')
-      .select('*')
-      .is('archived_at', null)
-      .order('updated_at', { ascending: false });
-
-    if (teamId) query = query.eq('team_id', teamId);
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[EXT] Error obteniendo proyectos:', error);
-      return NextResponse.json({ error: 'Error al obtener proyectos' }, { status: 500 });
-    }
-
-    return NextResponse.json({ projects: data || [] });
-  } catch (error) {
-    console.error('[EXT] Error:', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
-  }
+  const context = await legacyContext(request);
+  if (!context) return NextResponse.json({ error: 'Token inválido o expirado' }, { status: 401, headers: DEPRECATION_HEADERS });
+  if (!context.workspaceId) return NextResponse.json({ error: 'workspace_id es requerido cuando hay más de un workspace' }, { status: 400, headers: DEPRECATION_HEADERS });
+  const response = await listV1(request, { params: Promise.resolve({ workspaceId: context.workspaceId }) });
+  const body = await response.json();
+  return NextResponse.json(response.ok ? { projects: body.data || [], meta: body.meta } : body, { status: response.status, headers: DEPRECATION_HEADERS });
 }
 
-/**
- * POST /api/ext/projects - Crea un nuevo proyecto
- */
 export async function POST(request: NextRequest) {
-  try {
-    const auth = await authenticateExtension(request);
-    if ('error' in auth) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
-    }
-
-    const body = await request.json();
-    const { name, description, identifier, team_id, emoji } = body;
-
-    if (!name) {
-      return NextResponse.json({ error: 'El nombre del proyecto es requerido' }, { status: 400 });
-    }
-
-    const projectData = {
-      name,
-      description: description || null,
-      identifier: identifier || name.substring(0, 5).toUpperCase().replace(/\s/g, ''),
-      team_id: team_id || null,
-      creator_id: auth.userId,
-      lead_id: auth.userId,
-      status: 'active',
-      network: 'private',
-      emoji: emoji || '📁',
-    };
-
-    const { data, error } = await supabaseAdmin
-      .from('pm_projects')
-      .insert(projectData)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[EXT] Error creando proyecto:', error);
-      return NextResponse.json({ error: 'Error al crear proyecto' }, { status: 500 });
-    }
-
-    return NextResponse.json({ project: data }, { status: 201 });
-  } catch (error) {
-    console.error('[EXT] Error:', error);
-    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
-  }
+  const context = await legacyContext(request);
+  if (!context) return NextResponse.json({ error: 'Token inválido o expirado' }, { status: 401, headers: DEPRECATION_HEADERS });
+  if (!context.workspaceId) return NextResponse.json({ error: 'workspace_id es requerido cuando hay más de un workspace' }, { status: 400, headers: DEPRECATION_HEADERS });
+  const legacy = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const adapted = new NextRequest(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify({
+    name: legacy.name, description: legacy.description, team_id: legacy.team_id,
+    priority: legacy.priority || 'medium', tags: legacy.tags || [],
+  }) });
+  const response = await createV1(adapted, { params: Promise.resolve({ workspaceId: context.workspaceId }) });
+  const body = await response.json();
+  return NextResponse.json(response.ok ? { project: body.data, meta: body.meta } : body, { status: response.status, headers: DEPRECATION_HEADERS });
 }
+

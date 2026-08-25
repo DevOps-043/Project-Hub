@@ -15,6 +15,9 @@ import { checkRateLimit } from '@/lib/http/rate-limit';
 const RATE_LIMITED_PATHS: Record<string, { limit: number; windowMs: number }> = {
   '/api/auth/login': { limit: 10, windowMs: 60_000 },
   '/api/auth/register': { limit: 5, windowMs: 60_000 },
+  '/api/v1/auth/sofia/exchange': { limit: 20, windowMs: 60_000 },
+  '/api/v1/auth/refresh': { limit: 30, windowMs: 60_000 },
+  '/api/v1/health': { limit: 60, windowMs: 60_000 },
 };
 
 function getClientIp(request: NextRequest): string {
@@ -38,6 +41,11 @@ const PUBLIC_PATHS = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/refresh',
+  // Bootstrap federado: ambas validan internamente el token recibido. Si el
+  // proxy exige primero un JWT de Project Hub se crea un ciclo imposible.
+  '/api/v1/auth/sofia/exchange',
+  '/api/v1/auth/refresh',
+  '/api/v1/health',
   '/api/auth/reset-test-user', // Solo desarrollo
   '/api/auth/callback/google', // OAuth Google callback (validado internamente via state)
   '/api/auth/learning/start',    // SSO Learning: inicia el flujo (usuario aun sin sesion)
