@@ -18,6 +18,17 @@ beforeEach(() => {
   mocks.verify.mockResolvedValue({ sub: 'hub-user', type: 'access' }); mocks.session.mockResolvedValue({ data: { session_id: 'sesion' }, error: null });
 });
 describe('Conexión de Project Hub desde PulseHub', () => {
+  it('admite el origen HTTPS público con una URL interna HTTP y rechaza dominios parecidos', async () => {
+    const req = new NextRequest('http://127.0.0.1:3000/api/auth/hub-session', { method: 'POST', headers: { Host: 'hub.test', Origin: 'https://hub.test', 'X-PulseHub-Session': '1' }, body: '{"replace":false}' });
+    expect((await POST(req)).status).toBe(401); expect(mocks.native).not.toHaveBeenCalled();
+    req.headers.set('origin', 'https://hub.test.evil.test');
+    expect((await POST(req)).status).toBe(403);
+  });
+  it('el consumo del puente también admite el origen público y conserva el rechazo cross-site', async () => {
+    const req = new NextRequest('http://127.0.0.1:3000/api/auth/hub-session', { headers: { Host: 'hub.test', Origin: 'https://hub.test' } });
+    expect((await GET(req)).status).toBe(204);
+    req.headers.set('sec-fetch-site', 'cross-site'); expect((await GET(req)).status).toBe(403);
+  });
   it('crea cookies web sin exponer tokens en el canje', async () => {
     const response = await POST(post()); expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ success: true, userId: 'hub-user' });

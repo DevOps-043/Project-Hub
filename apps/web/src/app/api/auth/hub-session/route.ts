@@ -11,6 +11,14 @@ const headers = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' 
 const bootstrapCookie = 'pulsehub_bootstrap';
 const fail = (status: number) => NextResponse.json({ success: false }, { status, headers });
 
+function hasSameOrigin(request: NextRequest): boolean {
+  const origin = request.headers.get('origin');
+  // Netlify puede reconstruir la URL interna con HTTP. Host conserva el
+  // destino público; solo admitimos su origen HTTPS, sin confiar en Forwarded.
+  return !origin || origin === request.nextUrl.origin ||
+    origin === `https://${request.headers.get('host') || request.nextUrl.host}`;
+}
+
 async function connectionInput(request: NextRequest): Promise<{ replace: boolean } | null> {
   const reader = request.body?.getReader();
   if (!reader) return null;
@@ -32,8 +40,7 @@ async function connectionInput(request: NextRequest): Promise<{ replace: boolean
 }
 
 export async function POST(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  if ((origin && origin !== request.nextUrl.origin) || request.headers.get('x-pulsehub-session') !== '1') return fail(403);
+  if (!hasSameOrigin(request) || request.headers.get('x-pulsehub-session') !== '1') return fail(403);
   const match = /^Bearer ([^\s]{40,8192})$/.exec(request.headers.get('authorization') || '');
   if (!match) return fail(401);
   try {
@@ -60,8 +67,7 @@ export async function POST(request: NextRequest) {
 
 /** El cliente consume el puente de la misma web y conserva su flujo normal de refresh. */
 export async function GET(request: NextRequest) {
-  const origin = request.headers.get('origin');
-  if ((origin && origin !== request.nextUrl.origin) || request.headers.get('sec-fetch-site') === 'cross-site') return fail(403);
+  if (!hasSameOrigin(request) || request.headers.get('sec-fetch-site') === 'cross-site') return fail(403);
   const raw = request.cookies.get(bootstrapCookie)?.value;
   if (!raw) return new NextResponse(null, { status: 204, headers });
   try {
