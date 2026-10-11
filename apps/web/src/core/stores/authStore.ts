@@ -98,6 +98,19 @@ export const useAuthStore = create<AuthState>()(
 
             // Initialize - verificar sesión existente al cargar la app
             initialize: async () => {
+                // Recuperar una conexión nueva de PulseHub incluso si el sitio
+                // estaba abierto antes con otra cuenta. El puente dura 60 s.
+                try {
+                    const response = await fetch('/api/auth/hub-session', { credentials: 'same-origin', cache: 'no-store' });
+                    if (response.status === 200) {
+                        const session = await response.json();
+                        if (typeof session.accessToken === 'string' && typeof session.refreshToken === 'string') {
+                            localStorage.setItem('accessToken', session.accessToken);
+                            localStorage.setItem('refreshToken', session.refreshToken);
+                            set({ user: null, workspaces: [], authSource: 'sofia', isAuthenticated: false });
+                        }
+                    }
+                } catch { /* La sesión habitual sigue disponible si falla la red. */ }
                 const token = getAccessToken();
 
                 if (!token) {

@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
       .eq('token_hash', tokenHash);
 
     const res = NextResponse.json({ success: true, message: 'Sesión cerrada correctamente' });
+    res.cookies.set('pulsehub_bootstrap', '', { httpOnly: true, path: '/', maxAge: 0 });
     // Limpiar cookie httpOnly
     res.cookies.set('accessToken', '', {
       httpOnly: true,

@@ -234,11 +234,12 @@ export async function completeSofiaLogin(
   sofiaUser: SofiaUser,
   sofiaAccessToken: string | undefined,
   request: NextRequest,
-  loginIdentifierForLog: string
+  loginIdentifierForLog: string,
+  organizations?: Awaited<ReturnType<typeof getSofiaUserOrgs>>
 ): Promise<LoginResponse> {
   const irisUser = await syncSofiaUserToIris(sofiaUser);
 
-  const sofiaOrgs = await getSofiaUserOrgs(sofiaUser.user_id, sofiaAccessToken);
+  const sofiaOrgs = organizations ?? await getSofiaUserOrgs(sofiaUser.user_id, sofiaAccessToken);
   const syncedWorkspaces = await syncWorkspacesFromSofia(irisUser.user_id, sofiaOrgs);
 
   const workspaces: WorkspaceInfo[] = syncedWorkspaces.map((ws) => ({

@@ -14,6 +14,7 @@ import { checkRateLimit } from '@/lib/http/rate-limit';
 // Ver lib/http/rate-limit.ts para la limitación del enfoque en memoria.
 const RATE_LIMITED_PATHS: Record<string, { limit: number; windowMs: number }> = {
   '/api/auth/login': { limit: 10, windowMs: 60_000 },
+  '/api/auth/hub-session': { limit: 20, windowMs: 60_000 },
   '/api/auth/register': { limit: 5, windowMs: 60_000 },
   '/api/v1/auth/sofia/exchange': { limit: 20, windowMs: 60_000 },
   '/api/v1/auth/refresh': { limit: 30, windowMs: 60_000 },
@@ -39,6 +40,7 @@ const PUBLIC_PATHS = [
   '/terms',               // Términos y Condiciones
   '/privacy',             // Política de Privacidad
   '/api/auth/login',
+  '/api/auth/hub-session', // Bearer SOFIA verificado dentro del handler.
   '/api/auth/register',
   '/api/auth/refresh',
   // Bootstrap federado: ambas validan internamente el token recibido. Si el
